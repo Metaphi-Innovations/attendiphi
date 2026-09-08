@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="Attendephi by Metaphi – QR Check-In System">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Attendephi by Metaphi">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png" />
+
+  <title>Attendephi by Metaphi</title>
+
+  <!-- Preconnect to Google Fonts CDN for faster font loading -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Preload Inter font (400,500,600,700 weights used in app) -->
+  <link rel="preload" as="style"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    media="print" onload="this.media='all'">
+
+  <!-- Preload MetaPhi images so they display instantly -->
+  <link rel="preload" as="image" type="image/webp" href="assets/assets/images/metaphi_tagline_logo.webp">
+  <link rel="preload" as="image" type="image/webp" href="assets/assets/images/metaphi_logo.webp">
+  <link rel="preload" as="image" type="image/png" href="assets/assets/images/attendephi_logo.png">
+
+  <!-- Inline splash screen CSS - renders instantly before Flutter loads -->
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    #splash {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #F8FAFC;
+      z-index: 9999;
+      transition: opacity 0.3s ease-out;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    #splash.fade-out {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #splash img {
+      width: 220px;
+      height: auto;
+      margin-bottom: 24px;
+    }
+
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid #E2E8F0;
+      border-top-color: #0284C7;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Instant native splash while Flutter bootstraps -->
+  <div id="splash">
+    <img src="assets/images/attendephi_logo.png" alt="Attendephi by Metaphi" width="220">
+    <div class="spinner"></div>
+  </div>
+
+  <script>
+    // Remove splash once Flutter has rendered its first frame
+    window.addEventListener('flutter-first-frame', function () {
+      var splash = document.getElementById('splash');
+      if (splash) {
+        splash.classList.add('fade-out');
+        setTimeout(function () { splash.remove(); }, 350);
+      }
+    });
+  </script>
+
+  <script src="flutter_bootstrap.js" async></script>
+
+  <!-- Defer non-critical cleanup to after page load -->
+  <script>
+    window.addEventListener('load', function () {
+      // Clean up old service workers (deferred so they don't block initial render)
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function (registrations) {
+          for (var i = 0; i < registrations.length; i++) {
+            registrations[i].unregister();
+          }
+        });
+      }
+    });
+  </script>
+</body>
+
+</html>

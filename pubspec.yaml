@@ -1,0 +1,63 @@
+name: qr_checkin
+description: "Production-grade QR-based location check-in application."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Firebase
+  firebase_core: ^4.13.0
+  cloud_firestore: ^6.8.0
+  firebase_auth: ^6.5.7
+  firebase_app_check: ^0.4.6
+  firebase_crashlytics: ^5.2.7
+
+  # State Management
+  flutter_riverpod: ^3.4.2
+
+  # Navigation
+  go_router: ^18.0.1
+
+  # Location
+  geolocator: ^14.0.3
+  permission_handler: ^13.0.2
+
+  # QR Scanning & Generation
+  mobile_scanner: ^7.3.1
+  qr_flutter: ^4.1.0
+
+  # Camera / Image
+  image_picker: ^1.2.2
+  flutter_image_compress: ^2.3.0
+
+  # Utilities
+  uuid: ^4.5.1
+  intl: ^0.20.2
+
+  # Google Fonts
+  google_fonts: ^8.2.1
+  firebase_messaging: ^16.6.0
+  flutter_local_notifications: ^22.3.0
+  url_launcher: ^6.3.1
+  shared_preferences: ^2.5.5
+  pdf: ^3.13.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+  # Testing
+  mocktail: ^1.0.4
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/

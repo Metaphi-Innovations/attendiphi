@@ -1,0 +1,49 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Locations: Read-only for all clients, admin writable
+    match /locations/{locationId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    
+    // Check-Ins: Public create allowed for attendee check-in
+    match /checkIns/{checkInId} {
+      allow create: if request.resource.data.userName is string
+                    && request.resource.data.userPhone is string
+                    && request.resource.data.locationId is string;
+      allow read, update, delete: if true;
+    }
+    
+    // Admins collection: Protected at app level
+    match /admins/{adminId} {
+      allow read, write: if true;
+    }
+
+    // Employees / Users collection: Public read for check-in dropdown, writable for management
+    match /employees/{employeeId} {
+      allow read, write: if true;
+    }
+
+    // Admin devices collection for push notification token registration
+    match /admin_devices/{tokenId} {
+      allow read, write: if true;
+    }
+
+    // Admin notifications collection
+    match /admin_notifications/{notificationId} {
+      allow read, write: if true;
+    }
+
+    // Admin mail dispatch queue
+    match /admin_mail_dispatch/{mailId} {
+      allow read, write: if true;
+    }
+
+    // Firebase Trigger Email extension mail collection
+    match /mail/{mailId} {
+      allow read, write: if true;
+    }
+  }
+}

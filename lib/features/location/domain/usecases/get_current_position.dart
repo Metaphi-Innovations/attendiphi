@@ -1,0 +1,14 @@
+import 'package:geolocator/geolocator.dart';
+
+import '../../data/datasources/location_device_data_source.dart';
+
+/// Usecase to obtain the user's current GPS position.
+class GetCurrentPosition {
+  const GetCurrentPosition(this._deviceDataSource);
+
+  final LocationDeviceDataSource _deviceDataSource;
+
+  Future<Position> call() {
+    return _deviceDataSource.getCurrentPosition();
+  }
+}
