@@ -28,11 +28,13 @@ class LocationPermissionScreen extends ConsumerStatefulWidget {
     required this.location,
     this.adminId,
     this.sessionDateStr,
+    this.nowProvider,
   });
 
   final LocationConfig location;
   final String? adminId;
   final String? sessionDateStr;
+  final DateTime Function()? nowProvider;
 
   @override
   ConsumerState<LocationPermissionScreen> createState() =>
@@ -54,17 +56,15 @@ class _LocationPermissionScreenState
     return DateTime.tryParse(widget.sessionDateStr!.trim());
   }
 
+  DateTime get _now =>
+      widget.nowProvider != null ? widget.nowProvider!() : DateTime.now();
+
+  bool get _isTodayThursday => _now.weekday == DateTime.thursday;
+
   bool get _isSessionExpired {
     final sessionDate = _parsedSessionDate;
     if (sessionDate == null) return false;
-    // 03 Sep 2026 is the designated active session for client demo
-    if (sessionDate.year == 2026 &&
-        sessionDate.month == 9 &&
-        sessionDate.day == 3) {
-      return false;
-    }
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = DateTime(_now.year, _now.month, _now.day);
     final sessionDay =
         DateTime(sessionDate.year, sessionDate.month, sessionDate.day);
     return sessionDay.isBefore(today);
@@ -73,14 +73,7 @@ class _LocationPermissionScreenState
   bool get _isSessionFuture {
     final sessionDate = _parsedSessionDate;
     if (sessionDate == null) return false;
-    // 03 Sep 2026 is the designated active session for client demo
-    if (sessionDate.year == 2026 &&
-        sessionDate.month == 9 &&
-        sessionDate.day == 3) {
-      return false;
-    }
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = DateTime(_now.year, _now.month, _now.day);
     final sessionDay =
         DateTime(sessionDate.year, sessionDate.month, sessionDate.day);
     return sessionDay.isAfter(today);
@@ -125,8 +118,8 @@ class _LocationPermissionScreenState
       _isCheckingDevice = false;
     });
 
-    // Automatically initiate location check on screen entrance only if session is active
-    if (!_isSessionExpired && !_isSessionFuture) {
+    // Automatically initiate location check on screen entrance only if session is active on Thursday
+    if (_isTodayThursday && !_isSessionExpired && !_isSessionFuture) {
       _pulseController.repeat();
       ref
           .read(locationValidationFamilyProvider(widget.location).notifier)
@@ -205,11 +198,13 @@ class _LocationPermissionScreenState
             constraints: const BoxConstraints(
               maxWidth: ResponsiveBreakpoints.maxFormWidth,
             ),
-            child: _isSessionExpired
-                ? _buildExpiredSessionView(context, _parsedSessionDate!)
-                : _isSessionFuture
-                    ? _buildFutureSessionView(context, _parsedSessionDate!)
-                    : Column(
+            child: !_isTodayThursday
+                ? _buildNotThursdayView(context)
+                : _isSessionExpired
+                    ? _buildExpiredSessionView(context, _parsedSessionDate!)
+                    : _isSessionFuture
+                        ? _buildFutureSessionView(context, _parsedSessionDate!)
+                        : Column(
                         children: [
                           SizedBox(height: isCompact ? 10 : 20),
 
@@ -526,6 +521,104 @@ class _LocationPermissionScreenState
                 context,
                 'Opening Time',
                 'Thursday at 00:00',
+                Icons.schedule_rounded,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNotThursdayView(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    int daysUntilThursday = (DateTime.thursday - _now.weekday) % 7;
+    if (daysUntilThursday <= 0) daysUntilThursday += 7;
+    final nextThursday = _now.add(Duration(days: daysUntilThursday));
+    final nextDateStr = DateFormat('EEEE, dd MMMM yyyy').format(nextThursday);
+
+    return Column(
+      children: [
+        const SizedBox(height: 16),
+        Container(
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF59E0B).withAlpha(isDark ? 50 : 25),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: const Color(0xFFF59E0B).withAlpha(isDark ? 90 : 60),
+              width: 2,
+            ),
+          ),
+          child: const Center(
+            child: Icon(
+              Icons.event_busy_rounded,
+              color: Color(0xFFD97706),
+              size: 42,
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF59E0B).withAlpha(25),
+            borderRadius: AppRadius.fullAll,
+            border: Border.all(color: const Color(0xFFF59E0B).withAlpha(60)),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.lock_clock_rounded, size: 12, color: Color(0xFFD97706)),
+              SizedBox(width: 5),
+              Text(
+                'THURSDAY ONLY',
+                style: TextStyle(
+                  color: Color(0xFFD97706),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          'Check-In Closed Today',
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Member check-in is allowed ONLY on Thursdays. The attendance period does not extend to non-Thursday days.',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            height: 1.5,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 24),
+        AppCard(
+          color: theme.colorScheme.surfaceContainerHighest.withAlpha(50),
+          child: Column(
+            children: [
+              _buildDetailRow(
+                context,
+                'Next Session',
+                nextDateStr,
+                Icons.event_rounded,
+              ),
+              const Divider(height: 16),
+              _buildDetailRow(
+                context,
+                'Session Schedule',
+                'Every Thursday',
                 Icons.schedule_rounded,
               ),
             ],

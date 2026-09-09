@@ -164,6 +164,14 @@ class AppAttendanceTypeBadge extends StatelessWidget {
             fontSize: fontSize,
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           );
+        case CheckInType.notCheckedIn:
+          return AppBadge(
+            label: 'Not Checked In',
+            variant: AppBadgeVariant.neutral,
+            icon: Icons.schedule_rounded,
+            fontSize: fontSize,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          );
       }
     }
 

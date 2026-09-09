@@ -1,25 +1,17 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Application typography scales using the Inter font family.
+/// Application typography scales using the Poppins font family.
 ///
 /// All text styles are defined here for consistency across the app.
 class AppTypography {
   AppTypography._();
 
-  /// Flag to avoid initializing Google Fonts config more than once.
-  static bool _initialized = false;
+  /// The Poppins font family name.
+  static String? get fontFamily => GoogleFonts.poppins().fontFamily;
 
   static TextTheme get textTheme {
-    // On web, fonts are preloaded via <link> in index.html.
-    // Disable the runtime HTTP fetch so the package uses the CSS-loaded font.
-    if (kIsWeb && !_initialized) {
-      GoogleFonts.config.allowRuntimeFetching = false;
-      _initialized = true;
-    }
-
-    return GoogleFonts.interTextTheme(
+    return GoogleFonts.poppinsTextTheme(
       const TextTheme(
         displayLarge: TextStyle(
           fontSize: 32,

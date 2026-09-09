@@ -10,7 +10,7 @@ class EmailCredentialsService {
   final FirebaseFirestore firestore;
 
   static const String defaultPortalUrl =
-      'https://qr-checkin-dev.web.app/';
+      'https://attendiphi-by-metaphi.web.app/';
 
   String generatePlainEmailBody({
     required AdminUser admin,

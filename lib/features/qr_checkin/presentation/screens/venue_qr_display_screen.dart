@@ -113,7 +113,7 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
   /// Builds the unique QR check-in payload for a given Thursday for the unified database.
   String _buildQrPayload(DateTime thursdayDate) {
     final dateStr = DateFormat('yyyy-MM-dd').format(thursdayDate);
-    return 'https://qr-checkin-dev.web.app/#${RouteNames.locationPermission}?date=$dateStr&locationId=${widget.location.id}';
+    return 'https://attendiphi-by-metaphi.web.app/#${RouteNames.locationPermission}?date=$dateStr&locationId=${widget.location.id}';
   }
 
   void _onMonthChanged(DateTime newMonth) {
@@ -323,210 +323,113 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
     }
   }
 
-  /// 1st Logo: Term Logo (Left)
-  Widget _buildTermLogo({required bool isDark, bool isCompact = false}) {
+  /// 1st Logo: RISE Logo (Left) - Replaces TERM logo
+  Widget _buildRiseLogo({required bool isDark, bool isCompact = false}) {
+    final height = isCompact ? 48.0 : 58.0;
     return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: isCompact ? 9 : 12,
-        vertical: isCompact ? 5 : 6.5,
-      ),
+      height: height,
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: isDark
-              ? [const Color(0xFF78350F).withAlpha(60), const Color(0xFF451A03).withAlpha(80)]
-              : [const Color(0xFFFFFBEB), const Color(0xFFFEF3C7)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: const Color(0xFFF59E0B).withAlpha(isDark ? 140 : 180),
-          width: 1.2,
+          color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+          width: 1.0,
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFF59E0B).withAlpha(20),
-            blurRadius: 4,
+            color: Colors.black.withAlpha(isDark ? 30 : 8),
+            blurRadius: 3,
             offset: const Offset(0, 1),
           ),
         ],
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.workspace_premium_rounded,
-            size: isCompact ? 22 : 26,
-            color: const Color(0xFFD97706),
-          ),
-          const SizedBox(width: 5),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'TERM',
-                style: TextStyle(
-                  fontSize: isCompact ? 9.5 : 11,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.1,
-                  color: isDark ? const Color(0xFFFDE68A) : const Color(0xFF92400E),
-                ),
-              ),
-              Text(
-                '2026–27',
-                style: TextStyle(
-                  fontSize: isCompact ? 12 : 14,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.2,
-                  color: isDark ? const Color(0xFFFEF3C7) : const Color(0xFF78350F),
-                ),
-              ),
-            ],
-          ),
-        ],
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: Image.asset(
+          'assets/images/RISE.png',
+          height: height,
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.high,
+        ),
       ),
     );
   }
 
-  /// 2nd Logo: "Attendephi by metaphi" (Middle)
-  Widget _buildAttendephiLogo({required bool isDark, bool isCompact = false}) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(3.5),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF0284C7), Color(0xFF2563EB)],
+  /// 2nd Logo: Attendiphi by MetaPhi Logo (Middle)
+  Widget _buildAttendiphiLogo({required bool isDark, bool isCompact = false}) {
+    final height = isCompact ? 46.0 : 56.0;
+    return Container(
+      height: height,
+      padding: isDark
+          ? EdgeInsets.symmetric(
+              horizontal: isCompact ? 6 : 8,
+              vertical: 2,
+            )
+          : EdgeInsets.zero,
+      decoration: isDark
+          ? BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: const Color(0xFF334155),
+                width: 1.0,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withAlpha(30),
+                  blurRadius: 3,
+                  offset: const Offset(0, 1),
                 ),
-                borderRadius: BorderRadius.circular(5.5),
-              ),
-              child: Icon(
-                Icons.qr_code_scanner_rounded,
-                size: isCompact ? 13.5 : 16,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(width: 5),
-            Text(
-              'Attendephi',
-              style: TextStyle(
-                fontSize: isCompact ? 15 : 17.5,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -0.3,
-                color: isDark ? Colors.white : const Color(0xFF0F172A),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 2.5),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'by ',
-              style: TextStyle(
-                fontSize: isCompact ? 10 : 11.5,
-                fontWeight: FontWeight.w600,
-                color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-              ),
-            ),
-            Image.asset(
-              'assets/images/metaphi_logo.webp',
-              height: isCompact ? 13.5 : 16,
-              fit: BoxFit.contain,
-            ),
-          ],
-        ),
-      ],
+              ],
+            )
+          : null,
+      child: Image.asset(
+        'assets/images/attendiphi_logo.png',
+        height: height,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.high,
+      ),
     );
   }
 
   /// 3rd Logo: BNI Premier Logo (Right)
   Widget _buildBniPremierLogo({required bool isDark, bool isCompact = false}) {
+    final height = isCompact ? 48.0 : 58.0;
     return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: isCompact ? 9 : 12,
-        vertical: isCompact ? 5 : 6.5,
-      ),
+      height: height,
+      padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: isDark
-              ? [const Color(0xFF7F1D1D).withAlpha(60), const Color(0xFF450A0A).withAlpha(80)]
-              : [const Color(0xFFFEF2F2), const Color(0xFFFEE2E2)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: const Color(0xFFEF4444).withAlpha(isDark ? 140 : 180),
-          width: 1.2,
+          color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+          width: 1.0,
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFDC2626).withAlpha(20),
-            blurRadius: 4,
+            color: Colors.black.withAlpha(isDark ? 30 : 8),
+            blurRadius: 3,
             offset: const Offset(0, 1),
           ),
         ],
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
-            decoration: BoxDecoration(
-              color: const Color(0xFFCF142B),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: const Text(
-              'BNI',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0.5,
-              ),
-            ),
-          ),
-          const SizedBox(width: 5),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'PREMIER',
-                style: TextStyle(
-                  fontSize: isCompact ? 10.5 : 12,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.8,
-                  color: isDark ? const Color(0xFFFCA5A5) : const Color(0xFF991B1B),
-                ),
-              ),
-              Text(
-                'CHAPTER',
-                style: TextStyle(
-                  fontSize: isCompact ? 8 : 9,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.4,
-                  color: isDark ? const Color(0xFFF87171) : const Color(0xFFB91C1C),
-                ),
-              ),
-            ],
-          ),
-        ],
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: Image.asset(
+          'assets/images/BNI.jpg',
+          height: height,
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.high,
+        ),
       ),
     );
   }
 
   /// Top Header Bar of the ID Card containing all 3 logos:
-  /// 1st: Term logo | 2nd: Attendephi by metaphi | 3rd: BNI premier logo
+  /// 1st: RISE logo | 2nd: Attendiphi by metaphi | 3rd: BNI premier logo
   Widget _buildIdCardHeader({required bool isDark, bool isCompact = false}) {
+    final spacing = isCompact ? 10.0 : 14.0;
     return SizedBox(
       width: double.infinity,
       child: Padding(
@@ -534,42 +437,26 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
           horizontal: isCompact ? 2 : 4,
           vertical: isCompact ? 2 : 4,
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // 1st: Term Logo
-            Flexible(
-              flex: 3,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: _buildTermLogo(isDark: isDark, isCompact: isCompact),
-              ),
-            ),
-            const SizedBox(width: 4),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // 1st: RISE Logo (replaces Term Logo)
+              _buildRiseLogo(isDark: isDark, isCompact: isCompact),
+              SizedBox(width: spacing),
 
-            // 2nd: Attendephi by metaphi (Middle)
-            Flexible(
-              flex: 4,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.center,
-                child: _buildAttendephiLogo(isDark: isDark, isCompact: isCompact),
-              ),
-            ),
-            const SizedBox(width: 4),
+              // 2nd: Attendiphi by metaphi (Middle)
+              _buildAttendiphiLogo(isDark: isDark, isCompact: isCompact),
+              SizedBox(width: spacing),
 
-            // 3rd: BNI Premier Logo
-            Flexible(
-              flex: 3,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerRight,
-                child: _buildBniPremierLogo(isDark: isDark, isCompact: isCompact),
-              ),
-            ),
-          ],
+              // 3rd: BNI Premier Logo
+              _buildBniPremierLogo(isDark: isDark, isCompact: isCompact),
+            ],
+          ),
         ),
       ),
     );
@@ -577,8 +464,7 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
 
   /// Authentic rectangular ID Card Standee widget.
   /// Features:
-  /// - Top lanyard slot cutout
-  /// - 3 Logos header bar (1st: Term logo | 2nd: Attendephi by metaphi | 3rd: BNI premier logo)
+  /// - 3 Logos header bar (1st: RISE logo | 2nd: Attendiphi by metaphi | 3rd: BNI premier logo)
   /// - Status badge bar (Official Standee & Live/Upcoming/Locked)
   /// - Session title & validity date subtitle
   /// - High-contrast QR code container with centered MetaPhi logo
@@ -599,15 +485,6 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
     final monthShort = DateFormat('MMM yyyy').format(thursdayDate);
     final weekdayName = DateFormat('EEEE').format(thursdayDate);
 
-    String subtitleText;
-    if (!isCurrentMonthActive) {
-      subtitleText = 'Auto-unlocks on 01 $monthShort';
-    } else if (isSelectedPast) {
-      subtitleText = 'Session expired on 11:59 PM, $dayNum $monthShort';
-    } else {
-      subtitleText = 'Valid until 11:59 PM, $dayNum $monthShort';
-    }
-
     return AppCard(
       elevation: 4,
       color: isDark ? theme.colorScheme.surfaceContainerHigh : Colors.white,
@@ -621,32 +498,15 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 0. Realistic ID Card Lanyard Cutout Slot
-              Center(
-                child: Container(
-                  width: 44,
-                  height: 6.5,
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
-                    borderRadius: BorderRadius.circular(3.5),
-                    border: Border.all(
-                      color: isDark ? const Color(0xFF475569) : const Color(0xFF94A3B8).withAlpha(90),
-                      width: 0.8,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-
               // 1. Top 3-Logos Header Bar
-              // 1st: Term Logo | 2nd: Attendephi by metaphi | 3rd: BNI Premier Logo
+              // 1st: RISE Logo | 2nd: Attendiphi by metaphi | 3rd: BNI Premier Logo
               _buildIdCardHeader(isDark: isDark, isCompact: isMobile),
 
               const SizedBox(height: 14),
 
-              // 3. Session Label + Date Header
+              // 3. Date Header
               Text(
-                'Session $sessionNum · $weekdayName, $dayNum $monthShort',
+                '$weekdayName, $dayNum $monthShort',
                 style: TextStyle(
                   fontSize: isMobile ? 15 : 16,
                   fontWeight: FontWeight.w800,
@@ -654,48 +514,6 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                   letterSpacing: -0.2,
                 ),
                 textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 4),
-
-              // 4. Subtitle Pill
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? const Color(0xFF0F172A).withAlpha(140)
-                      : const Color(0xFFF8FAFC),
-                  borderRadius: AppRadius.fullAll,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      isCurrentMonthActive ? Icons.schedule_rounded : Icons.event_available_rounded,
-                      size: 13,
-                      color: isDark
-                          ? const Color(0xFF94A3B8)
-                          : const Color(0xFF64748B),
-                    ),
-                    const SizedBox(width: 5),
-                    Flexible(
-                      child: Text(
-                        subtitleText,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: isDark
-                              ? const Color(0xFF94A3B8)
-                              : const Color(0xFF64748B),
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
               ),
 
               const SizedBox(height: 14),

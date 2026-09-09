@@ -48,6 +48,60 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
 
+      // ── Redirects: attendiphi namespace root & legacy routes ───────────────
+      GoRoute(
+        path: RouteNames.attendiphiNamespace,
+        redirect: (context, state) => RouteNames.adminDashboard,
+      ),
+      GoRoute(
+        path: RouteNames.legacyAttendiphiDashboard,
+        redirect: (context, state) => RouteNames.adminDashboard,
+      ),
+      GoRoute(
+        path: RouteNames.legacyAttendiphiAttendanceOverview,
+        redirect: (context, state) => RouteNames.adminAttendanceOverview,
+      ),
+      GoRoute(
+        path: RouteNames.legacyAttendiphiVisitors,
+        redirect: (context, state) => RouteNames.adminVisitors,
+      ),
+      GoRoute(
+        path: RouteNames.legacyAttendiphiMembers,
+        redirect: (context, state) => RouteNames.adminMembers,
+      ),
+      GoRoute(
+        path: RouteNames.legacyAttendiphiVenueQr,
+        redirect: (context, state) => RouteNames.venueQr,
+      ),
+      GoRoute(
+        path: RouteNames.legacyAttendiphiAdmins,
+        redirect: (context, state) => RouteNames.adminAdmins,
+      ),
+      GoRoute(
+        path: RouteNames.legacyAdminDashboard,
+        redirect: (context, state) => RouteNames.adminDashboard,
+      ),
+      GoRoute(
+        path: RouteNames.legacyAdminAttendanceOverview,
+        redirect: (context, state) => RouteNames.adminAttendanceOverview,
+      ),
+      GoRoute(
+        path: RouteNames.legacyAdminVisitors,
+        redirect: (context, state) => RouteNames.adminVisitors,
+      ),
+      GoRoute(
+        path: RouteNames.legacyAdminMembers,
+        redirect: (context, state) => RouteNames.adminMembers,
+      ),
+      GoRoute(
+        path: RouteNames.legacyVenueQr,
+        redirect: (context, state) => RouteNames.venueQr,
+      ),
+      GoRoute(
+        path: RouteNames.legacyAdminAdmins,
+        redirect: (context, state) => RouteNames.adminAdmins,
+      ),
+
       // ── 2. Admin Portal Persistent Shell (Dashboard, Members, QR Standee) ───
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {

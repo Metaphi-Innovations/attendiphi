@@ -39,12 +39,14 @@ class CheckInFormScreen extends ConsumerStatefulWidget {
     this.proximityResult,
     this.adminId,
     this.sessionDateStr,
+    this.nowProvider,
   });
 
   final String locationId;
   final ProximityResult? proximityResult;
   final String? adminId;
   final String? sessionDateStr;
+  final DateTime Function()? nowProvider;
 
   @override
   ConsumerState<CheckInFormScreen> createState() => _CheckInFormScreenState();
@@ -60,17 +62,15 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     return DateTime.tryParse(widget.sessionDateStr!.trim());
   }
 
+  DateTime get _now =>
+      widget.nowProvider != null ? widget.nowProvider!() : DateTime.now();
+
+  bool get _isTodayThursday => _now.weekday == DateTime.thursday;
+
   bool get _isSessionExpired {
     final sessionDate = _parsedSessionDate;
     if (sessionDate == null) return false;
-    // 03 Sep 2026 is the designated active session for client demo
-    if (sessionDate.year == 2026 &&
-        sessionDate.month == 9 &&
-        sessionDate.day == 3) {
-      return false;
-    }
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = DateTime(_now.year, _now.month, _now.day);
     final sessionDay =
         DateTime(sessionDate.year, sessionDate.month, sessionDate.day);
     return sessionDay.isBefore(today);
@@ -79,14 +79,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   bool get _isSessionFuture {
     final sessionDate = _parsedSessionDate;
     if (sessionDate == null) return false;
-    // 03 Sep 2026 is the designated active session for client demo
-    if (sessionDate.year == 2026 &&
-        sessionDate.month == 9 &&
-        sessionDate.day == 3) {
-      return false;
-    }
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = DateTime(_now.year, _now.month, _now.day);
     final sessionDay =
         DateTime(sessionDate.year, sessionDate.month, sessionDate.day);
     return sessionDay.isAfter(today);
@@ -387,6 +380,56 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       return const Scaffold(
         body: Center(
           child: MetaPhiLoadingIndicator(),
+        ),
+      );
+    }
+
+    if (!_isTodayThursday) {
+      return AppScaffold(
+        title: AppStrings.checkInFormTitle,
+        backgroundColor: const Color(0xFFF8FAFC),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: ResponsiveBreakpoints.maxFormWidth,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 76,
+                    height: 76,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF59E0B).withAlpha(25),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.event_busy_rounded,
+                      color: Color(0xFFD97706),
+                      size: 40,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Check-In Available on Thursday Only',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Member and substitute check-in is permitted only on Thursdays. Attendance submissions are closed today.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFF64748B),
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       );
     }

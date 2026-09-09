@@ -126,7 +126,8 @@ void main() {
       // Check GPS status indicators (only "On-site" without distance meter suffix)
       expect(find.text('On-site'), findsNWidgets(2));
 
-      // Check action icons (Only View Details icon rendered; Flag and Delete removed)
+      // Check action icons (Edit Details and View Details rendered; Flag and Delete removed)
+      expect(find.byIcon(Icons.edit_outlined), findsNWidgets(2));
       expect(find.byIcon(Icons.visibility_outlined), findsNWidgets(2));
       expect(find.byIcon(Icons.flag_outlined), findsNothing);
       expect(find.byIcon(Icons.delete_outline_rounded), findsNothing);

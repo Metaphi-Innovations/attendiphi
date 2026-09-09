@@ -53,10 +53,31 @@ void main() {
     usecase = SubmitCheckIn(
       mockRepository,
       notificationDispatchService: mockDispatchService,
+      nowProvider: () => DateTime(2026, 9, 3, 10, 0),
     );
   });
 
   group('SubmitCheckIn', () {
+    test('throws CheckInSubmissionFailedException when submitting on non-Thursday', () async {
+      final nonThursdayUsecase = SubmitCheckIn(
+        mockRepository,
+        notificationDispatchService: mockDispatchService,
+        nowProvider: () => DateTime(2026, 9, 9, 10, 0), // Wednesday
+      );
+
+      await expectLater(
+        nonThursdayUsecase(
+          name: 'Rahul Sharma',
+          phone: '9876543210',
+          type: CheckInType.member,
+          location: testLocation,
+          proximityResult: testProximity,
+        ),
+        throwsA(isA<CheckInSubmissionFailedException>()),
+      );
+
+      verifyNever(() => mockRepository.submitCheckIn(any()));
+    });
     test('submits valid Member check-in and dispatches admin notification', () async {
       when(() => mockRepository.submitCheckIn(any()))
           .thenAnswer((_) async {});

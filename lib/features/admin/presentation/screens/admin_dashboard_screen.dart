@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -18,7 +20,6 @@ import '../../../checkin/domain/entities/check_in_type.dart';
 import '../../../checkin/presentation/providers/checkin_providers.dart';
 import '../../../employee/presentation/providers/employee_providers.dart';
 import '../providers/admin_dashboard_provider.dart';
-import '../widgets/searchable_thursday_date_dialog.dart';
 
 /// Highly responsive real-time Admin Dashboard for mobile, tablet, and desktop screens.
 
@@ -136,6 +137,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
 
   Future<void> _toggleVerifyCheckIn(CheckInSubmission record) async {
     final newVerified = !record.isVerified;
+    final isAbsent = record.type.isAbsent;
+    final isNotCheckedIn = record.type.isNotCheckedIn;
 
     final shouldProceed = await showDialog<bool>(
       context: context,
@@ -145,13 +148,19 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             borderRadius: BorderRadius.circular(16),
           ),
           title: Text(
-            newVerified ? 'Verify Check-In' : 'Unverify Check-In',
+            newVerified
+                ? (isAbsent ? 'Verify Absence' : 'Verify Attendance')
+                : 'Unverify Record',
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
           content: Text(
-            newVerified 
-                ? 'Do you want to verify this check-in for ${record.userName}?'
-                : 'Do you want to unverify this check-in for ${record.userName}?',
+            newVerified
+                ? (isAbsent
+                    ? 'Do you want to verify that ${record.userName} was Absent?'
+                    : (isNotCheckedIn
+                        ? 'Do you want to verify attendance for ${record.userName}?'
+                        : 'Do you want to verify this check-in for ${record.userName}?'))
+                : 'Do you want to unverify this record for ${record.userName}?',
           ),
           actions: [
             TextButton(
@@ -160,7 +169,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             ),
             FilledButton(
               style: FilledButton.styleFrom(
-                backgroundColor: newVerified ? AppColors.success : AppColors.error,
+                backgroundColor:
+                    newVerified ? AppColors.success : AppColors.error,
               ),
               onPressed: () => Navigator.of(context).pop(true),
               child: Text(newVerified ? 'Verify' : 'Unverify'),
@@ -173,6 +183,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     if (shouldProceed != true) return;
 
     final updatedRecord = record.copyWith(
+      type: isNotCheckedIn ? CheckInType.member : record.type,
       isVerified: newVerified,
       verifiedAt: newVerified ? DateTime.now() : null,
       verifiedBy: newVerified ? 'Admin' : null,
@@ -200,7 +211,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                 const SizedBox(width: 8),
                 Text(
                   newVerified
-                      ? 'Verified "${record.userName}" as Present'
+                      ? (isAbsent
+                          ? 'Verified "${record.userName}" as Absent'
+                          : 'Verified "${record.userName}" as Present')
                       : 'Unmarked verification for "${record.userName}"',
                 ),
               ],
@@ -231,7 +244,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     final nameController = TextEditingController(text: record.userName);
     final phoneController = TextEditingController(text: record.userPhone);
     final venueController = TextEditingController(text: record.locationName);
-    var selectedType = record.type;
+    var selectedType = record.type == CheckInType.notCheckedIn
+        ? CheckInType.member
+        : record.type;
     final isVerified = record.isVerified;
     final formKey = GlobalKey<FormState>();
 
@@ -517,7 +532,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                                   isVerified: isMarkedAbsent ? false : isVerified,
                                   isEdited: true,
                                   editedAt: now,
-                                  timestamp: now,
+                                  timestamp: record.timestamp,
                                   verifiedAt: (isVerified && !isMarkedAbsent)
                                       ? (record.verifiedAt ?? now)
                                       : null,
@@ -621,12 +636,13 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
               IconButton(
                 icon: const Icon(Icons.close_rounded),
                 tooltip: 'Close',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                 onPressed: () => Navigator.of(modalCtx).pop(),
               ),
             ],
           ),
-          const Divider(),
-          const SizedBox(height: 12),
+          const Divider(height: 16),
 
           if (photoBytes != null) ...[
             Center(
@@ -636,48 +652,70 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                     borderRadius: AppRadius.mdAll,
                     child: Image.memory(
                       photoBytes,
-                      width: 140,
-                      height: 140,
+                      width: 110,
+                      height: 110,
                       fit: BoxFit.cover,
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Substitute Face Photo',
-                    style: TextStyle(fontSize: 11, color: Colors.grey),
+                  const SizedBox(height: 4),
+                  Text(
+                    record.type.isSubstitute
+                        ? 'Substitute Face Photo'
+                        : 'Attendee Face Photo',
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
           ],
 
-          _DetailItem(label: 'Full Name', value: record.userName),
+          _DetailItem(label: 'Member Name', value: record.userName),
+          if (record.type.isSubstitute &&
+              (record.substituteName?.isNotEmpty ?? false))
+            _DetailItem(
+              label: 'Substitute Name',
+              value: record.substituteName!,
+            ),
           _DetailItem(label: 'Phone Number', value: record.userPhone),
           _DetailItem(label: 'Attendance Type', value: record.type.displayName),
           _DetailItem(label: 'Venue', value: record.locationName),
           _DetailItem(
             label: 'GPS Distance',
-            value: record.type == CheckInType.absent ? '-' : _formatGpsDistanceDetail(record),
+            value: (record.type == CheckInType.absent ||
+                    record.type.isNotCheckedIn)
+                ? '-'
+                : _formatGpsDistanceDetail(record),
           ),
           _DetailItem(
             label: 'GPS Coordinates',
-            value: record.type == CheckInType.absent
+            value: (record.type == CheckInType.absent ||
+                    record.type.isNotCheckedIn)
                 ? '-'
                 : '${record.userLatitude.toStringAsFixed(4)}, ${record.userLongitude.toStringAsFixed(4)}',
           ),
           _DetailItem(
             label: 'Timestamp',
-            value: record.isEdited
-                ? '${record.timestamp.formattedDateTime} (Edited by Admin)'
-                : record.timestamp.formattedDateTime,
+            value: record.type.isNotCheckedIn
+                ? '-'
+                : (record.isEdited
+                    ? '${record.timestamp.formattedDateTime} (Edited by Admin)'
+                    : record.timestamp.formattedDateTime),
           ),
           _DetailItem(label: 'Submission ID', value: record.id),
           _DetailItem(
             label: 'Admin Status',
-            value: record.isVerified ? '✓ Verified by Admin' : 'Pending Verification',
+            value: record.type.isNotCheckedIn
+                ? 'Not Checked In'
+                : (record.isVerified
+                    ? (record.type.isAbsent
+                        ? '✓ Absence Verified by Admin'
+                        : '✓ Verified by Admin')
+                    : (record.type.isAbsent
+                        ? 'Pending Absence Verification'
+                        : 'Pending Verification')),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
 
           // Action buttons in modal
           Row(
@@ -694,12 +732,16 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                         : Icons.verified_rounded,
                     size: 16,
                   ),
-                  label: Text(record.isVerified ? 'Unverify' : 'Verify Present'),
+                  label: Text(
+                    record.isVerified
+                        ? 'Unverify'
+                        : (record.type.isAbsent ? 'Verify Absent' : 'Verify Present'),
+                  ),
                   style: FilledButton.styleFrom(
                     backgroundColor: record.isVerified
                         ? const Color(0xFF475569)
                         : AppColors.success,
-                    padding: const EdgeInsets.symmetric(vertical: 11),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
                 ),
               ),
@@ -714,7 +756,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                   label: const Text('Edit Details'),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.primary,
-                    padding: const EdgeInsets.symmetric(vertical: 11),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
                 ),
               ),
@@ -725,16 +767,23 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     }
 
     if (isWide) {
+      final screenHeight = MediaQuery.sizeOf(context).height;
       showDialog(
         context: context,
         useRootNavigator: true,
         builder: (dialogCtx) => Dialog(
           shape: const RoundedRectangleBorder(borderRadius: AppRadius.lgAll),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480, maxHeight: 600),
+            constraints: BoxConstraints(
+              maxWidth: 500,
+              maxHeight: screenHeight * 0.92,
+            ),
             child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: SingleChildScrollView(child: buildDetailContent(dialogCtx)),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+              child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                child: buildDetailContent(dialogCtx),
+              ),
             ),
           ),
         ),
@@ -773,11 +822,13 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
+    final now = DateTime.now();
+
     // Compute metrics from stream providers (Dashboard excludes visitor records)
     final totalMembersCount =
         employeesAsync.value?.where((e) => e.isActive).length ?? 0;
     
-    // Fetch the base records (already date-filtered with dummy absent records included)
+    // Fetch the base records (all active members with attendance mapped)
     final baseRecordsAsync = ref.watch(baseDashboardRecordsProvider);
     final baseRecords = baseRecordsAsync.value ?? [];
 
@@ -790,6 +841,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
         dashboardRecords.where((r) => r.type.isSubstitute).length;
     final absentCount =
         dashboardRecords.where((r) => r.type.isAbsent).length;
+    final totalCheckIns = memberCount + substituteCount;
 
     final hPadding = context.responsiveValue<double>(
       compactMobile: 12.0,
@@ -815,13 +867,16 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              _buildThursdayNotice(now),
+
               // 1. Metric Cards
               _buildMetrics(
                 context,
                 totalMembersCount,
-                totalCount,
+                totalCheckIns,
                 memberCount,
                 substituteCount,
+                absentCount,
                 availableWidth,
               ),
               const SizedBox(height: 14),
@@ -862,16 +917,20 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // 1. Header
-          _buildHeader(context, theme, isWide, totalCount),
+          _buildHeader(context, theme, isWide, totalCount, now, filterState),
           const SizedBox(height: 14),
+
+          // Thursday notice (if today is not Thursday)
+          _buildThursdayNotice(now),
 
           // 2. Metric Cards
           _buildMetrics(
             context,
             totalMembersCount,
-            totalCount,
+            totalCheckIns,
             memberCount,
             substituteCount,
+            absentCount,
             availableWidth,
           ),
           const SizedBox(height: 16),
@@ -1028,26 +1087,93 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     );
   }
 
+  DateTime _getActiveThursday(DateTime n) {
+    if (n.weekday == DateTime.thursday) {
+      return DateTime(n.year, n.month, n.day);
+    }
+    int daysSinceThursday = (n.weekday - DateTime.thursday) % 7;
+    if (daysSinceThursday <= 0) daysSinceThursday += 7;
+    return DateTime(n.year, n.month, n.day)
+        .subtract(Duration(days: daysSinceThursday));
+  }
+
   Widget _buildHeader(
     BuildContext context,
     ThemeData theme,
     bool isWide,
     int totalCount,
+    DateTime now,
+    AdminDashboardFilterState filterState,
   ) {
+    final activeThursday = _getActiveThursday(now);
+    final isThursday = now.weekday == DateTime.thursday;
+    final String dateSubtitle;
+    if (isThursday) {
+      dateSubtitle =
+          'Live attendance for today, ${DateFormat('EEEE, d MMM yyyy').format(now)}.';
+    } else {
+      final activeDateStr = DateFormat('EEEE, d MMM yyyy').format(activeThursday);
+      dateSubtitle = 'Attendance records for $activeDateStr.';
+    }
+
     return AppPageHeader(
       title: 'Daily Attendance',
-      subtitle: "Monitor today's check-ins and live attendance activity.",
+      subtitle: dateSubtitle,
       isCompact: !isWide,
       badge: const AppLiveSyncBadge(),
+    );
+  }
+
+  Widget _buildThursdayNotice(DateTime now) {
+    final isThursday = now.weekday == DateTime.thursday;
+    if (isThursday) return const SizedBox.shrink();
+
+    final activeThursday = _getActiveThursday(now);
+    final activeDateStr = DateFormat('EEEE, d MMM yyyy').format(activeThursday);
+
+    int daysUntilThursday = (DateTime.thursday - now.weekday) % 7;
+    if (daysUntilThursday <= 0) daysUntilThursday += 7;
+    final nextThursday = now.add(Duration(days: daysUntilThursday));
+    final nextDateStr = DateFormat('EEEE, d MMM yyyy').format(nextThursday);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF59E0B).withAlpha(18),
+        borderRadius: AppRadius.mdAll,
+        border: Border.all(color: const Color(0xFFF59E0B).withAlpha(70)),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.info_outline_rounded,
+            size: 18,
+            color: Color(0xFFD97706),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Check-in is available on Thursday only. Showing attendance for $activeDateStr. Next session: $nextDateStr.',
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFFD97706),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildMetrics(
     BuildContext context,
     int totalMembersCount,
-    int totalCount,
+    int totalCheckIns,
     int memberCount,
     int substituteCount,
+    int absentCount,
     double availableWidth,
   ) {
     final isMobile = availableWidth < 600;
@@ -1070,7 +1196,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       height: cardHeight,
       child: _HeroMetricCard(
         title: 'Total Check-Ins',
-        value: '$totalCount',
+        value: '$totalCheckIns',
         icon: Icons.groups_rounded,
         accentColor: AppColors.primary,
         isMobile: isMobile,
@@ -1101,16 +1227,55 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       ),
     );
 
-    if (availableWidth >= 900) {
+    // 5. Absent Members
+    final card5 = SizedBox(
+      height: cardHeight,
+      child: _HeroMetricCard(
+        title: 'Absent',
+        value: '$absentCount',
+        icon: Icons.person_off_rounded,
+        accentColor: AppColors.error,
+        isMobile: isMobile,
+      ),
+    );
+
+    if (availableWidth >= 850) {
       return Row(
         children: [
-          Expanded(flex: 1, child: card1),
-          const SizedBox(width: 14),
-          Expanded(flex: 1, child: card2),
-          const SizedBox(width: 14),
-          Expanded(flex: 1, child: card3),
-          const SizedBox(width: 14),
-          Expanded(flex: 1, child: card4),
+          Expanded(child: card1),
+          const SizedBox(width: 12),
+          Expanded(child: card2),
+          const SizedBox(width: 12),
+          Expanded(child: card3),
+          const SizedBox(width: 12),
+          Expanded(child: card4),
+          const SizedBox(width: 12),
+          Expanded(child: card5),
+        ],
+      );
+    }
+
+    if (availableWidth >= 600) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Expanded(child: card1),
+              const SizedBox(width: 12),
+              Expanded(child: card2),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: card3),
+              const SizedBox(width: 12),
+              Expanded(child: card4),
+              const SizedBox(width: 12),
+              Expanded(child: card5),
+            ],
+          ),
         ],
       );
     }
@@ -1133,129 +1298,16 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             Expanded(child: card4),
           ],
         ),
-      ],
-    );
-  }
-
-  /// Generates all Thursdays between September 2026 and September 2027.
-  List<DateTime> _generateAllThursdays() {
-    final list = <DateTime>[];
-    for (int year = 2026; year <= 2027; year++) {
-      final startMonth = (year == 2026) ? 9 : 1;
-      final endMonth = (year == 2027) ? 9 : 12;
-      for (int m = startMonth; m <= endMonth; m++) {
-        final daysInMonth = DateTime(year, m + 1, 0).day;
-        for (int d = 1; d <= daysInMonth; d++) {
-          final date = DateTime(year, m, d);
-          if (date.weekday == DateTime.thursday) {
-            list.add(date);
-          }
-        }
-      }
-    }
-    return list;
-  }
-
-  Widget _buildThursdayDateDropdown(
-    BuildContext context,
-    ThemeData theme,
-    bool isDark,
-    AdminDashboardFilterState filterState,
-  ) {
-    final allThursdays = _generateAllThursdays();
-    final selectedDate = filterState.selectedDate;
-    final isSelected = selectedDate != null;
-
-    final displayText = isSelected
-        ? DateFormat('dd MMM yyyy').format(selectedDate)
-        : 'All Thursdays';
-
-    return Builder(
-      builder: (btnContext) {
-        return InkWell(
-          onTap: () {
-            showSearchableThursdayDateDropdown(
-              context: btnContext,
-              isDark: isDark,
-              selectedDate: selectedDate,
-              allThursdays: allThursdays,
-              onDateSelected: (date) {
-                ref
-                    .read(adminDashboardFilterProvider.notifier)
-                    .setSelectedDate(date);
-              },
-            );
-          },
-          borderRadius: AppRadius.mdAll,
-          child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? AppColors.primary.withAlpha(isDark ? 40 : 20)
-              : (isDark ? AppColors.surfaceDark : const Color(0xFFF1F5F9)),
-          borderRadius: AppRadius.mdAll,
-          border: Border.all(
-            color: isSelected
-                ? AppColors.primary
-                : (isDark ? AppColors.outlineDark : AppColors.outlineLight),
-            width: isSelected ? 1.5 : 1,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
+        const SizedBox(height: 12),
+        Row(
           children: [
-            Icon(
-              Icons.calendar_month_rounded,
-              size: 17,
-              color: isSelected
-                  ? AppColors.primary
-                  : (isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
-            ),
-            const SizedBox(width: 7),
-            Text(
-              displayText,
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-                color: isSelected
-                    ? AppColors.primary
-                    : (isDark ? const Color(0xFFCBD5E1) : const Color(0xFF334155)),
-              ),
-            ),
-            if (isSelected) ...[
-              const SizedBox(width: 6),
-              InkWell(
-                onTap: () => ref
-                    .read(adminDashboardFilterProvider.notifier)
-                    .setSelectedDate(null),
-                borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withAlpha(30),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.close_rounded,
-                    size: 13,
-                    color: AppColors.primary,
-                  ),
-                ),
-              ),
-            ] else ...[
-              const SizedBox(width: 4),
-              Icon(
-                Icons.arrow_drop_down_rounded,
-                size: 19,
-                color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-              ),
-            ],
+            Expanded(child: card5),
+            const SizedBox(width: 12),
+            const Spacer(),
           ],
         ),
-      ),
+      ],
     );
-  },
-);
   }
 
   Widget _buildSearchFilterToolbar(
@@ -1375,13 +1427,6 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       ],
     );
 
-    final thursdayDropdown = _buildThursdayDateDropdown(
-      context,
-      theme,
-      isDark,
-      filterState,
-    );
-
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
@@ -1392,9 +1437,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(child: searchField),
-              const SizedBox(width: 12),
-              thursdayDropdown,
-              const SizedBox(width: 12),
+              const SizedBox(width: 16),
               filterChips,
             ],
           );
@@ -1405,13 +1448,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Row(
-              children: [
-                Expanded(child: searchField),
-                const SizedBox(width: 8),
-                thursdayDropdown,
-              ],
-            ),
+            searchField,
             const SizedBox(height: 10),
             // Horizontally scrollable filter pills with smooth trailing peek / fade shader
             ShaderMask(
@@ -1622,7 +1659,7 @@ class _HeroMetricCard extends StatelessWidget {
 
     return AppCard(
       padding: EdgeInsets.symmetric(
-        horizontal: isMobile ? 12 : 16,
+        horizontal: isMobile ? 12 : 14,
         vertical: isMobile ? 8 : 10,
       ),
       borderRadius: AppRadius.mdAll,
@@ -1681,6 +1718,122 @@ class _HeroMetricCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Quick-preview dialog for attendee or substitute live photos.
+void _showAttendeePhotoDialog({
+  required BuildContext context,
+  required Uint8List photoBytes,
+  required String title,
+  required String subtitle,
+  String badgeLabel = 'Live Check-In Selfie',
+}) {
+  final theme = Theme.of(context);
+  final isDark = theme.brightness == Brightness.dark;
+
+  showDialog(
+    context: context,
+    builder: (dialogCtx) => Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: Container(
+        width: 380,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: AppRadius.lgAll,
+          boxShadow: AppShadows.lg,
+          border: Border.all(
+            color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () => Navigator.pop(dialogCtx),
+                  tooltip: 'Close',
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            ClipRRect(
+              borderRadius: AppRadius.mdAll,
+              child: Image.memory(
+                photoBytes,
+                width: double.infinity,
+                height: 320,
+                fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withAlpha(isDark ? 35 : 20),
+                borderRadius: AppRadius.fullAll,
+                border: Border.all(
+                  color: AppColors.warning.withAlpha(isDark ? 80 : 45),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.camera_alt_rounded,
+                    size: 13,
+                    color: AppColors.warning,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    badgeLabel,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: isDark
+                          ? const Color(0xFFFDE68A)
+                          : const Color(0xFF92400E),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 /// Mobile-responsive attendee row component for small screen view (<600px).
@@ -1803,6 +1956,80 @@ class _MobileCheckInRow extends StatelessWidget {
                           ),
                         ],
                       ),
+                      if (record.type.isSubstitute &&
+                          (record.substituteName?.isNotEmpty ?? false)) ...[
+                        const SizedBox(height: 3),
+                        Container(
+                          padding: const EdgeInsets.fromLTRB(4, 2, 8, 2),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? AppColors.warning.withAlpha(26)
+                                : const Color(0xFFFFFBEB),
+                            borderRadius: AppRadius.fullAll,
+                            border: Border.all(
+                              color: isDark
+                                  ? AppColors.warning.withAlpha(70)
+                                  : const Color(0xFFFDE68A),
+                              width: 1.0,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (photoBytes != null)
+                                InkWell(
+                                  onTap: () => _showAttendeePhotoDialog(
+                                    context: context,
+                                    photoBytes: photoBytes,
+                                    title: record.substituteName!,
+                                    subtitle:
+                                        'Substitute for ${record.userName}',
+                                    badgeLabel: 'Substitute Live Photo',
+                                  ),
+                                  child: Container(
+                                    width: 18,
+                                    height: 18,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: AppColors.warning.withAlpha(120),
+                                        width: 1.0,
+                                      ),
+                                    ),
+                                    child: ClipOval(
+                                      child: Image.memory(
+                                        photoBytes,
+                                        width: 18,
+                                        height: 18,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              else
+                                const Icon(
+                                  Icons.swap_horiz_rounded,
+                                  size: 12,
+                                  color: AppColors.warning,
+                                ),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  'Sub: ${record.substituteName}',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: isDark
+                                        ? const Color(0xFFFDE68A)
+                                        : const Color(0xFF92400E),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -1817,67 +2044,78 @@ class _MobileCheckInRow extends StatelessWidget {
             // Row 2: GPS Status + Time + Actions
             Row(
               children: [
-                if (record.type != CheckInType.absent) ...[
+                if (record.type.isNotCheckedIn)
+                  Text(
+                    'Not checked in yet',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w500,
+                      color: theme.colorScheme.onSurfaceVariant.withAlpha(160),
+                    ),
+                  )
+                else ...[
+                  if (record.type != CheckInType.absent) ...[
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.location_on_rounded,
+                          size: 12,
+                          color: AppColors.success,
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          _formatGpsDistance(record),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 11,
+                            color: AppColors.success,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+
+                  // Time / Timestamp
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(
-                        Icons.location_on_rounded,
-                        size: 12,
-                        color: AppColors.success,
+                      Icon(
+                        Icons.access_time_rounded,
+                        size: 11,
+                        color: isDark
+                            ? const Color(0xFF94A3B8)
+                            : const Color(0xFF64748B),
                       ),
                       const SizedBox(width: 3),
                       Text(
-                        _formatGpsDistance(record),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
+                        _formatTime(record.timestamp),
+                        style: TextStyle(
                           fontSize: 11,
-                          color: AppColors.success,
+                          color: record.isEdited
+                              ? const Color(0xFFD97706)
+                              : (isDark
+                                  ? const Color(0xFF94A3B8)
+                                  : const Color(0xFF64748B)),
+                          fontWeight:
+                              record.isEdited ? FontWeight.w600 : FontWeight.w500,
                         ),
                       ),
+                      if (record.isEdited) ...[
+                        const SizedBox(width: 3),
+                        const Text(
+                          '(Edited)',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Color(0xFFD97706),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
-                  const SizedBox(width: 10),
                 ],
-
-                // Time / Timestamp
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.access_time_rounded,
-                      size: 11,
-                      color: isDark
-                          ? const Color(0xFF94A3B8)
-                          : const Color(0xFF64748B),
-                    ),
-                    const SizedBox(width: 3),
-                    Text(
-                      _formatTime(record.timestamp),
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: record.isEdited
-                            ? const Color(0xFFD97706)
-                            : (isDark
-                                ? const Color(0xFF94A3B8)
-                                : const Color(0xFF64748B)),
-                        fontWeight:
-                            record.isEdited ? FontWeight.w600 : FontWeight.w500,
-                      ),
-                    ),
-                    if (record.isEdited) ...[
-                      const SizedBox(width: 3),
-                      const Text(
-                        '(Edited)',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Color(0xFFD97706),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
 
                 const Spacer(),
 
@@ -1898,7 +2136,9 @@ class _MobileCheckInRow extends StatelessWidget {
                       padding: EdgeInsets.zero,
                       constraints:
                           const BoxConstraints(minWidth: 26, minHeight: 26),
-                      tooltip: record.isVerified ? 'Verified' : 'Verify',
+                      tooltip: record.isVerified
+                          ? 'Verified'
+                          : (record.type.isAbsent ? 'Verify Absence' : 'Verify'),
                       onPressed: onVerifyTap,
                     ),
                     const SizedBox(width: 4),
@@ -1940,7 +2180,7 @@ class _DetailItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.symmetric(vertical: 3.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2019,7 +2259,14 @@ class _CheckInTableView extends StatelessWidget {
             SizedBox(width: 50, child: Text('#', style: headerTextStyle)),
             Expanded(flex: 3, child: Text('MEMBER', style: headerTextStyle)),
             Expanded(flex: 2, child: Text('PHONE', style: headerTextStyle)),
-            Expanded(flex: 2, child: Text('ATTENDANCE TYPE', style: headerTextStyle)),
+            Expanded(
+              flex: 2,
+              child: Text('ATTENDANCE TYPE', style: headerTextStyle),
+            ),
+            Expanded(
+              flex: 2,
+              child: Text('SUBSTITUTE', style: headerTextStyle),
+            ),
             Expanded(flex: 2, child: Text('GPS STATUS', style: headerTextStyle)),
             Expanded(flex: 2, child: Text('TIMESTAMP', style: headerTextStyle)),
             SizedBox(
@@ -2039,6 +2286,9 @@ class _CheckInTableView extends StatelessWidget {
       final rowNumber = index + 1;
       final isZebra = index.isOdd;
       final photoBytes = ImageUtils.base64ToBytes(record.photoBase64);
+      final hasSubstitute = record.type.isSubstitute &&
+          record.substituteName != null &&
+          record.substituteName!.trim().isNotEmpty;
 
       return InkWell(
         onTap: () => onRecordTap(record),
@@ -2077,7 +2327,7 @@ class _CheckInTableView extends StatelessWidget {
                 flex: 3,
                 child: Row(
                   children: [
-                    if (photoBytes != null)
+                    if (!record.type.isSubstitute && photoBytes != null)
                       ClipRRect(
                         borderRadius: AppRadius.xsAll,
                         child: Image.memory(
@@ -2104,7 +2354,7 @@ class _CheckInTableView extends StatelessWidget {
                           child: Text(
                             record.userName.isNotEmpty
                                 ? record.userName[0].toUpperCase()
-                                : 'U',
+                                : 'M',
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
@@ -2130,9 +2380,11 @@ class _CheckInTableView extends StatelessWidget {
                           ),
                           if (record.isVerified) ...[
                             const SizedBox(width: 6),
-                            const Tooltip(
-                              message: 'Verified Attendee',
-                              child: Icon(
+                            Tooltip(
+                              message: record.type.isAbsent
+                                  ? 'Verified Absent'
+                                  : 'Verified Attendee',
+                              child: const Icon(
                                 Icons.verified_rounded,
                                 size: 15,
                                 color: AppColors.success,
@@ -2169,18 +2421,140 @@ class _CheckInTableView extends StatelessWidget {
                 ),
               ),
 
+              // Substitute Column
+              Expanded(
+                flex: 2,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: hasSubstitute
+                      ? Container(
+                          padding: const EdgeInsets.fromLTRB(4, 3, 10, 3),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? AppColors.warning.withAlpha(26)
+                                : const Color(0xFFFFFBEB),
+                            borderRadius: AppRadius.fullAll,
+                            border: Border.all(
+                              color: isDark
+                                  ? AppColors.warning.withAlpha(70)
+                                  : const Color(0xFFFDE68A),
+                              width: 1.0,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Tooltip(
+                                message: photoBytes != null
+                                    ? 'Click to preview selfie'
+                                    : 'Substitute attendee',
+                                child: InkWell(
+                                  borderRadius: AppRadius.fullAll,
+                                  onTap: photoBytes != null
+                                      ? () => _showAttendeePhotoDialog(
+                                            context: context,
+                                            photoBytes: photoBytes,
+                                            title: record.substituteName!,
+                                            subtitle:
+                                                'Substitute for ${record.userName}',
+                                            badgeLabel:
+                                                'Substitute Live Photo',
+                                          )
+                                      : null,
+                                  child: photoBytes != null
+                                      ? Container(
+                                          width: 26,
+                                          height: 26,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: AppColors.warning
+                                                  .withAlpha(120),
+                                              width: 1.2,
+                                            ),
+                                          ),
+                                          child: ClipOval(
+                                            child: Image.memory(
+                                              photoBytes,
+                                              width: 26,
+                                              height: 26,
+                                              cacheWidth: 52,
+                                              cacheHeight: 52,
+                                              fit: BoxFit.cover,
+                                            ),
+                                          ),
+                                        )
+                                      : Container(
+                                          width: 26,
+                                          height: 26,
+                                          decoration: BoxDecoration(
+                                            color: AppColors.warning
+                                                .withAlpha(40),
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: AppColors.warning
+                                                  .withAlpha(90),
+                                              width: 1.0,
+                                            ),
+                                          ),
+                                          child: Center(
+                                            child: Text(
+                                              record.substituteName!.trim()[0]
+                                                  .toUpperCase(),
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 11.5,
+                                                color: AppColors.warning,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                ),
+                              ),
+                              const SizedBox(width: 7),
+                              Flexible(
+                                child: Text(
+                                  record.substituteName!,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12,
+                                    color: isDark
+                                        ? const Color(0xFFFDE68A)
+                                        : const Color(0xFF92400E),
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : Text(
+                          '—',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w500,
+                            fontSize: 13,
+                            color: isDark
+                                ? const Color(0xFF475569)
+                                : const Color(0xFFCBD5E1),
+                          ),
+                        ),
+                ),
+              ),
+
               // GPS Distance / Status
               Expanded(
                 flex: 2,
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: record.type == CheckInType.absent
+                  child: (record.type == CheckInType.absent ||
+                          record.type.isNotCheckedIn)
                       ? Text(
-                          '-',
+                          '—',
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: 14,
-                            color: theme.colorScheme.onSurfaceVariant,
+                            color: theme.colorScheme.onSurfaceVariant
+                                .withAlpha(120),
                           ),
                         )
                       : Row(
@@ -2208,54 +2582,67 @@ class _CheckInTableView extends StatelessWidget {
               // Time (Date on top, Time below)
               Expanded(
                 flex: 2,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _formatDate(record.timestamp),
+                child: record.type.isNotCheckedIn
+                    ? Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          '—',
                           style: TextStyle(
-                            fontSize: 12.5,
                             fontWeight: FontWeight.w600,
-                            color: record.isEdited
-                                ? const Color(0xFFD97706)
-                                : (isDark
-                                    ? Colors.white
-                                    : const Color(0xFF1E293B)),
+                            fontSize: 14,
+                            color: theme.colorScheme.onSurfaceVariant
+                                .withAlpha(120),
                           ),
                         ),
-                        if (record.isEdited) ...[
-                          const SizedBox(width: 4),
-                          const Tooltip(
-                            message: 'Edited check-in record',
-                            child: Icon(
-                              Icons.edit_rounded,
-                              size: 11.5,
-                              color: Color(0xFFD97706),
+                      )
+                    : Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _formatDate(record.timestamp),
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: record.isEdited
+                                      ? const Color(0xFFD97706)
+                                      : (isDark
+                                          ? Colors.white
+                                          : const Color(0xFF1E293B)),
+                                ),
+                              ),
+                              if (record.isEdited) ...[
+                                const SizedBox(width: 4),
+                                const Tooltip(
+                                  message: 'Edited check-in record',
+                                  child: Icon(
+                                    Icons.edit_rounded,
+                                    size: 11.5,
+                                    color: Color(0xFFD97706),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _formatTime(record.timestamp),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: record.isEdited
+                                  ? const Color(0xFFD97706).withAlpha(220)
+                                  : theme.colorScheme.onSurfaceVariant
+                                      .withAlpha(180),
+                              fontWeight: record.isEdited
+                                  ? FontWeight.w600
+                                  : FontWeight.w500,
                             ),
                           ),
                         ],
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      _formatTime(record.timestamp),
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: record.isEdited
-                            ? const Color(0xFFD97706).withAlpha(220)
-                            : theme.colorScheme.onSurfaceVariant
-                                .withAlpha(180),
-                        fontWeight: record.isEdited
-                            ? FontWeight.w600
-                            : FontWeight.w500,
                       ),
-                    ),
-                  ],
-                ),
               ),
 
               // Actions
@@ -2287,7 +2674,9 @@ class _CheckInTableView extends StatelessWidget {
                         ),
                         tooltip: record.isVerified
                             ? 'Verified (Click to unverify)'
-                            : 'Verify Attendee Present',
+                            : (record.type.isAbsent
+                                ? 'Verify Absence'
+                                : 'Verify Attendee Present'),
                         onPressed: () => onVerifyTap(record),
                       ),
                     ),

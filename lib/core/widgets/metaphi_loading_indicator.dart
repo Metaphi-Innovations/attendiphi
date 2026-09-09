@@ -37,7 +37,7 @@ class MetaPhiLoadingIndicator extends StatelessWidget {
         // MetaPhi "Your Vision, Our Algorithm" Logo without background
         Image.asset(
           'assets/images/metaphi_tagline_logo.webp',
-          width: logoWidth ?? (isCompact ? 200 : 250),
+          width: logoWidth ?? (isCompact ? 150 : 185),
           fit: BoxFit.contain,
         ),
 

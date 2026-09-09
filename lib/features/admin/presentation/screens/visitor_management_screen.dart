@@ -12,6 +12,8 @@ import '../../../../core/widgets/app_empty_view.dart';
 import '../../../../core/widgets/app_page_header.dart';
 import '../../../../core/widgets/metaphi_loading_indicator.dart';
 import '../../../checkin/domain/entities/check_in_submission.dart';
+import '../../../checkin/presentation/providers/checkin_providers.dart';
+import '../../../employee/presentation/providers/employee_providers.dart';
 import '../providers/attendance_overview_provider.dart';
 import '../providers/visitor_management_provider.dart';
 import '../widgets/searchable_thursday_date_dialog.dart';
@@ -324,22 +326,50 @@ class _VisitorManagementScreenState
 
           const SizedBox(height: 18),
 
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: () => Navigator.of(modalCtx).pop(),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: isDark ? const Color(0xFFCBD5E1) : const Color(0xFF475569),
-                side: BorderSide(
-                  color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () {
+                    Navigator.of(modalCtx).pop();
+                    _showEditVisitorDialog(context, visitor);
+                  },
+                  icon: const Icon(Icons.edit_outlined, size: 16),
+                  label: const Text(
+                    'Edit Details',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: AppRadius.mdAll,
+                    ),
+                  ),
                 ),
-                shape: const RoundedRectangleBorder(
-                  borderRadius: AppRadius.mdAll,
-                ),
-                padding: const EdgeInsets.symmetric(vertical: 12),
               ),
-              child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w600)),
-            ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.of(modalCtx).pop(),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor:
+                        isDark ? const Color(0xFFCBD5E1) : const Color(0xFF475569),
+                    side: BorderSide(
+                      color: isDark
+                          ? const Color(0xFF334155)
+                          : const Color(0xFFCBD5E1),
+                    ),
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: AppRadius.mdAll,
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  child: const Text('Close',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ],
           ),
         ],
       );
@@ -384,6 +414,474 @@ class _VisitorManagementScreenState
         ),
       );
     }
+  }
+
+  void _showEditVisitorDialog(
+    BuildContext context,
+    CheckInSubmission visitor,
+  ) {
+    final nameController = TextEditingController(text: visitor.userName);
+    final phoneController = TextEditingController(text: visitor.userPhone);
+    final emailController =
+        TextEditingController(text: visitor.userEmail ?? '');
+    final companyController =
+        TextEditingController(text: visitor.companyName ?? '');
+    final categoryController =
+        TextEditingController(text: visitor.category ?? '');
+    final invitedByController =
+        TextEditingController(text: visitor.invitedByMember ?? '');
+    final venueController = TextEditingController(text: visitor.locationName);
+    final formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      useRootNavigator: true,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final isDark = Theme.of(ctx).brightness == Brightness.dark;
+          final screenWidth = MediaQuery.of(ctx).size.width;
+          final isMobile = screenWidth < 600;
+
+          final fieldBgColor =
+              isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC);
+          final defaultBorderColor =
+              isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+          final labelColor =
+              isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569);
+          final iconColor =
+              isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+
+          InputDecoration buildDecoration({
+            required String hint,
+            required Widget prefixIcon,
+            Widget? suffixIcon,
+          }) {
+            return InputDecoration(
+              hintText: hint,
+              filled: true,
+              fillColor: fieldBgColor,
+              prefixIcon: prefixIcon,
+              suffixIcon: suffixIcon,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 14,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: defaultBorderColor),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: defaultBorderColor),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(
+                  color: AppColors.primary,
+                  width: 1.5,
+                ),
+              ),
+            );
+          }
+
+          return Dialog(
+            backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: isMobile ? screenWidth * 0.92 : 520,
+              ),
+              child: SingleChildScrollView(
+                padding: EdgeInsets.all(isMobile ? 18 : 24),
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withAlpha(25),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.edit_note_rounded,
+                              color: AppColors.primary,
+                              size: 22,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Edit Visitor Details',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Update visitor profile, company, and invitation',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: labelColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(dialogCtx),
+                            icon: const Icon(Icons.close_rounded, size: 20),
+                            splashRadius: 18,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Full Name
+                      Text(
+                        'Full Name *',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: labelColor,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: nameController,
+                        style: const TextStyle(fontSize: 14),
+                        decoration: buildDecoration(
+                          hint: 'Enter visitor name',
+                          prefixIcon: Icon(Icons.person_outline_rounded,
+                              size: 18, color: iconColor),
+                        ),
+                        validator: (val) => val == null || val.trim().isEmpty
+                            ? 'Please enter visitor name'
+                            : null,
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Phone Number
+                      Text(
+                        'Phone Number *',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: labelColor,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: phoneController,
+                        keyboardType: TextInputType.phone,
+                        style: const TextStyle(fontSize: 14),
+                        decoration: buildDecoration(
+                          hint: 'Enter phone number',
+                          prefixIcon: Icon(Icons.phone_outlined,
+                              size: 18, color: iconColor),
+                        ),
+                        validator: (val) => val == null || val.trim().isEmpty
+                            ? 'Please enter phone number'
+                            : null,
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Email Address
+                      Text(
+                        'Email Address',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: labelColor,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        style: const TextStyle(fontSize: 14),
+                        decoration: buildDecoration(
+                          hint: 'Enter email address (optional)',
+                          prefixIcon: Icon(Icons.email_outlined,
+                              size: 18, color: iconColor),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Company & Category
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Company / Business',
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: labelColor,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                TextFormField(
+                                  controller: companyController,
+                                  style: const TextStyle(fontSize: 14),
+                                  decoration: buildDecoration(
+                                    hint: 'e.g. FireAI',
+                                    prefixIcon: Icon(Icons.business_outlined,
+                                        size: 18, color: iconColor),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Business Category',
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: labelColor,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                TextFormField(
+                                  controller: categoryController,
+                                  style: const TextStyle(fontSize: 14),
+                                  decoration: buildDecoration(
+                                    hint: 'e.g. IT Services',
+                                    prefixIcon: Icon(Icons.category_outlined,
+                                        size: 18, color: iconColor),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Invited By Member with Registered Members Dropdown
+                      Text(
+                        'Invited By Member',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: labelColor,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Consumer(
+                        builder: (consumerCtx, consumerRef, _) {
+                          final employeesAsync =
+                              consumerRef.watch(employeesStreamProvider);
+                          final members = employeesAsync.value ?? [];
+
+                          return TextFormField(
+                            controller: invitedByController,
+                            style: const TextStyle(fontSize: 14),
+                            decoration: buildDecoration(
+                              hint: 'Member who invited visitor',
+                              prefixIcon: Icon(
+                                Icons.person_add_alt_1_outlined,
+                                size: 18,
+                                color: iconColor,
+                              ),
+                              suffixIcon: members.isNotEmpty
+                                  ? PopupMenuButton<String>(
+                                      icon: Icon(
+                                        Icons.arrow_drop_down_rounded,
+                                        color: iconColor,
+                                      ),
+                                      tooltip: 'Select registered member',
+                                      onSelected: (String memberName) {
+                                        setDialogState(() {
+                                          invitedByController.text =
+                                              memberName;
+                                        });
+                                      },
+                                      itemBuilder: (popupCtx) => members
+                                          .map(
+                                            (m) => PopupMenuItem<String>(
+                                              value: m.name,
+                                              child: Row(
+                                                children: [
+                                                  const Icon(
+                                                    Icons.person_rounded,
+                                                    size: 16,
+                                                    color: AppColors.primary,
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Text(m.name),
+                                                ],
+                                              ),
+                                            ),
+                                          )
+                                          .toList(),
+                                    )
+                                  : null,
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Venue / Location
+                      Text(
+                        'Venue / Location',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: labelColor,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: venueController,
+                        style: const TextStyle(fontSize: 14),
+                        decoration: buildDecoration(
+                          hint: 'Enter venue / chapter location',
+                          prefixIcon: Icon(Icons.location_on_outlined,
+                              size: 18, color: iconColor),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Action Buttons
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.pop(dialogCtx),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: labelColor,
+                                side: BorderSide(color: defaultBorderColor),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 13),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Text('Cancel'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: () async {
+                                if (!formKey.currentState!.validate()) return;
+                                final now = DateTime.now();
+                                final updated = visitor.copyWith(
+                                  userName: nameController.text.trim(),
+                                  userPhone: phoneController.text.trim(),
+                                  userEmail:
+                                      emailController.text.trim().isNotEmpty
+                                          ? emailController.text.trim()
+                                          : null,
+                                  companyName:
+                                      companyController.text.trim().isNotEmpty
+                                          ? companyController.text.trim()
+                                          : '',
+                                  category:
+                                      categoryController.text.trim().isNotEmpty
+                                          ? categoryController.text.trim()
+                                          : '',
+                                  invitedByMember: invitedByController
+                                          .text.trim().isNotEmpty
+                                          ? invitedByController.text.trim()
+                                          : null,
+                                  locationName: venueController.text.trim(),
+                                  isEdited: true,
+                                  editedAt: now,
+                                  timestamp: visitor.timestamp,
+                                );
+
+                                Navigator.pop(dialogCtx);
+
+                                final messenger = ScaffoldMessenger.of(context);
+                                try {
+                                  final repo =
+                                      ref.read(checkInRepositoryProvider);
+                                  await repo.updateCheckIn(updated);
+
+                                  if (mounted) {
+                                    messenger.showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'Updated visitor "${updated.userName}"',
+                                        ),
+                                        backgroundColor: AppColors.success,
+                                        behavior: SnackBarBehavior.floating,
+                                        shape: const RoundedRectangleBorder(
+                                          borderRadius: AppRadius.mdAll,
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (mounted) {
+                                    messenger.showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'Failed to update visitor: $e',
+                                        ),
+                                        backgroundColor: AppColors.error,
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  }
+                                }
+                              },
+                              style: FilledButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 13),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.save_rounded, size: 16),
+                                  SizedBox(width: 6),
+                                  Text(
+                                    'Save Changes',
+                                    style:
+                                        TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Widget _buildDetailRow(
@@ -849,16 +1347,25 @@ class _VisitorManagementScreenState
     List<CheckInSubmission> visitors,
   ) {
     const double colIndexWidth = 44.0;
-    const double colActionsWidth = 80.0;
+    const double colActionsWidth = 96.0;
     const double rowHeight = 62.0;
     const double headerHeight = 50.0;
+
+    // Shared flex ratios to guarantee perfect header & row alignment and equal spacing:
+    const int flexVisitor = 4;
+    const int flexPhone = 3;
+    const int flexCompany = 3;
+    const int flexCategory = 3;
+    const int flexInvitedBy = 3;
+    const int flexCheckInTime = 3;
+    const int flexGpsStatus = 3;
 
     final borderColor =
         isDark ? AppColors.outlineDark : const Color(0xFFE2E8F0);
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final double minTableWidth = constraints.maxWidth < 950 ? 950.0 : constraints.maxWidth;
+        final double minTableWidth = constraints.maxWidth < 1050 ? 1050.0 : constraints.maxWidth;
         final hasBoundedHeight = constraints.maxHeight.isFinite;
 
         final tableContent = Container(
@@ -887,13 +1394,13 @@ class _VisitorManagementScreenState
             child: Row(
               children: [
                 _buildHeaderCol('#', colIndexWidth, isDark),
-                _buildHeaderColFlex('VISITOR', 3, isDark),
-                _buildHeaderColFlex('PHONE', 2, isDark),
-                _buildHeaderColFlex('COMPANY', 3, isDark),
-                _buildHeaderColFlex('CATEGORY', 3, isDark),
-                _buildHeaderColFlex('INVITED BY', 2, isDark),
-                _buildHeaderColFlex('CHECK-IN TIME', 2, isDark),
-                _buildHeaderColFlex('GPS STATUS', 2, isDark),
+                _buildHeaderColFlex('VISITOR', flexVisitor, isDark),
+                _buildHeaderColFlex('PHONE', flexPhone, isDark),
+                _buildHeaderColFlex('COMPANY', flexCompany, isDark),
+                _buildHeaderColFlex('CATEGORY', flexCategory, isDark),
+                _buildHeaderColFlex('INVITED BY', flexInvitedBy, isDark),
+                _buildHeaderColFlex('CHECK-IN TIME', flexCheckInTime, isDark),
+                _buildHeaderColFlex('GPS STATUS', flexGpsStatus, isDark),
                 _buildHeaderCol(
                   'ACTIONS',
                   colActionsWidth,
@@ -956,7 +1463,7 @@ class _VisitorManagementScreenState
 
                         // Visitor Name & Email
                         Expanded(
-                          flex: 1,
+                          flex: flexVisitor,
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10),
                             child: Row(
@@ -1009,7 +1516,7 @@ class _VisitorManagementScreenState
                                             ),
                                           ),
                                           if (v.isFlagged) ...[
-                                            const SizedBox(width: 4),
+                                             const SizedBox(width: 4),
                                             const Tooltip(
                                               message:
                                                   'Flagged as suspicious / invalid check-in',
@@ -1045,7 +1552,7 @@ class _VisitorManagementScreenState
 
                         // Phone
                         Expanded(
-                          flex: 1,
+                          flex: flexPhone,
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10),
                             alignment: Alignment.centerLeft,
@@ -1066,7 +1573,7 @@ class _VisitorManagementScreenState
 
                         // Company
                         Expanded(
-                          flex: 1,
+                          flex: flexCompany,
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10),
                             alignment: Alignment.centerLeft,
@@ -1106,7 +1613,7 @@ class _VisitorManagementScreenState
 
                         // Category
                         Expanded(
-                          flex: 1,
+                          flex: flexCategory,
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10),
                             alignment: Alignment.centerLeft,
@@ -1121,7 +1628,7 @@ class _VisitorManagementScreenState
 
                         // Invited By (Interactive Filter Link with Hover Affordance)
                         Expanded(
-                          flex: 1,
+                          flex: flexInvitedBy,
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10),
                             alignment: Alignment.centerLeft,
@@ -1182,7 +1689,7 @@ class _VisitorManagementScreenState
 
                         // Check-In Time
                         Expanded(
-                          flex: 1,
+                          flex: flexCheckInTime,
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10),
                             alignment: Alignment.centerLeft,
@@ -1216,7 +1723,7 @@ class _VisitorManagementScreenState
 
                         // GPS Status
                         Expanded(
-                          flex: 1,
+                          flex: flexGpsStatus,
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10),
                             alignment: Alignment.centerLeft,
@@ -1225,33 +1732,68 @@ class _VisitorManagementScreenState
                           ),
                         ),
 
-                        // Actions (View Details only)
+                        // Actions (Edit Details & View Details)
                         Container(
                           width: colActionsWidth,
                           padding: const EdgeInsets.symmetric(horizontal: 4),
                           alignment: Alignment.center,
-                          child: Semantics(
-                            label: 'View visitor details for ${v.userName}',
-                            button: true,
-                            child: IconButton(
-                              icon: Icon(
-                                Icons.visibility_outlined,
-                                size: 18,
-                                color: isDark
-                                    ? const Color(0xFF94A3B8)
-                                    : const Color(0xFF64748B),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Semantics(
+                                label: 'Edit visitor details for ${v.userName}',
+                                button: true,
+                                child: IconButton(
+                                  icon: const Icon(
+                                    Icons.edit_outlined,
+                                    size: 17,
+                                    color: AppColors.primary,
+                                  ),
+                                  tooltip: 'Edit Visitor Details',
+                                  padding: const EdgeInsets.all(4),
+                                  constraints: const BoxConstraints(
+                                    minWidth: 28,
+                                    minHeight: 28,
+                                  ),
+                                  style: IconButton.styleFrom(
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  visualDensity: VisualDensity.compact,
+                                  splashRadius: 16,
+                                  onPressed: () =>
+                                      _showEditVisitorDialog(context, v),
+                                ),
                               ),
-                              tooltip: 'View Visitor Details',
-                              padding: const EdgeInsets.all(4),
-                              constraints: const BoxConstraints(
-                                minWidth: 28,
-                                minHeight: 28,
+                              const SizedBox(width: 2),
+                              Semantics(
+                                label: 'View visitor details for ${v.userName}',
+                                button: true,
+                                child: IconButton(
+                                  icon: Icon(
+                                    Icons.visibility_outlined,
+                                    size: 18,
+                                    color: isDark
+                                        ? const Color(0xFF94A3B8)
+                                        : const Color(0xFF64748B),
+                                  ),
+                                  tooltip: 'View Visitor Details',
+                                  padding: const EdgeInsets.all(4),
+                                  constraints: const BoxConstraints(
+                                    minWidth: 28,
+                                    minHeight: 28,
+                                  ),
+                                  style: IconButton.styleFrom(
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  visualDensity: VisualDensity.compact,
+                                  splashRadius: 16,
+                                  onPressed: () =>
+                                      _showVisitorDetailsDialog(context, v),
+                                ),
                               ),
-                              visualDensity: VisualDensity.compact,
-                              splashRadius: 16,
-                              onPressed: () =>
-                                  _showVisitorDetailsDialog(context, v),
-                            ),
+                            ],
                           ),
                         ),
                       ],
@@ -1371,16 +1913,30 @@ class _VisitorManagementScreenState
                       ],
                     ),
                   ),
-                  IconButton(
-                    icon: Icon(
-                      Icons.visibility_outlined,
-                      size: 20,
-                      color: isDark
-                          ? const Color(0xFF94A3B8)
-                          : const Color(0xFF64748B),
-                    ),
-                    tooltip: 'View Visitor Details',
-                    onPressed: () => _showVisitorDetailsDialog(context, v),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(
+                          Icons.edit_outlined,
+                          size: 19,
+                          color: AppColors.primary,
+                        ),
+                        tooltip: 'Edit Visitor Details',
+                        onPressed: () => _showEditVisitorDialog(context, v),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          Icons.visibility_outlined,
+                          size: 20,
+                          color: isDark
+                              ? const Color(0xFF94A3B8)
+                              : const Color(0xFF64748B),
+                        ),
+                        tooltip: 'View Visitor Details',
+                        onPressed: () => _showVisitorDetailsDialog(context, v),
+                      ),
+                    ],
                   ),
                 ],
               ),

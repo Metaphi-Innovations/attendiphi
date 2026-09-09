@@ -20,13 +20,17 @@ void main() {
         'EXCEL PLAZA, Pant Nagar, Ghatkopar East, Mumbai, Maharashtra 400075',
   );
 
-  Widget createWidgetUnderTest({String? sessionDateStr}) {
+  Widget createWidgetUnderTest({
+    String? sessionDateStr,
+    DateTime Function()? nowProvider,
+  }) {
     return ProviderScope(
       child: MaterialApp(
         home: Scaffold(
           body: LocationPermissionScreen(
             location: testLocation,
             sessionDateStr: sessionDateStr,
+            nowProvider: nowProvider ?? () => DateTime(2026, 9, 3, 10, 0),
           ),
         ),
       ),
@@ -34,6 +38,22 @@ void main() {
   }
 
   group('LocationPermissionScreen Date Validation Widget Tests', () {
+    testWidgets('shows THURSDAY ONLY notice when opened on a non-Thursday',
+        (tester) async {
+      await tester.pumpWidget(
+        createWidgetUnderTest(
+          sessionDateStr: '2026-09-03',
+          nowProvider: () => DateTime(2026, 9, 9, 10, 0), // Wednesday
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(find.text('THURSDAY ONLY'), findsOneWidget);
+      expect(find.text('Check-In Closed Today'), findsOneWidget);
+      expect(find.text('Allowed Perimeter:'), findsNothing);
+    });
+
     testWidgets('shows SESSION EXPIRED when scanned QR date has passed',
         (tester) async {
       await tester.pumpWidget(

@@ -244,20 +244,6 @@ class _SearchableThursdayDateDialogState
             child: ListView(
               padding: const EdgeInsets.symmetric(vertical: 4),
               children: [
-                if (_searchQuery.isEmpty)
-                  _buildOption(
-                    context,
-                    isDark: isDark,
-                    label: 'All Thursdays / All Dates',
-                    isSelected: widget.selectedDate == null,
-                    icon: Icons.all_inclusive_rounded,
-                    onTap: () {
-                      widget.onDateSelected(null);
-                      Navigator.of(context).pop();
-                    },
-                  ),
-                if (_searchQuery.isEmpty && filteredList.isNotEmpty)
-                  const Divider(height: 1, indent: 12, endIndent: 12),
                 if (filteredList.isEmpty)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 24),

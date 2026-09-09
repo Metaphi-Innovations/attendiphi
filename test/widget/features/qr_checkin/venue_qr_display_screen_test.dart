@@ -54,7 +54,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Check Standee preview card enriched elements
-      expect(find.text('Session 1 · Thursday, 03 Sep 2026'), findsOneWidget);
+      expect(find.text('Thursday, 03 Sep 2026'), findsNWidgets(2));
       expect(find.text('Scan with phone camera to check in'), findsOneWidget);
       expect(find.text('?date=2026-09-03'), findsWidgets);
       expect(find.text('ACTIVE'), findsWidgets);
@@ -76,8 +76,7 @@ void main() {
       await tester.tap(session2Finder);
       await tester.pumpAndSettle();
 
-      expect(find.text('Session 2 · Thursday, 10 Sep 2026'), findsOneWidget);
-      expect(find.text('Valid until 11:59 PM, 10 Sep 2026'), findsOneWidget);
+      expect(find.text('Thursday, 10 Sep 2026'), findsNWidgets(2));
       expect(find.text('?date=2026-09-10'), findsWidgets);
     });
 
@@ -105,8 +104,7 @@ void main() {
 
       // Verify locked preview card
       expect(find.text('QR Code Not Available Yet'), findsOneWidget);
-      expect(find.text('Session 1 · Thursday, 01 Oct 2026'), findsOneWidget);
-      expect(find.text('Auto-unlocks on 01 Oct 2026'), findsOneWidget);
+      expect(find.text('Thursday, 01 Oct 2026'), findsNWidgets(2));
     });
 
     testWidgets('opens modal dialog when View icon is tapped', (tester) async {
@@ -123,9 +121,24 @@ void main() {
 
       // Modal is displayed with ID card format
       expect(find.text('Thursday QR Standee'), findsOneWidget);
-      expect(find.text('TERM'), findsWidgets);
-      expect(find.text('Attendephi'), findsWidgets);
-      expect(find.text('PREMIER'), findsWidgets);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is Image && w.image is AssetImage && (w.image as AssetImage).assetName == 'assets/images/RISE.png',
+        ),
+        findsWidgets,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is Image && w.image is AssetImage && (w.image as AssetImage).assetName == 'assets/images/attendiphi_logo.png',
+        ),
+        findsWidgets,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is Image && w.image is AssetImage && (w.image as AssetImage).assetName == 'assets/images/BNI.jpg',
+        ),
+        findsWidgets,
+      );
       expect(find.text('Copy URL'), findsOneWidget);
       expect(find.text('Download PNG'), findsWidgets);
 

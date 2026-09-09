@@ -16,6 +16,7 @@ class CheckInSubmission {
     required this.timestamp,
     this.userEmail,
     this.substituteForMember,
+    this.substituteName,
     this.companyName,
     this.category,
     this.invitedByMember,
@@ -77,6 +78,9 @@ class CheckInSubmission {
   /// Member name that the substitute is standing in for.
   final String? substituteForMember;
 
+  /// Full name of the substitute person (when type is substitute).
+  final String? substituteName;
+
   /// Company or organization name (for visitors).
   final String? companyName;
 
@@ -127,6 +131,7 @@ class CheckInSubmission {
     DateTime? timestamp,
     String? userEmail,
     String? substituteForMember,
+    String? substituteName,
     String? companyName,
     String? category,
     String? invitedByMember,
@@ -156,6 +161,7 @@ class CheckInSubmission {
       timestamp: timestamp ?? this.timestamp,
       userEmail: userEmail ?? this.userEmail,
       substituteForMember: substituteForMember ?? this.substituteForMember,
+      substituteName: substituteName ?? this.substituteName,
       companyName: companyName ?? this.companyName,
       category: category ?? this.category,
       invitedByMember: invitedByMember ?? this.invitedByMember,
@@ -188,6 +194,7 @@ class CheckInSubmission {
       'timestamp': timestamp.toUtc().toIso8601String(),
       'userEmail': userEmail,
       'substituteForMember': substituteForMember,
+      'substituteName': substituteName,
       'companyName': companyName,
       'category': category,
       'invitedByMember': invitedByMember,
@@ -210,6 +217,7 @@ class CheckInSubmission {
       if (val == 'substitute') return CheckInType.substitute;
       if (val == 'visitor') return CheckInType.visitor;
       if (val == 'absent') return CheckInType.absent;
+      if (val == 'notCheckedIn') return CheckInType.notCheckedIn;
       return CheckInType.member;
     }
 
@@ -229,6 +237,7 @@ class CheckInSubmission {
           .toLocal(),
       userEmail: map['userEmail']?.toString(),
       substituteForMember: map['substituteForMember']?.toString(),
+      substituteName: map['substituteName']?.toString(),
       companyName: map['companyName']?.toString(),
       category: map['category']?.toString(),
       invitedByMember: map['invitedByMember']?.toString(),

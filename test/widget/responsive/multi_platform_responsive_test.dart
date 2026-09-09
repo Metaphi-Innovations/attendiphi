@@ -130,9 +130,10 @@ void main() {
         ProviderScope(
           child: MaterialApp(
             theme: AppTheme.light,
-            home: const LocationPermissionScreen(
+            home: LocationPermissionScreen(
               location: testLocation,
               sessionDateStr: '2026-09-03',
+              nowProvider: () => DateTime(2026, 9, 3, 10, 0),
             ),
           ),
         ),

@@ -130,5 +130,39 @@ void main() {
       expect(find.text('Atharva Patil'), findsOneWidget);
       expect(find.text('Rinku Sharma'), findsNothing);
     });
+
+    testWidgets('month filter updates P, S, A, and RATE columns for the selected month',
+        (tester) async {
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      await tester.pumpWidget(createWidgetUnderTest());
+      await tester.pumpAndSettle();
+
+      // Open month filter dropdown
+      final dropdownFinder = find.byType(DropdownButton<DateTime?>);
+      expect(dropdownFinder, findsOneWidget);
+
+      await tester.tap(dropdownFinder);
+      await tester.pumpAndSettle();
+
+      // Select 'October 2026' from the dropdown
+      final octoberItem = find.text('October 2026').last;
+      await tester.tap(octoberItem);
+      await tester.pumpAndSettle();
+
+      // Verify October Thursday dates are visible (01 Oct, 08 Oct, etc.)
+      expect(find.text('01 Oct'), findsWidgets);
+      expect(find.text('08 Oct'), findsWidgets);
+      // Sep dates are no longer shown
+      expect(find.text('03 Sep'), findsNothing);
+
+      // In October 2026 (all upcoming), P, S, A should all be 0
+      // 0 should be found for P, S, A across members
+      expect(find.text('0'), findsWidgets);
+      // And rate should display neutral dash
+      expect(find.text('—'), findsWidgets);
+    });
   });
 }

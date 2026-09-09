@@ -7,14 +7,33 @@ class RouteNames {
   // ── Entry / Admin Flow ────────────────────────────────────────────────
   static const adminLogin = '/';
   static const adminResetPassword = '/admin-reset-password';
-  static const venueQr = '/venue-qr';
-  static const adminDashboard = '/admin-dashboard';
-  static const adminAttendanceOverview = '/admin-attendance-overview';
-  static const adminVisitors = '/admin-visitors';
-  static const adminMembers = '/admin-members';
-  static const adminUsers = '/admin-members';
-  static const adminAdmins = '/admin-admins';
-  static const checkinDetail = '/admin-dashboard/:checkInId';
+
+  // ── Admin Portal Tabs ─────────────────────────────────────────────────
+  static const adminDashboard = '/daily-attendance';
+  static const adminAttendanceOverview = '/attendance-overview';
+  static const adminVisitors = '/visitors';
+  static const adminMembers = '/members';
+  static const adminUsers = '/members';
+  static const venueQr = '/qr-standee';
+  static const adminAdmins = '/admins';
+  static const checkinDetail = '/daily-attendance/:checkInId';
+
+  // ── Legacy Routes (for seamless backwards compatibility) ──────────────
+  static const attendiphiNamespace = '/attendiphi-by-metaphi';
+  static const legacyAttendiphiDashboard =
+      '/attendiphi-by-metaphi/daily-attendance';
+  static const legacyAttendiphiAttendanceOverview =
+      '/attendiphi-by-metaphi/attendance-overview';
+  static const legacyAttendiphiVisitors = '/attendiphi-by-metaphi/visitors';
+  static const legacyAttendiphiMembers = '/attendiphi-by-metaphi/members';
+  static const legacyAttendiphiVenueQr = '/attendiphi-by-metaphi/qr-standee';
+  static const legacyAttendiphiAdmins = '/attendiphi-by-metaphi/admins';
+  static const legacyAdminDashboard = '/admin-dashboard';
+  static const legacyAdminAttendanceOverview = '/admin-attendance-overview';
+  static const legacyAdminVisitors = '/admin-visitors';
+  static const legacyAdminMembers = '/admin-members';
+  static const legacyVenueQr = '/venue-qr';
+  static const legacyAdminAdmins = '/admin-admins';
 
   // ── Mobile Check-In Flow ──────────────────────────────────────────────
   static const qrScanner = '/scanner';
@@ -35,5 +54,5 @@ class RouteNames {
 
   /// Builds the check-in detail path for a specific check-in.
   static String checkinDetailPath(String checkInId) =>
-      '/admin-dashboard/$checkInId';
+      '/daily-attendance/$checkInId';
 }

@@ -57,16 +57,43 @@ void main() {
           (ref) => Stream.value(testEmployees),
         ),
       ],
-      child: const MaterialApp(
+      child: MaterialApp(
         home: CheckInFormScreen(
           locationId: 'test_venue',
           proximityResult: testProximity,
+          nowProvider: () => DateTime(2026, 9, 3, 10, 0),
         ),
       ),
     );
   }
 
   group('CheckInFormScreen Widget Tests', () {
+    testWidgets('shows Thursday-only block notice when today is not Thursday', (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            locationConfigFamilyProvider('test_venue').overrideWith(
+              (ref) => Future.value(testLocation),
+            ),
+            employeesStreamProvider.overrideWith(
+              (ref) => Stream.value(testEmployees),
+            ),
+          ],
+          child: MaterialApp(
+            home: CheckInFormScreen(
+              locationId: 'test_venue',
+              proximityResult: testProximity,
+              nowProvider: () => DateTime(2026, 9, 9, 10, 0), // Wednesday
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Check-In Available on Thursday Only'), findsOneWidget);
+    });
+
     testWidgets('renders top Check-in Type options: Member, Substitute, Visitor', (tester) async {
       await tester.pumpWidget(createWidgetUnderTest());
       await tester.pump();

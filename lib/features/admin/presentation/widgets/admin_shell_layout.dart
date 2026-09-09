@@ -246,49 +246,22 @@ class _AdminShellLayoutState extends ConsumerState<AdminShellLayout> {
         // Brand Header
         Padding(
           padding: EdgeInsets.fromLTRB(
-            18,
-            isMobile ? 18 : 22,
-            18,
+            16,
+            isMobile ? 18 : 24,
+            16,
             16,
           ),
-          child: Align(
-            alignment: Alignment.centerLeft,
+          child: Center(
             child: Image.asset(
-              'assets/images/ChatGPT Image Sep 8, 2026 at 03_26_17 PM.png',
-              height: 46,
+              'assets/images/attendiphi_logo.png',
+              height: isMobile ? 76 : 88,
               fit: BoxFit.contain,
-              alignment: Alignment.centerLeft,
-              errorBuilder: (context, error, stackTrace) => Image.asset(
-                'assets/images/attendephi_logo.png',
-                height: 46,
-                fit: BoxFit.contain,
-                alignment: Alignment.centerLeft,
-              ),
+              alignment: Alignment.center,
             ),
           ),
         ),
 
-        Divider(
-          height: 1,
-          color: theme.dividerColor.withAlpha(isDark ? 40 : 25),
-        ),
-        const SizedBox(height: 12),
-
-        // Section Label
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-          child: Text(
-            'MAIN MENU',
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.1,
-              color: isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
+        const SizedBox(height: 8),
 
         // Shared Main Workspace Tabs (Accessible to both Super Admin and Admin)
         _SidebarNavItem(

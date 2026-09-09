@@ -909,12 +909,15 @@ class _AttendanceOverviewScreenState
                                     borderColor,
                                     isDark,
                                   ),
-                                  _buildRateCell(
-                                    row.attendanceRate,
-                                    rateColumnWidth,
-                                    borderColor,
-                                    isDark,
-                                  ),
+                                   _buildRateCell(
+                                     row.attendanceRate,
+                                     rateColumnWidth,
+                                     borderColor,
+                                     isDark,
+                                     completedMeetings: row.presentCount +
+                                         row.substituteCount +
+                                         row.absentCount,
+                                   ),
                                 ],
                               ),
                             );
@@ -987,8 +990,35 @@ class _AttendanceOverviewScreenState
     double rate,
     double width,
     Color borderColor,
-    bool isDark,
-  ) {
+    bool isDark, {
+    int completedMeetings = 1,
+  }) {
+    if (completedMeetings == 0) {
+      return Container(
+        width: width,
+        decoration: BoxDecoration(
+          border: Border(left: BorderSide(color: borderColor.withAlpha(60))),
+        ),
+        alignment: Alignment.center,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0))
+                .withAlpha(50),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            '—',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 11,
+              color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+            ),
+          ),
+        ),
+      );
+    }
+
     final rateColor = rate >= 75
         ? const Color(0xFF10B981)
         : (rate >= 50 ? const Color(0xFFF59E0B) : const Color(0xFFEF4444));

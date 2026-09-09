@@ -1,11 +1,11 @@
 {
-    "name": "Attendephi by Metaphi",
-    "short_name": "Attendephi",
+    "name": "Attendiphi by Metaphi",
+    "short_name": "Attendiphi",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "Attendephi by Metaphi - Smart Attendance & Check-In Platform",
+    "description": "Attendiphi by Metaphi - Smart Attendance & Check-In Platform",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

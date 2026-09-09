@@ -16,10 +16,12 @@ class SubmitCheckIn {
   SubmitCheckIn(
     this._repository, {
     this.notificationDispatchService,
+    this.nowProvider,
   });
 
   final CheckInRepository _repository;
   final NotificationDispatchService? notificationDispatchService;
+  final DateTime Function()? nowProvider;
   static const _uuid = Uuid();
 
   Future<CheckInSubmission> call({
@@ -90,23 +92,33 @@ class SubmitCheckIn {
       }
     }
 
-    // 4. Build Submission object with deterministic idempotency key
-    final now = DateTime.now();
-    DateTime submissionTimestamp = now;
+    // 4. Strict Thursday-Only Business Rule Validation
+    final now = nowProvider != null ? nowProvider!() : DateTime.now();
+    if (now.weekday != DateTime.thursday) {
+      throw const CheckInSubmissionFailedException(
+        userMessage: 'Check-in is available on Thursday only.',
+        technicalMessage: 'Check-in rejected: Today is not Thursday',
+      );
+    }
+
+    // Validate QR session date matches current Thursday session
     if (sessionDateStr != null && sessionDateStr.trim().isNotEmpty) {
       final parsed = DateTime.tryParse(sessionDateStr.trim());
       if (parsed != null) {
-        submissionTimestamp = DateTime(
-          parsed.year,
-          parsed.month,
-          parsed.day,
-          now.hour,
-          now.minute,
-          now.second,
-          now.millisecond,
-        );
+        final isSameDate = parsed.year == now.year &&
+            parsed.month == now.month &&
+            parsed.day == now.day;
+        if (!isSameDate) {
+          throw const CheckInSubmissionFailedException(
+            userMessage: 'This check-in QR session is not valid for today.',
+            technicalMessage:
+                'Check-in rejected: QR session date does not match today',
+          );
+        }
       }
     }
+
+    final submissionTimestamp = now;
 
     final docId = _uuid.v4();
 

@@ -54,7 +54,10 @@ void main() {
       overrides: [
         checkInRepositoryProvider.overrideWithValue(mockRepository),
         submitCheckInUseCaseProvider.overrideWithValue(
-          SubmitCheckIn(mockRepository),
+          SubmitCheckIn(
+            mockRepository,
+            nowProvider: () => DateTime(2026, 9, 3, 10, 0),
+          ),
         ),
       ],
     );

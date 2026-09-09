@@ -6,7 +6,7 @@ class AppStrings {
   AppStrings._();
 
   // ── App ──────────────────────────────────────────────────────────────────
-  static const appName = 'Attendephi by Metaphi';
+  static const appName = 'Attendiphi by Metaphi';
   static const appTagline = 'Scan. Verify. Check In.';
 
   // ── QR Scanner ───────────────────────────────────────────────────────────

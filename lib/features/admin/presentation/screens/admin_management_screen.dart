@@ -630,7 +630,7 @@ class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
                 final text =
                     '''
 QR Check-in Portal — Admin Credentials:
-Portal URL: https://qr-checkin-dev.web.app/
+Portal URL: https://attendiphi-by-metaphi.web.app/
 Email: ${admin.email}
 Password: $password
 Role: ${admin.role.label}
@@ -1369,7 +1369,15 @@ Role: ${admin.role.label}
         ? AppColors.outlineDark
         : const Color(0xFFE2E8F0);
     const double headerHeight = 52.0;
-    const double rowHeight = 54.0;
+    const double rowHeight = 56.0;
+
+    // Shared flex ratios to guarantee ample room, equal alignment, and zero clashing:
+    const int flexAdmin = 3;     // ADMIN (Avatar + Name + Role)
+    const int flexEmail = 4;     // EMAIL (Long email addresses like omkaranarse.metaphi@gmail.com)
+    const int flexPhone = 2;     // PHONE (Phone numbers)
+    const int flexStatus = 1;    // STATUS (Active / Inactive badge)
+    const int flexCreated = 2;   // CREATED ON (e.g. 07 Sep 2026)
+    const int flexActions = 1;   // ACTIONS (3-dots icon)
 
     final headerStyle = TextStyle(
       fontWeight: FontWeight.w700,
@@ -1378,340 +1386,421 @@ Role: ${admin.role.label}
       color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569),
     );
 
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.surfaceDark : Colors.white,
-        borderRadius: AppRadius.lgAll,
-        border: Border.all(color: borderColor),
-        boxShadow: AppShadows.sm,
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          // 1. Table Header
-          Container(
-            height: headerHeight,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
-              border: Border(
-                bottom: BorderSide(color: borderColor, width: 1.5),
-              ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  flex: 1,
-                  child: Text('ADMIN (${admins.length})', style: headerStyle),
-                ),
-                Expanded(flex: 1, child: Text('EMAIL', style: headerStyle)),
-                Expanded(flex: 1, child: Text('PHONE', style: headerStyle)),
-                Expanded(flex: 1, child: Text('STATUS', style: headerStyle)),
-                Expanded(
-                  flex: 1,
-                  child: Text('CREATED ON', style: headerStyle),
-                ),
-                Expanded(
-                  flex: 1,
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: Text('ACTIONS', style: headerStyle),
-                  ),
-                ),
-              ],
-            ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double minTableWidth =
+            constraints.maxWidth < 950 ? 950.0 : constraints.maxWidth;
+        final hasBoundedHeight = constraints.maxHeight.isFinite;
+
+        final tableContent = Container(
+          width: minTableWidth,
+          height: hasBoundedHeight ? constraints.maxHeight : null,
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.surfaceDark : Colors.white,
+            borderRadius: AppRadius.lgAll,
+            border: Border.all(color: borderColor),
+            boxShadow: AppShadows.sm,
           ),
-
-          // 2. Table Rows
-          Expanded(
-            child: ListView.separated(
-              physics: const BouncingScrollPhysics(),
-              itemCount: admins.length,
-              separatorBuilder: (context, index) => const SizedBox.shrink(),
-              itemBuilder: (context, index) {
-                final admin = admins[index];
-                final avatarColor = _getAvatarColor(admin.name);
-                final initials = _getInitials(admin.name);
-                final createdStr = admin.createdAt != null
-                    ? DateFormat('dd MMM yyyy').format(admin.createdAt!)
-                    : '—';
-                final isEven = index % 2 == 0;
-                final rowBg = isEven
-                    ? Colors.transparent
-                    : (isDark
-                          ? const Color(0xFF1E293B).withAlpha(50)
-                          : const Color(0xFFF8FAFC));
-
-                return Container(
-                  height: rowHeight,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: rowBg,
-                    border: Border(
-                      bottom: BorderSide(color: borderColor.withAlpha(60)),
-                    ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              // 1. Table Header
+              Container(
+                height: headerHeight,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? const Color(0xFF0F172A)
+                      : const Color(0xFFF1F5F9),
+                  border: Border(
+                    bottom: BorderSide(color: borderColor, width: 1.5),
                   ),
-                  child: Row(
-                    children: [
-                      // Column 1: ADMIN
-                      Expanded(
-                        flex: 1,
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 34,
-                              height: 34,
-                              decoration: BoxDecoration(
-                                color: avatarColor.withAlpha(30),
-                                borderRadius: AppRadius.xsAll,
-                                border: Border.all(
-                                  color: avatarColor.withAlpha(70),
-                                ),
-                              ),
-                              child: Center(
-                                child: Text(
-                                  initials,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 12,
-                                    color: avatarColor,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.center,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: flexAdmin,
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 16),
+                        child: Text(
+                          'ADMIN (${admins.length})',
+                          style: headerStyle,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      flex: flexEmail,
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 16),
+                        child: Text('EMAIL', style: headerStyle),
+                      ),
+                    ),
+                    Expanded(
+                      flex: flexPhone,
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 16),
+                        child: Text('PHONE', style: headerStyle),
+                      ),
+                    ),
+                    Expanded(
+                      flex: flexStatus,
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 16),
+                        child: Text('STATUS', style: headerStyle),
+                      ),
+                    ),
+                    Expanded(
+                      flex: flexCreated,
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 16),
+                        child: Text('CREATED ON', style: headerStyle),
+                      ),
+                    ),
+                    Expanded(
+                      flex: flexActions,
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Text('ACTIONS', style: headerStyle),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // 2. Table Rows
+              Expanded(
+                child: ListView.separated(
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: admins.length,
+                  separatorBuilder: (context, index) => const SizedBox.shrink(),
+                  itemBuilder: (context, index) {
+                    final admin = admins[index];
+                    final avatarColor = _getAvatarColor(admin.name);
+                    final initials = _getInitials(admin.name);
+                    final createdStr = admin.createdAt != null
+                        ? DateFormat('dd MMM yyyy').format(admin.createdAt!)
+                        : '—';
+                    final isEven = index % 2 == 0;
+                    final rowBg = isEven
+                        ? Colors.transparent
+                        : (isDark
+                            ? const Color(0xFF1E293B).withAlpha(50)
+                            : const Color(0xFFF8FAFC));
+
+                    return Container(
+                      height: rowHeight,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: rowBg,
+                        border: Border(
+                          bottom: BorderSide(color: borderColor.withAlpha(60)),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          // Column 1: ADMIN
+                          Expanded(
+                            flex: flexAdmin,
+                            child: Padding(
+                              padding: const EdgeInsets.only(right: 16),
+                              child: Row(
                                 children: [
-                                  Text(
-                                    admin.name,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 13,
-                                      color: isDark
-                                          ? Colors.white
-                                          : const Color(0xFF1E293B),
+                                  Container(
+                                    width: 34,
+                                    height: 34,
+                                    decoration: BoxDecoration(
+                                      color: avatarColor.withAlpha(30),
+                                      borderRadius: AppRadius.xsAll,
+                                      border: Border.all(
+                                        color: avatarColor.withAlpha(70),
+                                      ),
                                     ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                                    child: Center(
+                                      child: Text(
+                                        initials,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 12,
+                                          color: avatarColor,
+                                        ),
+                                      ),
+                                    ),
                                   ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    admin.role.label,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w500,
-                                      color: isDark
-                                          ? const Color(0xFF94A3B8)
-                                          : const Color(0xFF64748B),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          admin.name,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 13,
+                                            color: isDark
+                                                ? Colors.white
+                                                : const Color(0xFF1E293B),
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          admin.role.label,
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w500,
+                                            color: isDark
+                                                ? const Color(0xFF94A3B8)
+                                                : const Color(0xFF64748B),
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
                                     ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ],
                               ),
                             ),
-                          ],
-                        ),
-                      ),
-
-                      // Column 2: EMAIL
-                      Expanded(
-                        flex: 1,
-                        child: SelectableText(
-                          admin.email,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: isDark
-                                ? const Color(0xFFE2E8F0)
-                                : const Color(0xFF334155),
                           ),
-                          maxLines: 1,
-                        ),
-                      ),
 
-                      // Column 3: PHONE
-                      Expanded(
-                        flex: 1,
-                        child: SelectableText(
-                          admin.phone,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: isDark
-                                ? const Color(0xFFE2E8F0)
-                                : const Color(0xFF334155),
-                          ),
-                          maxLines: 1,
-                        ),
-                      ),
-
-                      // Column 4: STATUS
-                      Expanded(
-                        flex: 1,
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: AppBadge(
-                            label: admin.isActive ? 'Active' : 'Inactive',
-                            variant: admin.isActive
-                                ? AppBadgeVariant.success
-                                : AppBadgeVariant.error,
-                          ),
-                        ),
-                      ),
-
-                      // Column 5: CREATED ON
-                      Expanded(
-                        flex: 1,
-                        child: Text(
-                          createdStr,
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            color: isDark
-                                ? const Color(0xFF94A3B8)
-                                : const Color(0xFF64748B),
-                          ),
-                        ),
-                      ),
-
-                      // Column 6: ACTIONS
-                      Expanded(
-                        flex: 1,
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: PopupMenuButton<String>(
-                            icon: Icon(
-                              Icons.more_vert_rounded,
-                              size: 19,
-                              color: isDark
-                                  ? const Color(0xFF94A3B8)
-                                  : const Color(0xFF64748B),
+                          // Column 2: EMAIL
+                          Expanded(
+                            flex: flexEmail,
+                            child: Padding(
+                              padding: const EdgeInsets.only(right: 16),
+                              child: SelectableText(
+                                admin.email,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: isDark
+                                      ? const Color(0xFFE2E8F0)
+                                      : const Color(0xFF334155),
+                                ),
+                                maxLines: 1,
+                              ),
                             ),
-                            tooltip: 'Admin Actions',
-                            padding: const EdgeInsets.all(4),
-                            constraints: const BoxConstraints(),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            color: isDark
-                                ? const Color(0xFF1E293B)
-                                : Colors.white,
-                            onSelected: (val) {
-                              if (val == 'edit') {
-                                _showEditAdminDialog(admin);
-                              } else if (val == 'resend') {
-                                _resendCredentials(admin);
-                              } else if (val == 'toggle') {
-                                _toggleAdminStatus(admin);
-                              } else if (val == 'delete') {
-                                _confirmDeleteAdmin(admin);
-                              }
-                            },
-                            itemBuilder: (ctx) => [
-                              const PopupMenuItem(
-                                value: 'edit',
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.edit_outlined,
-                                      size: 17,
-                                      color: AppColors.primary,
-                                    ),
-                                    SizedBox(width: 10),
-                                    Text(
-                                      'Edit',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const PopupMenuItem(
-                                value: 'resend',
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.send_rounded,
-                                      size: 17,
-                                      color: AppColors.primary,
-                                    ),
-                                    SizedBox(width: 10),
-                                    Text(
-                                      'Resend Credentials',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              PopupMenuItem(
-                                value: 'toggle',
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      admin.isActive
-                                          ? Icons.pause_circle_outline_rounded
-                                          : Icons.play_circle_outline_rounded,
-                                      size: 17,
-                                      color: admin.isActive
-                                          ? const Color(0xFFF59E0B)
-                                          : const Color(0xFF10B981),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Text(
-                                      admin.isActive
-                                          ? 'Deactivate Admin'
-                                          : 'Activate Admin',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                        color: admin.isActive
-                                            ? const Color(0xFFF59E0B)
-                                            : const Color(0xFF10B981),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const PopupMenuDivider(height: 1),
-                              const PopupMenuItem(
-                                value: 'delete',
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.delete_outline_rounded,
-                                      size: 17,
-                                      color: Color(0xFFEF4444),
-                                    ),
-                                    SizedBox(width: 10),
-                                    Text(
-                                      'Delete Admin',
-                                      style: TextStyle(
-                                        color: Color(0xFFEF4444),
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
                           ),
-                        ),
+
+                          // Column 3: PHONE
+                          Expanded(
+                            flex: flexPhone,
+                            child: Padding(
+                              padding: const EdgeInsets.only(right: 16),
+                              child: SelectableText(
+                                admin.phone,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  color: isDark
+                                      ? const Color(0xFFCBD5E1)
+                                      : const Color(0xFF334155),
+                                ),
+                                maxLines: 1,
+                              ),
+                            ),
+                          ),
+
+                          // Column 4: STATUS
+                          Expanded(
+                            flex: flexStatus,
+                            child: Padding(
+                              padding: const EdgeInsets.only(right: 16),
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: AppBadge(
+                                  label: admin.isActive ? 'Active' : 'Inactive',
+                                  variant: admin.isActive
+                                      ? AppBadgeVariant.success
+                                      : AppBadgeVariant.error,
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          // Column 5: CREATED ON
+                          Expanded(
+                            flex: flexCreated,
+                            child: Padding(
+                              padding: const EdgeInsets.only(right: 16),
+                              child: Text(
+                                createdStr,
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  color: isDark
+                                      ? const Color(0xFF94A3B8)
+                                      : const Color(0xFF64748B),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+
+                          // Column 6: ACTIONS
+                          Expanded(
+                            flex: flexActions,
+                            child: Align(
+                              alignment: Alignment.centerRight,
+                              child: PopupMenuButton<String>(
+                                icon: Icon(
+                                  Icons.more_vert_rounded,
+                                  size: 19,
+                                  color: isDark
+                                      ? const Color(0xFF94A3B8)
+                                      : const Color(0xFF64748B),
+                                ),
+                                tooltip: 'Admin Actions',
+                                padding: const EdgeInsets.all(4),
+                                constraints: const BoxConstraints(),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                color: isDark
+                                    ? const Color(0xFF1E293B)
+                                    : Colors.white,
+                                onSelected: (val) {
+                                  if (val == 'edit') {
+                                    _showEditAdminDialog(admin);
+                                  } else if (val == 'resend') {
+                                    _resendCredentials(admin);
+                                  } else if (val == 'toggle') {
+                                    _toggleAdminStatus(admin);
+                                  } else if (val == 'delete') {
+                                    _confirmDeleteAdmin(admin);
+                                  }
+                                },
+                                itemBuilder: (ctx) => [
+                                  PopupMenuItem(
+                                    value: 'edit',
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.edit_outlined,
+                                          size: 17,
+                                          color: isDark
+                                              ? Colors.white
+                                              : const Color(0xFF1E293B),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Text(
+                                          'Edit Details',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                            color: isDark
+                                                ? Colors.white
+                                                : const Color(0xFF1E293B),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'resend',
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.email_outlined,
+                                          size: 17,
+                                          color: isDark
+                                              ? Colors.white
+                                              : const Color(0xFF1E293B),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Text(
+                                          'Resend Credentials',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                            color: isDark
+                                                ? Colors.white
+                                                : const Color(0xFF1E293B),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'toggle',
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          admin.isActive
+                                              ? Icons.block_outlined
+                                              : Icons.check_circle_outline,
+                                          size: 17,
+                                          color: admin.isActive
+                                              ? const Color(0xFFF59E0B)
+                                              : const Color(0xFF10B981),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Text(
+                                          admin.isActive
+                                              ? 'Deactivate Admin'
+                                              : 'Activate Admin',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                            color: admin.isActive
+                                                ? const Color(0xFFF59E0B)
+                                                : const Color(0xFF10B981),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const PopupMenuDivider(height: 1),
+                                  const PopupMenuItem(
+                                    value: 'delete',
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.delete_outline_rounded,
+                                          size: 17,
+                                          color: Color(0xFFEF4444),
+                                        ),
+                                        SizedBox(width: 10),
+                                        Text(
+                                          'Delete Admin',
+                                          style: TextStyle(
+                                            color: Color(0xFFEF4444),
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                );
-              },
-            ),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+
+        if (constraints.maxWidth < 950) {
+          return Scrollbar(
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: tableContent,
+            ),
+          );
+        }
+
+        return tableContent;
+      },
     );
   }
 

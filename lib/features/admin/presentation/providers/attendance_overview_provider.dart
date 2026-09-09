@@ -210,6 +210,9 @@ final attendanceMatrixProvider =
     for (final thursday in allThursdays) {
       final key = dateKey(thursday);
       final isFutureDate = thursday.isAfter(now);
+      final isThursInSelectedMonth = filters.selectedMonth == null ||
+          (thursday.year == filters.selectedMonth!.year &&
+              thursday.month == filters.selectedMonth!.month);
 
       // Find matching check-in for this member on this Thursday
       final matchingSubmissions = checkIns.where((sub) {
@@ -244,7 +247,9 @@ final attendanceMatrixProvider =
             submission: latest,
             isEdited: latest.isEdited,
           );
-          absentCount++;
+          if (isThursInSelectedMonth) {
+            absentCount++;
+          }
         } else if (latest.type == CheckInType.substitute) {
           attendanceMap[key] = MemberDayAttendance(
             date: thursday,
@@ -253,7 +258,9 @@ final attendanceMatrixProvider =
             substituteName: latest.userName,
             isEdited: latest.isEdited,
           );
-          substituteCount++;
+          if (isThursInSelectedMonth) {
+            substituteCount++;
+          }
         } else {
           // Member / Visitor (Present)
           attendanceMap[key] = MemberDayAttendance(
@@ -262,7 +269,9 @@ final attendanceMatrixProvider =
             submission: latest,
             isEdited: latest.isEdited,
           );
-          presentCount++;
+          if (isThursInSelectedMonth) {
+            presentCount++;
+          }
         }
       } else {
         if (isFutureDate) {
@@ -276,7 +285,9 @@ final attendanceMatrixProvider =
             date: thursday,
             status: MemberAttendanceStatus.absent,
           );
-          absentCount++;
+          if (isThursInSelectedMonth) {
+            absentCount++;
+          }
         }
       }
     }

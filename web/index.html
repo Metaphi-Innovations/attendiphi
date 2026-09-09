@@ -6,33 +6,36 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="Attendephi by Metaphi – QR Check-In System">
+  <meta name="description" content="Attendiphi by Metaphi – QR Check-In System">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="Attendephi by Metaphi">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <meta name="apple-mobile-web-app-title" content="Attendiphi by Metaphi">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png?v=2">
 
   <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png" />
+  <link rel="icon" type="image/png" href="favicon.png?v=2" />
 
-  <title>Attendephi by Metaphi</title>
+  <title>Attendiphi by Metaphi</title>
 
   <!-- Preconnect to Google Fonts CDN for faster font loading -->
   <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <!-- Preload Inter font (400,500,600,700 weights used in app) -->
+  <!-- Preload Poppins font (300,400,500,600,700,800 weights used in app) -->
   <link rel="preload" as="style"
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-    media="print" onload="this.media='all'">
+    href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap">
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" media="print"
+    onload="this.media='all'">
 
   <!-- Preload MetaPhi images so they display instantly -->
   <link rel="preload" as="image" type="image/webp" href="assets/assets/images/metaphi_tagline_logo.webp">
   <link rel="preload" as="image" type="image/webp" href="assets/assets/images/metaphi_logo.webp">
-  <link rel="preload" as="image" type="image/png" href="assets/assets/images/attendephi_logo.png">
+  <link rel="preload" as="image" type="image/png" href="assets/assets/images/attendiphi_logo.png">
+  <link rel="preload" as="image" type="image/png" href="assets/assets/images/RISE.png">
+  <link rel="preload" as="image" type="image/jpeg" href="assets/assets/images/BNI.jpg">
 
   <!-- Inline splash screen CSS - renders instantly before Flutter loads -->
   <style>
@@ -52,7 +55,7 @@
       background: #F8FAFC;
       z-index: 9999;
       transition: opacity 0.3s ease-out;
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
 
     #splash.fade-out {
@@ -61,7 +64,7 @@
     }
 
     #splash img {
-      width: 220px;
+      width: 170px;
       height: auto;
       margin-bottom: 24px;
     }
@@ -86,11 +89,47 @@
 <body>
   <!-- Instant native splash while Flutter bootstraps -->
   <div id="splash">
-    <img src="assets/images/attendephi_logo.png" alt="Attendephi by Metaphi" width="220">
+    <img src="assets/images/attendiphi_logo.png?v=3" alt="Attendiphi by Metaphi" width="170">
     <div class="spinner"></div>
   </div>
 
   <script>
+    // 1. Immediately wipe CacheStorage and unregister service workers to avoid stale bundles
+    if ('caches' in window) {
+      caches.keys().then(function(names) {
+        for (var i = 0; i < names.length; i++) {
+          caches.delete(names[i]);
+        }
+      });
+    }
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        for (var i = 0; i < registrations.length; i++) {
+          registrations[i].unregister();
+        }
+      });
+    }
+
+    // 2. Cache-bust mainJsPath so browsers with immutable caches are forced to fetch fresh bundle
+    var buildVersion = 'v=' + Date.now();
+    window._flutter = window._flutter || {};
+    var _bc;
+    Object.defineProperty(window._flutter, 'buildConfig', {
+      configurable: true,
+      enumerable: true,
+      get: function() { return _bc; },
+      set: function(val) {
+        _bc = val;
+        if (_bc && _bc.builds) {
+          _bc.builds.forEach(function(b) {
+            if (b.mainJsPath) {
+              b.mainJsPath = b.mainJsPath + '?' + buildVersion;
+            }
+          });
+        }
+      }
+    });
+
     // Remove splash once Flutter has rendered its first frame
     window.addEventListener('flutter-first-frame', function () {
       var splash = document.getElementById('splash');
@@ -102,20 +141,6 @@
   </script>
 
   <script src="flutter_bootstrap.js" async></script>
-
-  <!-- Defer non-critical cleanup to after page load -->
-  <script>
-    window.addEventListener('load', function () {
-      // Clean up old service workers (deferred so they don't block initial render)
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function (registrations) {
-          for (var i = 0; i < registrations.length; i++) {
-            registrations[i].unregister();
-          }
-        });
-      }
-    });
-  </script>
 </body>
 
 </html>

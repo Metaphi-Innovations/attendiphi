@@ -250,59 +250,154 @@ final filteredPaginatedCheckInsProvider =
   return filteredAsync.value ?? [];
 });
 
-/// Base records for the dashboard: applies date filter and generates dummy absent records.
+/// Base records for the dashboard: maps all active members and their check-in status for the target Thursday.
 final baseDashboardRecordsProvider =
     Provider<AsyncValue<List<CheckInSubmission>>>((ref) {
   final checkInsAsync = ref.watch(checkInsStreamProvider);
   final filters = ref.watch(adminDashboardFilterProvider);
   final employeesAsync = ref.watch(employeesStreamProvider);
 
-  return checkInsAsync.whenData((records) {
-    List<CheckInSubmission> filtered = records.toList();
-    
-    // 1. Apply date filter and dummy absent records if a specific date is selected
-    if (filters.selectedDate != null) {
-      final d = filters.selectedDate!;
-      
-      filtered = filtered.where((r) {
-        final rec = r.timestamp;
-        return rec.year == d.year && rec.month == d.month && rec.day == d.day;
+  if (employeesAsync.isLoading || checkInsAsync.isLoading) {
+    return const AsyncValue.loading();
+  }
+
+  if (employeesAsync.hasError) {
+    return AsyncValue.error(
+      employeesAsync.error!,
+      employeesAsync.stackTrace ?? StackTrace.current,
+    );
+  }
+
+  if (checkInsAsync.hasError) {
+    return AsyncValue.error(
+      checkInsAsync.error!,
+      checkInsAsync.stackTrace ?? StackTrace.current,
+    );
+  }
+
+  final records = checkInsAsync.value ?? [];
+  final employees = employeesAsync.value ?? [];
+  final activeEmployees = employees.where((e) => e.isActive).toList();
+
+  final now = DateTime.now();
+
+  // Active Thursday: if today is Thursday, today is the active session.
+  // If today is Friday through Wednesday (e.g. Wednesday 9 Sep 2026),
+  // show the previous Thursday (3 Sep 2026) till 11:59 PM before the next Thursday starts.
+  // When next Thursday (10 Sep 2026) starts at 00:00, it automatically switches to that Thursday.
+  DateTime getActiveThursday(DateTime n) {
+    if (n.weekday == DateTime.thursday) {
+      return DateTime(n.year, n.month, n.day);
+    }
+    int daysSinceThursday = (n.weekday - DateTime.thursday) % 7;
+    if (daysSinceThursday <= 0) daysSinceThursday += 7;
+    return DateTime(n.year, n.month, n.day)
+        .subtract(Duration(days: daysSinceThursday));
+  }
+
+  final activeThursday = getActiveThursday(now);
+  final DateTime targetDate = filters.selectedDate ?? activeThursday;
+
+  final daySubmissions = records.where((r) {
+    final rec = r.timestamp;
+    return rec.year == targetDate.year &&
+        rec.month == targetDate.month &&
+        rec.day == targetDate.day;
+  }).toList();
+
+  final resultRows = <CheckInSubmission>[];
+
+  for (final emp in activeEmployees) {
+    final cleanEmpName = emp.name.trim().toLowerCase();
+    final cleanEmpPhone = emp.phone.replaceAll(RegExp(r'\D'), '');
+
+    CheckInSubmission? matchedSubmission;
+
+    if (daySubmissions.isNotEmpty) {
+      // 1. Check if a substitute checked in for this member
+      final subMatches = daySubmissions.where((r) {
+        if (!r.type.isSubstitute) return false;
+        final subFor = (r.substituteForMember ?? '').trim().toLowerCase();
+        return subFor == cleanEmpName;
       }).toList();
 
-      if (employeesAsync.value != null) {
-        final activeEmployees = employeesAsync.value!.where((e) => e.isActive).toList();
-        
-        for (final emp in activeEmployees) {
-          final hasCheckedIn = filtered.any((r) => 
-              (r.type.isMember && r.userName == emp.name) ||
-              (r.type.isSubstitute && r.substituteForMember == emp.name) ||
-              (r.type.isAbsent && r.userName == emp.name));
-              
-          if (!hasCheckedIn) {
-            filtered.add(
-              CheckInSubmission(
-                id: 'absent_${emp.id}_${d.millisecondsSinceEpoch}',
-                locationId: '',
-                locationName: '—',
-                userName: emp.name,
-                userPhone: emp.phone,
-                type: CheckInType.absent,
-                userLatitude: 0,
-                userLongitude: 0,
-                gpsAccuracy: 0,
-                distanceMeters: 0,
-                timestamp: DateTime(d.year, d.month, d.day, 12, 0),
-                isVerified: true,
-              ),
-            );
-          }
+      if (subMatches.isNotEmpty) {
+        subMatches.sort((a, b) => (b.createdAt ?? b.timestamp)
+            .compareTo(a.createdAt ?? a.timestamp));
+        final subCheckIn = subMatches.first;
+        matchedSubmission = subCheckIn.copyWith(
+          userName: emp.name, // Member row
+          userPhone: emp.phone,
+          substituteName: subCheckIn.userName, // Substitute person's name
+          substituteForMember: emp.name,
+          photoBase64: subCheckIn.photoBase64,
+          type: CheckInType.substitute,
+        );
+      } else {
+        // 2. Check if member checked in directly or was marked absent
+        final memberMatches = daySubmissions.where((r) {
+          final cleanUserName = r.userName.trim().toLowerCase();
+          final cleanUserPhone = r.userPhone.replaceAll(RegExp(r'\D'), '');
+          final nameMatch = cleanUserName == cleanEmpName;
+          final phoneMatch = cleanEmpPhone.isNotEmpty &&
+              cleanUserPhone.isNotEmpty &&
+              cleanUserPhone.endsWith(cleanEmpPhone);
+          return (nameMatch || phoneMatch) && !r.type.isVisitor;
+        }).toList();
+
+        if (memberMatches.isNotEmpty) {
+          memberMatches.sort((a, b) {
+            if (a.id.startsWith('absent_') && !b.id.startsWith('absent_')) {
+              return 1;
+            }
+            if (!a.id.startsWith('absent_') && b.id.startsWith('absent_')) {
+              return -1;
+            }
+            return (b.createdAt ?? b.timestamp)
+                .compareTo(a.createdAt ?? a.timestamp);
+          });
+          final m = memberMatches.first;
+          matchedSubmission = m.copyWith(
+            userName: emp.name,
+            userPhone: emp.phone,
+            substituteName: null,
+          );
         }
       }
     }
-    return filtered;
-  });
-});
 
+    if (matchedSubmission != null) {
+      resultRows.add(matchedSubmission);
+    } else {
+      // Active member has not checked in yet
+      final dateForPlaceholder = targetDate;
+      resultRows.add(
+        CheckInSubmission(
+          id: 'not_checked_in_${emp.id}_${dateForPlaceholder.millisecondsSinceEpoch}',
+          locationId: '',
+          locationName: '—',
+          userName: emp.name,
+          userPhone: emp.phone,
+          type: CheckInType.notCheckedIn,
+          userLatitude: 0,
+          userLongitude: 0,
+          gpsAccuracy: 0,
+          distanceMeters: 0,
+          timestamp: DateTime(
+            dateForPlaceholder.year,
+            dateForPlaceholder.month,
+            dateForPlaceholder.day,
+            0,
+            0,
+          ),
+          isVerified: false,
+        ),
+      );
+    }
+  }
+
+  return AsyncValue.data(resultRows);
+});
 
 class _FilterPayload {
   final List<CheckInSubmission> records;
@@ -314,27 +409,47 @@ List<CheckInSubmission> _filterAndSortRecords(_FilterPayload payload) {
   final records = payload.records;
   final filters = payload.filters;
 
-  return records.where((record) {
+  final filtered = records.where((record) {
     if (record.type.isVisitor) return false;
-    if (filters.filterType == AdminFilterType.member && !record.type.isMember) return false;
-    if (filters.filterType == AdminFilterType.substitute && !record.type.isSubstitute) return false;
-    if (filters.filterType == AdminFilterType.absent && !record.type.isAbsent) return false;
-    if (filters.selectedLocationId != null && filters.selectedLocationId!.isNotEmpty && record.locationId != filters.selectedLocationId) return false;
+    if (filters.filterType == AdminFilterType.member && !record.type.isMember) {
+      return false;
+    }
+    if (filters.filterType == AdminFilterType.substitute &&
+        !record.type.isSubstitute) {
+      return false;
+    }
+    if (filters.filterType == AdminFilterType.absent && !record.type.isAbsent) {
+      return false;
+    }
+    if (filters.selectedLocationId != null &&
+        filters.selectedLocationId!.isNotEmpty &&
+        record.locationId != filters.selectedLocationId &&
+        !record.type.isNotCheckedIn) {
+      return false;
+    }
     if (filters.searchQuery.isNotEmpty) {
       final query = filters.searchQuery.toLowerCase();
       final matchesName = record.userName.toLowerCase().contains(query);
       final matchesPhone = record.userPhone.toLowerCase().contains(query);
-      if (!matchesName && !matchesPhone) return false;
+      final matchesSub =
+          (record.substituteName ?? '').toLowerCase().contains(query);
+      if (!matchesName && !matchesPhone && !matchesSub) return false;
     }
     return true;
-  }).toList()
-    ..sort((a, b) {
-      final aTime = a.createdAt ?? a.timestamp;
-      final bTime = b.createdAt ?? b.timestamp;
-      final cmp = bTime.compareTo(aTime);
-      if (cmp != 0) return cmp;
-      return b.timestamp.compareTo(a.timestamp);
-    });
+  }).toList();
+
+  filtered.sort((a, b) {
+    // Show checked in members first, then not checked in
+    if (a.type.isNotCheckedIn && !b.type.isNotCheckedIn) return 1;
+    if (!a.type.isNotCheckedIn && b.type.isNotCheckedIn) return -1;
+    final aTime = a.createdAt ?? a.timestamp;
+    final bTime = b.createdAt ?? b.timestamp;
+    final cmp = bTime.compareTo(aTime);
+    if (cmp != 0) return cmp;
+    return a.userName.compareTo(b.userName);
+  });
+
+  return filtered;
 }
 
 /// Filtered view over the real-time check-in stream based on search and attendance type filters.
