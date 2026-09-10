@@ -144,29 +144,33 @@ class SubmitCheckIn {
       deviceId: deviceId,
     );
 
-    // 5. Server-side duplicate validation based on Identity (Phone)
+    // 5. Server-side duplicate validation: run Phone and Device checks concurrently in parallel
     final formattedPhone = Validators.formatPhoneWithCountryCode(phone);
-    final existingSubmission = await _repository.getIdentitySubmission(
-      formattedPhone,
-      submissionTimestamp,
-    );
-    if (existingSubmission != null) {
+    final hasDevice = deviceId != null && deviceId.trim().isNotEmpty;
+
+    final results = await Future.wait([
+      _repository.getIdentitySubmission(formattedPhone, submissionTimestamp),
+      if (hasDevice)
+        _repository.getDeviceSubmission(deviceId.trim(), submissionTimestamp)
+      else
+        Future<CheckInSubmission?>.value(null),
+    ]);
+
+    final existingPhoneSubmission = results[0];
+    final existingDeviceSubmission = results.length > 1 ? results[1] : null;
+
+    if (existingPhoneSubmission != null) {
       throw DuplicateCheckInException(
-        existingSubmissionData: existingSubmission.toMap(),
+        userMessage: 'This phone number has already submitted attendance for today.',
+        existingSubmissionData: existingPhoneSubmission.toMap(),
       );
     }
 
-    // 5b. Server-side duplicate validation based on Device ID
-    if (deviceId != null && deviceId.trim().isNotEmpty) {
-      final existingDeviceSubmission = await _repository.getDeviceSubmission(
-        deviceId.trim(),
-        submissionTimestamp,
+    if (existingDeviceSubmission != null) {
+      throw DuplicateCheckInException(
+        userMessage: 'This device has already recorded attendance for today.',
+        existingSubmissionData: existingDeviceSubmission.toMap(),
       );
-      if (existingDeviceSubmission != null) {
-        throw DuplicateCheckInException(
-          existingSubmissionData: existingDeviceSubmission.toMap(),
-        );
-      }
     }
 
     // 6. Save to Firestore

@@ -82,7 +82,7 @@ class CheckInFormNotifier extends Notifier<CheckInFormState> {
     );
 
     if (existingSubmission != null) {
-      // Act as if submission succeeded to show the success screen
+      // Return existing submission immediately without calling repository or duplicating Firestore
       state = state.copyWith(
         isSubmitting: false,
         submissionResult: existingSubmission,

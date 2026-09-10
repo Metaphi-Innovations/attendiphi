@@ -38,6 +38,7 @@ dependencies:
   # Utilities
   uuid: ^4.5.1
   intl: ^0.20.2
+  crypto: ^3.0.6
 
   # Google Fonts
   google_fonts: ^8.2.1

@@ -107,7 +107,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   String? _selectedSubstituteForMember;
   String? _selectedInvitedByMember;
 
-  bool _isCheckingDevice = true;
+  bool _isCheckingDevice = false;
   bool _hasCheckedIn = false;
   CheckInSubmission? _existingSubmission;
 

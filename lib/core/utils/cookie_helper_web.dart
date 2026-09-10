@@ -23,8 +23,10 @@ void setWebCookie(String key, String value, {int maxAgeSeconds = 315360000}) {
         '$dayName, $day $monthName $year $hour:$minute:$second GMT';
 
     final encodedVal = Uri.encodeComponent(value);
+    final isHttps = html.window.location.protocol == 'https:';
+    final secureSuffix = isHttps ? '; Secure' : '';
     html.document.cookie =
-        '$key=$encodedVal; max-age=$maxAgeSeconds; expires=$expiresGmt; path=/; SameSite=Lax; Secure';
+        '$key=$encodedVal; max-age=$maxAgeSeconds; expires=$expiresGmt; path=/; SameSite=Lax$secureSuffix';
   } catch (_) {}
 
   // Also sync to window.localStorage
@@ -84,8 +86,10 @@ bool hasWebCookie(String key) {
 
 void removeWebCookie(String key) {
   try {
+    final isHttps = html.window.location.protocol == 'https:';
+    final secureSuffix = isHttps ? '; Secure' : '';
     html.document.cookie =
-        '$key=; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax; Secure';
+        '$key=; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax$secureSuffix';
   } catch (_) {}
   try {
     html.window.localStorage.remove(key);

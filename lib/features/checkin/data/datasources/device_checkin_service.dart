@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../core/logger/app_logger.dart';
 import '../../../../core/utils/cookie_helper.dart';
+import '../../../../core/utils/device_fingerprint_helper.dart';
 import '../../domain/entities/check_in_submission.dart';
 import '../../presentation/providers/checkin_providers.dart';
 import 'check_in_remote_data_source.dart';
@@ -38,19 +39,20 @@ class DeviceCheckInService {
     return '$_sessionPrefix${dateKey}_$locKey';
   }
 
-  /// Retrieves or generates a permanent unique device UUID.
+  /// Retrieves or generates a permanent unique device ID anchored by hardware fingerprinting.
   Future<String> getOrCreateDeviceId() async {
     try {
+      final fingerprint = await DeviceFingerprintHelper.getDeviceFingerprint();
       final prefs = await _getPrefs();
       String? deviceId = prefs.getString(_deviceIdKey);
       if (deviceId == null || deviceId.isEmpty) {
         deviceId = CookieHelper.getCookie(_deviceIdKey);
       }
       if (deviceId == null || deviceId.isEmpty) {
-        deviceId = const Uuid().v4();
+        deviceId = fingerprint.isNotEmpty ? 'fp_$fingerprint' : const Uuid().v4();
         await prefs.setString(_deviceIdKey, deviceId);
         CookieHelper.setCookie(_deviceIdKey, deviceId);
-        AppLogger.info('Generated new permanent device ID: $deviceId', tag: 'DeviceCheckInService');
+        AppLogger.info('Generated permanent device ID: $deviceId', tag: 'DeviceCheckInService');
       } else {
         // Sync across storage mechanisms
         await prefs.setString(_deviceIdKey, deviceId);
@@ -59,7 +61,8 @@ class DeviceCheckInService {
       return deviceId;
     } catch (e) {
       AppLogger.warning('Error accessing device ID from storage: $e', tag: 'DeviceCheckInService');
-      return const Uuid().v4();
+      final fallbackFp = await DeviceFingerprintHelper.getDeviceFingerprint();
+      return fallbackFp.isNotEmpty ? 'fp_$fallbackFp' : const Uuid().v4();
     }
   }
 
@@ -220,12 +223,13 @@ class DeviceCheckInService {
       // Strip base64 photo before saving to local storage to prevent QuotaExceeded errors
       final storageSubmission = submission.copyWith(photoBase64: '');
       final jsonStr = jsonEncode(storageSubmission.toMap());
+      // Persist full submission in local SharedPreferences storage
       await prefs.setString(key, jsonStr);
       await prefs.setString(_lastSubmissionKey, jsonStr);
       
-      // Also persist in browser cookie and direct web storage (localStorage, sessionStorage)
-      CookieHelper.setCookie(key, jsonStr);
-      CookieHelper.setCookie(_lastSubmissionKey, jsonStr);
+      // Persist lightweight token in cookies (<50 bytes) to prevent cookie header bloat or truncation
+      CookieHelper.setCookie(key, submission.id);
+      CookieHelper.setCookie(_lastSubmissionKey, submission.id);
 
       AppLogger.info(
         'Recorded check-in on device for session "$key" (${submission.userName})',

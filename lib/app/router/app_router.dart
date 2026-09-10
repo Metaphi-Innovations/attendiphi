@@ -194,12 +194,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 isActive: true,
                 address: 'EXCEL PLAZA, Pant Nagar, Ghatkopar East, Mumbai, Maharashtra 400075',
               );
-          return PageLoadingTransitionWrapper(
-            child: LocationPermissionScreen(
-              location: location,
-              adminId: queryAdminId,
-              sessionDateStr: queryDate,
-            ),
+          return LocationPermissionScreen(
+            location: location,
+            adminId: queryAdminId,
+            sessionDateStr: queryDate,
           );
         },
       ),
@@ -208,17 +206,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: 'checkin_result',
         builder: (context, state) {
           final submission = state.extra as CheckInSubmission?;
-          return PageLoadingTransitionWrapper(
-            child: CheckInResultScreen(submission: submission),
-          );
+          return CheckInResultScreen(submission: submission);
         },
       ),
       GoRoute(
         path: RouteNames.photoCapture,
         name: 'photo_capture',
-        builder: (context, state) => const PageLoadingTransitionWrapper(
-          child: PhotoCaptureScreen(),
-        ),
+        builder: (context, state) => const PhotoCaptureScreen(),
       ),
       GoRoute(
         path: RouteNames.checkinForm,
@@ -228,13 +222,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           final queryAdminId = state.uri.queryParameters['adminId'];
           final queryDate = state.uri.queryParameters['date'];
           final proximityResult = state.extra as ProximityResult?;
-          return PageLoadingTransitionWrapper(
-            child: CheckInFormScreen(
-              locationId: locationId,
-              proximityResult: proximityResult,
-              adminId: queryAdminId,
-              sessionDateStr: queryDate,
-            ),
+          return CheckInFormScreen(
+            locationId: locationId,
+            proximityResult: proximityResult,
+            adminId: queryAdminId,
+            sessionDateStr: queryDate,
           );
         },
       ),

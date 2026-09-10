@@ -15,11 +15,11 @@ class AppConstants {
   static const int gpsTimeoutSeconds = 30;
 
   // ── Image ─────────────────────────────────────────────────────────────
-  /// Maximum dimension for compressed face photos.
-  static const int maxPhotoPixels = 800;
+  /// Maximum dimension for compressed face photos (optimized for fast upload).
+  static const int maxPhotoPixels = 480;
 
   /// JPEG compression quality (0-100).
-  static const int photoCompressionQuality = 80;
+  static const int photoCompressionQuality = 65;
 
   /// Maximum file size for uploaded photos (5 MB).
   static const int maxPhotoSizeBytes = 5 * 1024 * 1024;

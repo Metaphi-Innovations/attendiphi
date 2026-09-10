@@ -208,38 +208,10 @@ class CheckInRemoteDataSourceImpl implements CheckInRemoteDataSource {
           .where('userPhone', whereIn: phoneVariants)
           .get();
 
-      final targetYear = sessionDate.year;
-      final targetMonth = sessionDate.month;
-      final targetDay = sessionDate.day;
-      final targetDateStr =
-          '${targetYear.toString().padLeft(4, '0')}-${targetMonth.toString().padLeft(2, '0')}-${targetDay.toString().padLeft(2, '0')}';
-
       for (final doc in querySnapshot.docs) {
         final data = doc.data();
         final tsRaw = data['timestamp'];
-        if (tsRaw == null) continue;
-
-        final tsStr = tsRaw.toString();
-        bool isMatch = false;
-
-        // Check date string prefix match (e.g. "2026-09-08")
-        if (tsStr.startsWith(targetDateStr)) {
-          isMatch = true;
-        } else {
-          final parsed = DateTime.tryParse(tsStr);
-          if (parsed != null) {
-            if ((parsed.year == targetYear &&
-                    parsed.month == targetMonth &&
-                    parsed.day == targetDay) ||
-                (parsed.toLocal().year == targetYear &&
-                    parsed.toLocal().month == targetMonth &&
-                    parsed.toLocal().day == targetDay)) {
-              isMatch = true;
-            }
-          }
-        }
-
-        if (isMatch) {
+        if (_isSameSessionDate(tsRaw, sessionDate)) {
           try {
             return CheckInSubmission.fromMap(data);
           } catch (_) {
@@ -371,37 +343,10 @@ class CheckInRemoteDataSourceImpl implements CheckInRemoteDataSource {
           .where('deviceId', isEqualTo: deviceId)
           .get();
 
-      final targetYear = sessionDate.year;
-      final targetMonth = sessionDate.month;
-      final targetDay = sessionDate.day;
-      final targetDateStr =
-          '${targetYear.toString().padLeft(4, '0')}-${targetMonth.toString().padLeft(2, '0')}-${targetDay.toString().padLeft(2, '0')}';
-
       for (final doc in querySnapshot.docs) {
         final data = doc.data();
         final tsRaw = data['timestamp'];
-        if (tsRaw == null) continue;
-
-        final tsStr = tsRaw.toString();
-        bool isMatch = false;
-
-        if (tsStr.startsWith(targetDateStr)) {
-          isMatch = true;
-        } else {
-          final parsed = DateTime.tryParse(tsStr);
-          if (parsed != null) {
-            if ((parsed.year == targetYear &&
-                    parsed.month == targetMonth &&
-                    parsed.day == targetDay) ||
-                (parsed.toLocal().year == targetYear &&
-                    parsed.toLocal().month == targetMonth &&
-                    parsed.toLocal().day == targetDay)) {
-              isMatch = true;
-            }
-          }
-        }
-
-        if (isMatch) {
+        if (_isSameSessionDate(tsRaw, sessionDate)) {
           try {
             return CheckInSubmission.fromMap(data);
           } catch (_) {
@@ -421,5 +366,48 @@ class CheckInRemoteDataSourceImpl implements CheckInRemoteDataSource {
       );
       return null;
     }
+  }
+
+  /// Checks whether a stored timestamp matches the target session date,
+  /// resiliently handling Firestore Timestamps, ISO Strings, and UTC vs IST timezone differences.
+  bool _isSameSessionDate(dynamic tsRaw, DateTime sessionDate) {
+    if (tsRaw == null) return false;
+    DateTime? dt;
+    if (tsRaw is Timestamp) {
+      dt = tsRaw.toDate();
+    } else if (tsRaw is DateTime) {
+      dt = tsRaw;
+    } else if (tsRaw is String) {
+      dt = DateTime.tryParse(tsRaw);
+    } else if (tsRaw is int) {
+      dt = DateTime.fromMillisecondsSinceEpoch(tsRaw);
+    }
+    if (dt == null) return false;
+
+    // Check local calendar date match
+    final localDt = dt.toLocal();
+    final localTarget = sessionDate.toLocal();
+    if (localDt.year == localTarget.year &&
+        localDt.month == localTarget.month &&
+        localDt.day == localTarget.day) {
+      return true;
+    }
+
+    // Check UTC calendar date match
+    final utcDt = dt.toUtc();
+    final utcTarget = sessionDate.toUtc();
+    if (utcDt.year == utcTarget.year &&
+        utcDt.month == utcTarget.month &&
+        utcDt.day == utcTarget.day) {
+      return true;
+    }
+
+    // Fallback: within 18 hours of target session moment
+    final diff = dt.difference(sessionDate).abs();
+    if (diff <= const Duration(hours: 18)) {
+      return true;
+    }
+
+    return false;
   }
 }

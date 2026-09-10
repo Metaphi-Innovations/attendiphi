@@ -21,18 +21,15 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
   Position? _cachedPosition;
   DateTime? _cacheTimestamp;
 
-  /// How long a cached GPS position remains valid (seconds).
-  static const int _cacheDurationSeconds = 60;
+  /// How long a cached GPS position remains valid (seconds). 3 minutes for seamless screen flow.
+  static const int _cacheDurationSeconds = 180;
 
-  /// Number of GPS samples to average for a stable reading.
-  static const int _sampleCount = 3;
-
-  /// Per-sample timeout to avoid hanging on a slow fix.
-  static const int _perSampleTimeoutSeconds = 5;
+  /// Fast single-shot timeout in seconds.
+  static const int _fastGpsTimeoutSeconds = 4;
 
   @override
   Future<Position> getCurrentPosition() async {
-    // 1. Return cached position if fresh (within 60 seconds)
+    // 1. Return cached position if fresh (within 3 minutes)
     if (_cachedPosition != null && _cacheTimestamp != null) {
       final age = DateTime.now().difference(_cacheTimestamp!).inSeconds;
       if (age < _cacheDurationSeconds) {
@@ -63,102 +60,45 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
       throw const LocationPermissionPermanentlyDeniedException();
     }
 
-    // 3. Collect multiple GPS samples for averaging
+    // 3. Fast single-shot GPS acquisition with fallback
     try {
-      final samples = <Position>[];
-
-      for (int i = 0; i < _sampleCount; i++) {
-        try {
-          final pos = await Geolocator.getCurrentPosition(
-            locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.best,
-              timeLimit: Duration(seconds: _perSampleTimeoutSeconds),
-            ),
-          );
-
-          // Only accept samples within the accuracy threshold
-          if (pos.accuracy <= AppConstants.maxGpsAccuracyMeters) {
-            samples.add(pos);
-            AppLogger.info(
-              'GPS sample ${i + 1}/$_sampleCount: '
-              'lat=${pos.latitude}, lon=${pos.longitude}, acc=${pos.accuracy}m',
-              tag: 'LocationDeviceDataSource',
-            );
-          }
-        } catch (e) {
-          // If a single sample fails/times out, continue to next
-          AppLogger.warning(
-            'GPS sample ${i + 1}/$_sampleCount failed: $e',
-            tag: 'LocationDeviceDataSource',
-          );
-        }
-      }
-
-      // 4. If no samples collected, fall back to a single high-accuracy attempt
-      if (samples.isEmpty) {
-        final fallback = await Geolocator.getCurrentPosition(
+      Position pos;
+      try {
+        pos = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
             accuracy: LocationAccuracy.high,
-            timeLimit: Duration(seconds: AppConstants.gpsTimeoutSeconds),
+            timeLimit: Duration(seconds: _fastGpsTimeoutSeconds),
           ),
         );
-
-        if (fallback.accuracy > AppConstants.maxGpsAccuracyMeters) {
-          throw LocationAccuracyTooLowException(accuracy: fallback.accuracy);
-        }
-
-        _cachedPosition = fallback;
-        _cacheTimestamp = DateTime.now();
-        return fallback;
-      }
-
-      // 5. Compute inverse-variance weighted average of all valid samples
-      //    Weight = 1 / (accuracy^2) — tighter readings contribute more
-      double sumLat = 0;
-      double sumLon = 0;
-      double sumWeight = 0;
-      Position bestSample = samples.first;
-
-      for (final sample in samples) {
-        final weight = 1.0 / (sample.accuracy * sample.accuracy);
-        sumLat += sample.latitude * weight;
-        sumLon += sample.longitude * weight;
-        sumWeight += weight;
-
-        if (sample.accuracy < bestSample.accuracy) {
-          bestSample = sample;
+      } catch (_) {
+        // Fallback: check last known position or try medium accuracy with short timeout
+        final lastKnown = await Geolocator.getLastKnownPosition();
+        if (lastKnown != null && lastKnown.accuracy <= AppConstants.maxGpsAccuracyMeters) {
+          pos = lastKnown;
+        } else {
+          pos = await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.medium,
+              timeLimit: Duration(seconds: 5),
+            ),
+          );
         }
       }
 
-      final avgLat = sumLat / sumWeight;
-      final avgLon = sumLon / sumWeight;
+      if (pos.accuracy > AppConstants.maxGpsAccuracyMeters) {
+        throw LocationAccuracyTooLowException(accuracy: pos.accuracy);
+      }
 
-      // Build the averaged position using bestSample's metadata
-      final averaged = Position(
-        latitude: avgLat,
-        longitude: avgLon,
-        timestamp: bestSample.timestamp,
-        accuracy: bestSample.accuracy,
-        altitude: bestSample.altitude,
-        altitudeAccuracy: bestSample.altitudeAccuracy,
-        heading: bestSample.heading,
-        headingAccuracy: bestSample.headingAccuracy,
-        speed: bestSample.speed,
-        speedAccuracy: bestSample.speedAccuracy,
-      );
+      if (pos.isMocked) {
+        AppLogger.warning(
+          'Mock location detected on device: ${pos.latitude}, ${pos.longitude}',
+          tag: 'LocationDeviceDataSource',
+        );
+      }
 
-      AppLogger.info(
-        'GPS averaged (${samples.length} samples): '
-        'lat=${averaged.latitude}, lon=${averaged.longitude}, '
-        'bestAcc=${averaged.accuracy}m',
-        tag: 'LocationDeviceDataSource',
-      );
-
-      // 6. Cache the averaged position for 60 seconds
-      _cachedPosition = averaged;
+      _cachedPosition = pos;
       _cacheTimestamp = DateTime.now();
-
-      return averaged;
+      return pos;
     } on AppException {
       rethrow;
     } catch (e, st) {
