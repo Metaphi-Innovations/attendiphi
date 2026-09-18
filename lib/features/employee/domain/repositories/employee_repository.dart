@@ -11,6 +11,8 @@ abstract class EmployeeRepository {
     String designation = '',
     bool isActive = true,
     String? adminId,
+    String? photoUrl,
+    List<double>? faceEmbedding,
   });
   Future<void> updateEmployee(
     String id,
@@ -21,6 +23,8 @@ abstract class EmployeeRepository {
     String designation = '',
     bool isActive = true,
     String? adminId,
+    String? photoUrl,
+    List<double>? faceEmbedding,
   });
   Future<void> toggleEmployeeStatus(String id, bool isActive);
   Future<void> deleteEmployee(String id);

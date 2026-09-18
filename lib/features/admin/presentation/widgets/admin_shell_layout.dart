@@ -64,7 +64,7 @@ class _AdminShellLayoutState extends ConsumerState<AdminShellLayout> {
       _isPageTransitioning = true;
     });
 
-    _transitionTimer = Timer(const Duration(milliseconds: 300), () {
+    _transitionTimer = Timer(const Duration(seconds: 1), () {
       if (mounted) {
         setState(() {
           _isPageTransitioning = false;

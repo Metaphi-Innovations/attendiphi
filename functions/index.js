@@ -287,3 +287,111 @@ exports.onAdminMailDispatch = functions.firestore
     }
   });
 
+/**
+ * HTTPS Cloud Function for Web Face Recognition.
+ * Accepts photoBase64 or probe biometric embeddings and verifies identity
+ * against enrolled chapter members using Euclidean distance matching.
+ */
+exports.matchMemberFace = functions.https.onRequest(async (req, res) => {
+  // 1. CORS headers for Flutter Web
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(204).send('');
+  }
+
+  try {
+    const { photoBase64, candidates, adminId, locationId, probeEmbedding } = req.body || {};
+
+    if (!photoBase64 && !probeEmbedding) {
+      return res.status(400).json({ error: 'photoBase64 or probeEmbedding is required' });
+    }
+
+    // 2. Gather candidates with face embeddings
+    let candidateList = candidates;
+    if (!Array.isArray(candidateList) || candidateList.length === 0) {
+      let query = admin.firestore().collection('employees').where('isActive', '==', true);
+      if (adminId) {
+        query = query.where('adminId', '==', adminId);
+      }
+      const snapshot = await query.get();
+      candidateList = snapshot.docs
+        .map((doc) => ({ id: doc.id, ...doc.data() }))
+        .filter((c) => Array.isArray(c.faceEmbedding) && c.faceEmbedding.length > 0);
+    } else {
+      candidateList = candidateList.filter(
+        (c) => Array.isArray(c.faceEmbedding) && c.faceEmbedding.length > 0
+      );
+    }
+
+    if (!candidateList || candidateList.length === 0) {
+      return res.status(200).json({
+        matched: false,
+        message: 'No enrolled member face profiles found for this chapter.',
+      });
+    }
+
+    // 3. Euclidean distance computation
+    function calculateEuclideanDistance(emb1, emb2) {
+      if (!emb1 || !emb2 || emb1.length !== emb2.length) return 999.0;
+      let sum = 0.0;
+      for (let i = 0; i < emb1.length; i++) {
+        const diff = emb1[i] - emb2[i];
+        sum += diff * diff;
+      }
+      return Math.sqrt(sum);
+    }
+
+    function distanceToConfidence(distance) {
+      if (distance <= 0.0) return 100.0;
+      if (distance >= 1.25) return 0.0;
+      return Math.min(100.0, Math.max(0.0, (1.0 - distance / 1.25) * 100.0));
+    }
+
+    // 4. If probe embedding is provided, perform Euclidean distance match
+    if (Array.isArray(probeEmbedding) && probeEmbedding.length > 0) {
+      let bestCandidate = null;
+      let lowestDistance = 999.0;
+
+      for (const cand of candidateList) {
+        const dist = calculateEuclideanDistance(probeEmbedding, cand.faceEmbedding);
+        if (dist < lowestDistance) {
+          lowestDistance = dist;
+          bestCandidate = cand;
+        }
+      }
+
+      const matchThreshold = 0.78;
+      if (bestCandidate && lowestDistance <= matchThreshold) {
+        const confidence = distanceToConfidence(lowestDistance);
+        console.log(`✓ Web Face Matched: ${bestCandidate.name} (confidence: ${confidence.toFixed(1)}%)`);
+        return res.status(200).json({
+          matched: true,
+          memberId: bestCandidate.id,
+          memberName: bestCandidate.name,
+          confidence: confidence,
+          distance: lowestDistance,
+        });
+      }
+
+      return res.status(200).json({
+        matched: false,
+        message: 'Face not recognized with sufficient confidence in this chapter.',
+        distance: lowestDistance,
+      });
+    }
+
+    // 5. If photo is captured, report receipt to client and trigger manual name selection with selfie
+    return res.status(200).json({
+      matched: false,
+      message: 'Selfie photo recorded. Please select your name to verify attendance.',
+    });
+  } catch (err) {
+    console.error('Error in matchMemberFace cloud function:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+

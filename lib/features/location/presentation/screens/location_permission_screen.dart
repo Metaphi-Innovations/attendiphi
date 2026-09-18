@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -49,19 +50,50 @@ class _LocationPermissionScreenState
   bool _hasCheckedIn = false;
   CheckInSubmission? _existingSubmission;
 
+  /// Robust extraction of session date query parameter across Native and Web (hash routing).
+  String? get _effectiveSessionDateStr {
+    if (widget.sessionDateStr != null && widget.sessionDateStr!.trim().isNotEmpty) {
+      return widget.sessionDateStr!.trim();
+    }
+    if (kIsWeb) {
+      if (Uri.base.queryParameters.containsKey('date')) {
+        final val = Uri.base.queryParameters['date'];
+        if (val != null && val.trim().isNotEmpty) return val.trim();
+      }
+      if (Uri.base.hasFragment && Uri.base.fragment.contains('date=')) {
+        final fragIndex = Uri.base.fragment.indexOf('?');
+        if (fragIndex != -1) {
+          final queryStr = Uri.base.fragment.substring(fragIndex + 1);
+          final parsed = Uri.splitQueryString(queryStr);
+          if (parsed.containsKey('date') && parsed['date']!.trim().isNotEmpty) {
+            return parsed['date']!.trim();
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   DateTime? get _parsedSessionDate {
-    if (widget.sessionDateStr == null || widget.sessionDateStr!.trim().isEmpty) {
+    final dateStr = _effectiveSessionDateStr;
+    if (dateStr == null || dateStr.isEmpty) {
       return null;
     }
-    return DateTime.tryParse(widget.sessionDateStr!.trim());
+    return DateTime.tryParse(dateStr);
   }
 
   DateTime get _now =>
       widget.nowProvider != null ? widget.nowProvider!() : DateTime.now();
 
-  bool get _isTodayThursday => _now.weekday == DateTime.thursday;
+  /// Testing exemption: only 3rd Sep 2026 session is unlocked for testing purposes.
+  bool get _isTestingSession =>
+      _effectiveSessionDateStr?.contains('2026-09-03') == true ||
+      widget.sessionDateStr?.contains('2026-09-03') == true;
+
+  bool get _isTodayThursday => _isTestingSession || _now.weekday == DateTime.thursday;
 
   bool get _isSessionExpired {
+    if (_isTestingSession) return false;
     final sessionDate = _parsedSessionDate;
     if (sessionDate == null) return false;
     final today = DateTime(_now.year, _now.month, _now.day);
@@ -71,6 +103,7 @@ class _LocationPermissionScreenState
   }
 
   bool get _isSessionFuture {
+    if (_isTestingSession) return false;
     final sessionDate = _parsedSessionDate;
     if (sessionDate == null) return false;
     final today = DateTime(_now.year, _now.month, _now.day);
@@ -93,15 +126,15 @@ class _LocationPermissionScreenState
   Future<void> _checkDeviceSubmission() async {
     final deviceService = ref.read(deviceCheckInServiceProvider);
     final hasCheckedIn = await deviceService.hasCheckedInForSession(
-      sessionDateStr: widget.sessionDateStr,
+      sessionDateStr: _effectiveSessionDateStr,
       locationId: widget.location.id,
     );
 
     if (!mounted) return;
 
-    if (hasCheckedIn) {
+    if (hasCheckedIn && !_isTestingSession) {
       final existingSubmission = await deviceService.getSubmissionForSession(
-        sessionDateStr: widget.sessionDateStr,
+        sessionDateStr: _effectiveSessionDateStr,
         locationId: widget.location.id,
       );
       if (!mounted) return;
@@ -118,8 +151,8 @@ class _LocationPermissionScreenState
       _isCheckingDevice = false;
     });
 
-    // Automatically initiate location check on screen entrance only if session is active on Thursday
-    if (_isTodayThursday && !_isSessionExpired && !_isSessionFuture) {
+    // Automatically initiate location check on screen entrance only if session is active on Thursday or testing session
+    if ((_isTodayThursday && !_isSessionExpired && !_isSessionFuture) || _isTestingSession) {
       _pulseController.repeat();
       ref
           .read(locationValidationFamilyProvider(widget.location).notifier)
@@ -164,14 +197,14 @@ class _LocationPermissionScreenState
       (prev, next) {
         if (_hasCheckedIn || _existingSubmission != null) return;
         if (next is LocationValidationSuccess) {
-          Future.delayed(const Duration(milliseconds: 700), () {
+          Future.delayed(const Duration(seconds: 1), () {
             if (!context.mounted) return;
             final queryParams = [
               if (widget.adminId != null && widget.adminId!.isNotEmpty)
                 'adminId=${widget.adminId}',
-              if (widget.sessionDateStr != null &&
-                  widget.sessionDateStr!.isNotEmpty)
-                'date=${widget.sessionDateStr}',
+              if (_effectiveSessionDateStr != null &&
+                  _effectiveSessionDateStr!.isNotEmpty)
+                'date=$_effectiveSessionDateStr',
             ].join('&');
             final fullQuery = queryParams.isNotEmpty ? '?$queryParams' : '';
             context.go(
@@ -198,12 +231,14 @@ class _LocationPermissionScreenState
             constraints: const BoxConstraints(
               maxWidth: ResponsiveBreakpoints.maxFormWidth,
             ),
-            child: !_isTodayThursday
+            child: (!_isTodayThursday && !_isTestingSession)
                 ? _buildNotThursdayView(context)
-                : _isSessionExpired
-                    ? _buildExpiredSessionView(context, _parsedSessionDate!)
-                    : _isSessionFuture
-                        ? _buildFutureSessionView(context, _parsedSessionDate!)
+                : (_isSessionExpired && !_isTestingSession)
+                    ? _buildExpiredSessionView(
+                        context, _parsedSessionDate ?? DateTime(2026, 9, 3))
+                    : (_isSessionFuture && !_isTestingSession)
+                        ? _buildFutureSessionView(
+                            context, _parsedSessionDate ?? DateTime(2026, 9, 3))
                         : Column(
                         children: [
                           SizedBox(height: isCompact ? 10 : 20),

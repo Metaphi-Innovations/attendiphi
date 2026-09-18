@@ -16,6 +16,8 @@ abstract class EmployeeRemoteDataSource {
     String designation = '',
     bool isActive = true,
     String? adminId,
+    String? photoUrl,
+    List<double>? faceEmbedding,
   });
   Future<void> updateEmployee(
     String id,
@@ -26,6 +28,8 @@ abstract class EmployeeRemoteDataSource {
     String designation = '',
     bool isActive = true,
     String? adminId,
+    String? photoUrl,
+    List<double>? faceEmbedding,
   });
   Future<void> toggleEmployeeStatus(String id, bool isActive);
   Future<void> deleteEmployee(String id);
@@ -63,6 +67,8 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
     String designation = '',
     bool isActive = true,
     String? adminId,
+    String? photoUrl,
+    List<double>? faceEmbedding,
   }) async {
     try {
       final cleanName = name.trim();
@@ -84,6 +90,8 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
         'designation': designation.trim(),
         'isActive': isActive,
         'adminId': adminId,
+        'photoUrl': ?photoUrl,
+        'faceEmbedding': ?faceEmbedding,
         'createdAt': now,
         'updatedAt': now,
       });
@@ -107,6 +115,8 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
     String designation = '',
     bool isActive = true,
     String? adminId,
+    String? photoUrl,
+    List<double>? faceEmbedding,
   }) async {
     try {
       final cleanName = name.trim();
@@ -128,6 +138,12 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
       };
       if (adminId != null) {
         data['adminId'] = adminId;
+      }
+      if (photoUrl != null) {
+        data['photoUrl'] = photoUrl;
+      }
+      if (faceEmbedding != null) {
+        data['faceEmbedding'] = faceEmbedding;
       }
 
       await _collection.doc(id).update(data);

@@ -22,6 +22,8 @@ class EmployeeRepositoryImpl implements EmployeeRepository {
     String designation = '',
     bool isActive = true,
     String? adminId,
+    String? photoUrl,
+    List<double>? faceEmbedding,
   }) {
     return _remoteDataSource.addEmployee(
       name,
@@ -31,6 +33,8 @@ class EmployeeRepositoryImpl implements EmployeeRepository {
       designation: designation,
       isActive: isActive,
       adminId: adminId,
+      photoUrl: photoUrl,
+      faceEmbedding: faceEmbedding,
     );
   }
 
@@ -44,6 +48,8 @@ class EmployeeRepositoryImpl implements EmployeeRepository {
     String designation = '',
     bool isActive = true,
     String? adminId,
+    String? photoUrl,
+    List<double>? faceEmbedding,
   }) {
     return _remoteDataSource.updateEmployee(
       id,
@@ -54,6 +60,8 @@ class EmployeeRepositoryImpl implements EmployeeRepository {
       designation: designation,
       isActive: isActive,
       adminId: adminId,
+      photoUrl: photoUrl,
+      faceEmbedding: faceEmbedding,
     );
   }
 

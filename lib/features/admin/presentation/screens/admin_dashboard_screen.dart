@@ -18,8 +18,108 @@ import '../../../../core/widgets/app_shimmer.dart';
 import '../../../checkin/domain/entities/check_in_submission.dart';
 import '../../../checkin/domain/entities/check_in_type.dart';
 import '../../../checkin/presentation/providers/checkin_providers.dart';
+import '../../../employee/domain/entities/employee.dart';
 import '../../../employee/presentation/providers/employee_providers.dart';
 import '../providers/admin_dashboard_provider.dart';
+
+Widget _buildAttendanceRecordAvatar({
+  required CheckInSubmission record,
+  required List<Employee>? employees,
+  required double size,
+}) {
+  final photoBytes = ImageUtils.base64ToBytes(record.photoBase64);
+
+  // 1. If check-in selfie is present (and not a substitute without photo)
+  if (!record.type.isSubstitute && photoBytes != null) {
+    return ClipRRect(
+      borderRadius: AppRadius.xsAll,
+      child: Image.memory(
+        photoBytes,
+        width: size,
+        height: size,
+        cacheWidth: (size * 2).toInt(),
+        cacheHeight: (size * 2).toInt(),
+        fit: BoxFit.cover,
+        errorBuilder: (ctx, err, stack) => _buildFallbackRecordInitials(record.userName, size),
+      ),
+    );
+  }
+
+  // 2. Check if registered member profile has photoUrl
+  if (employees != null && employees.isNotEmpty) {
+    Employee? member;
+    try {
+      member = employees.firstWhere(
+        (e) =>
+            (record.userPhone.isNotEmpty && (e.phone == record.userPhone || record.userPhone.endsWith(e.phone) || e.phone.endsWith(record.userPhone))) ||
+            (record.userName.isNotEmpty &&
+                e.name.trim().toLowerCase() == record.userName.trim().toLowerCase()),
+      );
+    } catch (_) {}
+
+    final photoUrl = member?.photoUrl?.trim();
+    if (photoUrl != null && photoUrl.isNotEmpty) {
+      if (photoUrl.startsWith('http://') || photoUrl.startsWith('https://')) {
+        return ClipRRect(
+          borderRadius: AppRadius.xsAll,
+          child: Image.network(
+            photoUrl,
+            width: size,
+            height: size,
+            cacheWidth: (size * 2).toInt(),
+            cacheHeight: (size * 2).toInt(),
+            fit: BoxFit.cover,
+            errorBuilder: (ctx, err, stack) => _buildFallbackRecordInitials(record.userName, size),
+          ),
+        );
+      } else {
+        final memberBytes = ImageUtils.base64ToBytes(photoUrl);
+        if (memberBytes != null) {
+          return ClipRRect(
+            borderRadius: AppRadius.xsAll,
+            child: Image.memory(
+              memberBytes,
+              width: size,
+              height: size,
+              cacheWidth: (size * 2).toInt(),
+              cacheHeight: (size * 2).toInt(),
+              fit: BoxFit.cover,
+              errorBuilder: (ctx, err, stack) => _buildFallbackRecordInitials(record.userName, size),
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  // 3. Fallback: Initials
+  return _buildFallbackRecordInitials(record.userName, size);
+}
+
+Widget _buildFallbackRecordInitials(String userName, double size) {
+  final initial = userName.trim().isNotEmpty ? userName.trim()[0].toUpperCase() : 'M';
+  return Container(
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      color: AppColors.primary.withAlpha(25),
+      borderRadius: AppRadius.xsAll,
+      border: Border.all(
+        color: AppColors.primary.withAlpha(40),
+      ),
+    ),
+    child: Center(
+      child: Text(
+        initial,
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: size * 0.42,
+          color: AppColors.primary,
+        ),
+      ),
+    ),
+  );
+}
 
 /// Highly responsive real-time Admin Dashboard for mobile, tablet, and desktop screens.
 
@@ -644,31 +744,70 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
           ),
           const Divider(height: 16),
 
-          if (photoBytes != null) ...[
-            Center(
-              child: Column(
-                children: [
-                  ClipRRect(
-                    borderRadius: AppRadius.mdAll,
-                    child: Image.memory(
-                      photoBytes,
-                      width: 110,
-                      height: 110,
-                      fit: BoxFit.cover,
+          Builder(
+            builder: (context) {
+              if (photoBytes != null) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 8.0),
+                    child: Column(
+                      children: [
+                        ClipRRect(
+                          borderRadius: AppRadius.mdAll,
+                          child: Image.memory(
+                            photoBytes,
+                            width: 110,
+                            height: 110,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          record.type.isSubstitute
+                              ? 'Substitute Face Photo'
+                              : 'Attendee Face Photo',
+                          style: const TextStyle(fontSize: 11, color: Colors.grey),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    record.type.isSubstitute
-                        ? 'Substitute Face Photo'
-                        : 'Attendee Face Photo',
-                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                );
+              }
+              final emps = ref.read(employeesStreamProvider).value;
+              final member = emps?.where((e) =>
+                (record.userPhone.isNotEmpty && (e.phone == record.userPhone || record.userPhone.endsWith(e.phone) || e.phone.endsWith(record.userPhone))) ||
+                (record.userName.isNotEmpty && e.name.trim().toLowerCase() == record.userName.trim().toLowerCase())
+              ).firstOrNull;
+              final photoUrl = member?.photoUrl?.trim();
+              if (photoUrl != null && photoUrl.isNotEmpty) {
+                final isNet = photoUrl.startsWith('http://') || photoUrl.startsWith('https://');
+                final mBytes = isNet ? null : ImageUtils.base64ToBytes(photoUrl);
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 8.0),
+                    child: Column(
+                      children: [
+                        ClipRRect(
+                          borderRadius: AppRadius.mdAll,
+                          child: isNet
+                              ? Image.network(photoUrl, width: 110, height: 110, fit: BoxFit.cover)
+                              : (mBytes != null
+                                  ? Image.memory(mBytes, width: 110, height: 110, fit: BoxFit.cover)
+                                  : const SizedBox.shrink()),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Enrolled Profile Photo',
+                          style: TextStyle(fontSize: 11, color: Colors.grey),
+                        ),
+                      ],
+                    ),
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
 
           _DetailItem(label: 'Member Name', value: record.userName),
           if (record.type.isSubstitute &&
@@ -1074,6 +1213,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                   record: record,
                   isDark: isDark,
                   theme: theme,
+                  employees: ref.watch(employeesStreamProvider).value,
                   onRecordTap: () => _showDetailModal(context, record),
                   onEditTap: () => _showEditCheckInDialog(context, record),
                   onVerifyTap: () => _toggleVerifyCheckIn(record),
@@ -1551,6 +1691,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     // Spreadsheet / Table data view (Fixed Table Header, Only Data Rows scroll vertically)
     return _CheckInTableView(
       records: filteredRecords,
+      employees: ref.watch(employeesStreamProvider).value,
       // Removed paginated state for live sync
       onRecordTap: (record) => _showDetailModal(context, record),
       onEditTap: (record) => _showEditCheckInDialog(context, record),
@@ -1846,6 +1987,7 @@ class _MobileCheckInRow extends StatelessWidget {
     required this.onRecordTap,
     required this.onEditTap,
     required this.onVerifyTap,
+    this.employees,
   });
 
   final int index;
@@ -1855,6 +1997,7 @@ class _MobileCheckInRow extends StatelessWidget {
   final VoidCallback onRecordTap;
   final VoidCallback onEditTap;
   final VoidCallback onVerifyTap;
+  final List<Employee>? employees;
 
   @override
   Widget build(BuildContext context) {
@@ -1871,42 +2014,11 @@ class _MobileCheckInRow extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                if (photoBytes != null)
-                  ClipRRect(
-                    borderRadius: AppRadius.xsAll,
-                    child: Image.memory(
-                      photoBytes,
-                      width: 36,
-                      height: 36,
-                      cacheWidth: 72,
-                      cacheHeight: 72,
-                      fit: BoxFit.cover,
-                    ),
-                  )
-                else
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withAlpha(25),
-                      borderRadius: AppRadius.xsAll,
-                      border: Border.all(
-                        color: AppColors.primary.withAlpha(40),
-                      ),
-                    ),
-                    child: Center(
-                      child: Text(
-                        record.userName.isNotEmpty
-                            ? record.userName[0].toUpperCase()
-                            : 'U',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    ),
-                  ),
+                _buildAttendanceRecordAvatar(
+                  record: record,
+                  employees: employees,
+                  size: 36,
+                ),
                 const SizedBox(width: 10),
 
                 // Name & Phone
@@ -2215,6 +2327,7 @@ class _CheckInTableView extends StatelessWidget {
     required this.onVerifyTap,
     this.scrollController,
     this.isEmbeddedInScroll = false,
+    this.employees,
   });
 
   final List<CheckInSubmission> records;
@@ -2223,6 +2336,7 @@ class _CheckInTableView extends StatelessWidget {
   final void Function(CheckInSubmission) onVerifyTap;
   final ScrollController? scrollController;
   final bool isEmbeddedInScroll;
+  final List<Employee>? employees;
 
   @override
   Widget build(BuildContext context) {
@@ -2327,42 +2441,11 @@ class _CheckInTableView extends StatelessWidget {
                 flex: 3,
                 child: Row(
                   children: [
-                    if (!record.type.isSubstitute && photoBytes != null)
-                      ClipRRect(
-                        borderRadius: AppRadius.xsAll,
-                        child: Image.memory(
-                          photoBytes,
-                          width: 32,
-                          height: 32,
-                          cacheWidth: 64,
-                          cacheHeight: 64,
-                          fit: BoxFit.cover,
-                        ),
-                      )
-                    else
-                      Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withAlpha(25),
-                          borderRadius: AppRadius.xsAll,
-                          border: Border.all(
-                            color: AppColors.primary.withAlpha(40),
-                          ),
-                        ),
-                        child: Center(
-                          child: Text(
-                            record.userName.isNotEmpty
-                                ? record.userName[0].toUpperCase()
-                                : 'M',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                        ),
-                      ),
+                    _buildAttendanceRecordAvatar(
+                      record: record,
+                      employees: employees,
+                      size: 32,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Row(

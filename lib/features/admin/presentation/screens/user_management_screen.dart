@@ -1,18 +1,25 @@
+import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image/image.dart' as img;
+import 'package:image_picker/image_picker.dart';
 
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_radius.dart';
 import '../../../../app/theme/app_shadows.dart';
+import '../../../../core/biometrics/biometrics_provider.dart';
 import '../../../../core/responsive/responsive_breakpoints.dart';
+import '../../../../core/utils/image_utils.dart';
 import '../../../../core/widgets/app_card.dart';
 import '../../../../core/widgets/app_filter_dropdown.dart';
 import '../../../../core/widgets/app_metric_card.dart';
 import '../../../../core/widgets/app_page_header.dart';
 import '../../../../core/widgets/app_shimmer.dart';
+import '../../../../core/widgets/web_camera_capture_dialog.dart';
 import '../../../employee/domain/entities/employee.dart';
 import '../../../employee/presentation/providers/employee_providers.dart';
 import '../providers/admin_auth_provider.dart';
@@ -82,6 +89,72 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
     return name.trim().substring(0, min(2, name.trim().length)).toUpperCase();
   }
 
+  Widget _buildMemberAvatar({
+    required Employee member,
+    required double size,
+    required Color avatarColor,
+    required String initials,
+    double fontSize = 12,
+    BorderRadius? borderRadius,
+  }) {
+    final photo = member.photoUrl;
+    final effectiveBorderRadius = borderRadius ?? AppRadius.xsAll;
+
+    Widget buildFallback() {
+      return Center(
+        child: Text(
+          initials,
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: fontSize,
+            color: avatarColor,
+          ),
+        ),
+      );
+    }
+
+    Widget? imageWidget;
+    if (photo != null && photo.trim().isNotEmpty) {
+      if (photo.startsWith('http')) {
+        imageWidget = Image.network(
+          photo.trim(),
+          fit: BoxFit.cover,
+          width: size,
+          height: size,
+          errorBuilder: (_, _, _) => buildFallback(),
+        );
+      } else {
+        final bytes = ImageUtils.base64ToBytes(photo);
+        if (bytes != null) {
+          imageWidget = Image.memory(
+            bytes,
+            fit: BoxFit.cover,
+            width: size,
+            height: size,
+            errorBuilder: (_, _, _) => buildFallback(),
+          );
+        }
+      }
+    }
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: avatarColor.withAlpha(30),
+        borderRadius: effectiveBorderRadius,
+        border: Border.all(
+          color: avatarColor.withAlpha(70),
+          width: 1,
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: effectiveBorderRadius,
+        child: imageWidget ?? buildFallback(),
+      ),
+    );
+  }
+
   String _formatDate(DateTime? dt) {
     if (dt == null) return '—';
     final months = [
@@ -127,6 +200,13 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
     var isSubmitting = false;
     final formKey = GlobalKey<FormState>();
 
+    List<double>? enrolledEmbedding = existingMember?.faceEmbedding;
+    String? enrolledPhotoUrl = existingMember?.photoUrl;
+    Uint8List? enrolledImageBytes;
+    File? enrolledImageFile;
+    bool isProcessingFace = false;
+    String? faceStatusMessage;
+
     showDialog(
       context: context,
       useRootNavigator: true,
@@ -144,6 +224,83 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
               isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569);
           final iconColor =
               isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+
+          Future<void> pickFacePhoto(ImageSource source) async {
+            try {
+              Uint8List? rawBytes;
+              File? photoFile;
+
+              if (source == ImageSource.camera && kIsWeb) {
+                // Open real HTML5 webcam live viewfinder dialog on Web
+                rawBytes = await WebCameraCaptureHelper.capturePhoto(context);
+                if (rawBytes == null) return;
+              } else {
+                final picker = ImagePicker();
+                final photo = await picker.pickImage(
+                  source: source,
+                  maxWidth: 800,
+                  maxHeight: 800,
+                  imageQuality: 85,
+                  preferredCameraDevice: CameraDevice.front,
+                );
+                if (photo == null) return;
+                rawBytes = await photo.readAsBytes();
+                if (!kIsWeb) {
+                  photoFile = File(photo.path);
+                }
+              }
+
+              setDialogState(() {
+                isProcessingFace = true;
+                faceStatusMessage = 'Processing photo...';
+              });
+
+              if (kIsWeb) {
+                // Pure Dart image processing for Web browser
+                final decoded = img.decodeImage(rawBytes);
+                if (decoded == null) {
+                  throw Exception('Could not decode photo. Please select a valid JPEG/PNG image.');
+                }
+                final oriented = img.bakeOrientation(decoded);
+                final resized = oriented.width > 600 || oriented.height > 600
+                    ? img.copyResize(oriented, width: 600)
+                    : oriented;
+                final compressedJpg = Uint8List.fromList(img.encodeJpg(resized, quality: 80));
+                final base64Photo = ImageUtils.bytesToBase64(compressedJpg);
+
+                setDialogState(() {
+                  enrolledPhotoUrl = base64Photo;
+                  enrolledImageBytes = compressedJpg;
+                  faceStatusMessage = '✓ Member photo attached successfully';
+                  isProcessingFace = false;
+                });
+                return;
+              }
+
+              // Native Android / iOS: Full ML Kit face detection + TFLite biometric extraction
+              final enrollmentHelper = ref.read(faceEnrollmentHelperProvider);
+              final result = await enrollmentHelper.processEnrollmentPhoto(photoFile!.path);
+
+              final compressedBytes = await ImageUtils.compressImageFile(photoFile);
+              final base64Photo = compressedBytes != null
+                  ? ImageUtils.bytesToBase64(compressedBytes)
+                  : null;
+
+              setDialogState(() {
+                enrolledEmbedding = result.faceEmbedding;
+                enrolledPhotoUrl = base64Photo;
+                enrolledImageBytes = compressedBytes ?? rawBytes!;
+                enrolledImageFile = photoFile;
+                faceStatusMessage = '✓ Face verified & biometrics enrolled';
+                isProcessingFace = false;
+              });
+            } catch (e) {
+              setDialogState(() {
+                faceStatusMessage = e.toString().replaceAll('Exception: ', '');
+                isProcessingFace = false;
+              });
+            }
+          }
 
           InputDecoration buildFieldDecoration({
             required String hint,
@@ -255,7 +412,287 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 22),
+                      const SizedBox(height: 18),
+
+                      // Face Photo & Biometric Enrollment Card
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: defaultBorderColor),
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                // Avatar Preview
+                                Container(
+                                  width: 56,
+                                  height: 56,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: AppColors.primaryLight.withAlpha(30),
+                                    border: Border.all(
+                                      color: (enrolledEmbedding != null ||
+                                              enrolledPhotoUrl != null ||
+                                              enrolledImageBytes != null)
+                                          ? AppColors.success
+                                          : defaultBorderColor,
+                                      width: 2,
+                                    ),
+                                  ),
+                                  child: ClipOval(
+                                    child: () {
+                                      if (enrolledImageBytes != null) {
+                                        return Image.memory(
+                                          enrolledImageBytes!,
+                                          fit: BoxFit.cover,
+                                        );
+                                      }
+                                      if (enrolledImageFile != null) {
+                                        return Image.file(
+                                          enrolledImageFile!,
+                                          fit: BoxFit.cover,
+                                        );
+                                      }
+                                      final photo = enrolledPhotoUrl;
+                                      if (photo != null && photo.isNotEmpty) {
+                                        if (photo.startsWith('http')) {
+                                          return Image.network(
+                                            photo,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (context, error, stackTrace) =>
+                                                const Icon(
+                                              Icons.face_retouching_natural_rounded,
+                                              color: AppColors.primary,
+                                              size: 26,
+                                            ),
+                                          );
+                                        }
+                                        final bytes = ImageUtils.base64ToBytes(photo);
+                                        if (bytes != null) {
+                                          return Image.memory(
+                                            bytes,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (context, error, stackTrace) =>
+                                                const Icon(
+                                              Icons.face_retouching_natural_rounded,
+                                              color: AppColors.primary,
+                                              size: 26,
+                                            ),
+                                          );
+                                        }
+                                      }
+                                      return const Icon(
+                                        Icons.camera_front_rounded,
+                                        color: Color(0xFF64748B),
+                                        size: 26,
+                                      );
+                                    }(),
+                                  ),
+                                ),
+                                const SizedBox(width: 14),
+
+                                // Action Buttons
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Member Face Photo',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      const Text(
+                                        'Required for instant face recognition check-in',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Color(0xFF64748B),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        children: [
+                                          InkWell(
+                                            onTap: isProcessingFace
+                                                ? null
+                                                : () => pickFacePhoto(
+                                                    ImageSource.camera),
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 10,
+                                                vertical: 5,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.primary,
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              child: const Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(
+                                                    Icons.camera_alt_outlined,
+                                                    size: 14,
+                                                    color: Colors.white,
+                                                  ),
+                                                  SizedBox(width: 4),
+                                                  Text(
+                                                    'Take Photo',
+                                                    style: TextStyle(
+                                                      fontSize: 11.5,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: Colors.white,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          InkWell(
+                                            onTap: isProcessingFace
+                                                ? null
+                                                : () => pickFacePhoto(
+                                                    ImageSource.gallery),
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 10,
+                                                vertical: 5,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: isDark
+                                                    ? const Color(0xFF334155)
+                                                    : const Color(0xFFE2E8F0),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(
+                                                    Icons.photo_library_outlined,
+                                                    size: 14,
+                                                    color: labelColor,
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    'Gallery',
+                                                    style: TextStyle(
+                                                      fontSize: 11.5,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: labelColor,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            // Status / Feedback message
+                            if (isProcessingFace) ...[
+                              const SizedBox(height: 10),
+                              const Row(
+                                children: [
+                                  SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: AppColors.primary,
+                                    ),
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Analyzing face biometrics...',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ] else if (faceStatusMessage != null) ...[
+                              const SizedBox(height: 10),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: faceStatusMessage!.startsWith('✓')
+                                      ? AppColors.successLight
+                                      : AppColors.errorLight,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  faceStatusMessage!,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: faceStatusMessage!.startsWith('✓')
+                                        ? AppColors.successDark
+                                        : AppColors.errorDark,
+                                  ),
+                                ),
+                              ),
+                            ] else if (enrolledEmbedding != null || enrolledPhotoUrl != null) ...[
+                              const SizedBox(height: 10),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.successLight,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.check_circle_rounded,
+                                      size: 14,
+                                      color: AppColors.successDark,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      enrolledEmbedding != null
+                                          ? 'Face Biometrics Enrolled (192 features)'
+                                          : 'Member Photo Attached',
+                                      style: const TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.successDark,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 18),
 
                       // Name Field
                       Text(
@@ -473,6 +910,8 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                               isActive: isActive,
                                               adminId: existingMember.adminId ??
                                                   targetAdminId,
+                                              photoUrl: enrolledPhotoUrl,
+                                              faceEmbedding: enrolledEmbedding,
                                             );
                                             if (ctx.mounted) {
                                               Navigator.pop(ctx);
@@ -498,6 +937,8 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                               role: selectedRole,
                                               isActive: isActive,
                                               adminId: targetAdminId,
+                                              photoUrl: enrolledPhotoUrl,
+                                              faceEmbedding: enrolledEmbedding,
                                             );
                                             if (ctx.mounted) {
                                               Navigator.pop(ctx);
@@ -1320,26 +1761,13 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
               flex: 1,
               child: Row(
                 children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: avatarColor.withAlpha(30),
-                      borderRadius: AppRadius.xsAll,
-                      border: Border.all(
-                        color: avatarColor.withAlpha(70),
-                      ),
-                    ),
-                    child: Center(
-                      child: Text(
-                        initials,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 12,
-                          color: avatarColor,
-                        ),
-                      ),
-                    ),
+                  _buildMemberAvatar(
+                    member: member,
+                    size: 34,
+                    avatarColor: avatarColor,
+                    initials: initials,
+                    fontSize: 12,
+                    borderRadius: AppRadius.xsAll,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1669,27 +2097,13 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
               Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: avatarColor.withAlpha(isDark ? 35 : 25),
-                      borderRadius: AppRadius.smAll,
-                      border: Border.all(
-                        color: avatarColor.withAlpha(isDark ? 60 : 40),
-                        width: 1,
-                      ),
-                    ),
-                    child: Center(
-                      child: Text(
-                        initials,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 13.5,
-                          color: avatarColor,
-                        ),
-                      ),
-                    ),
+                  _buildMemberAvatar(
+                    member: member,
+                    size: 40,
+                    avatarColor: avatarColor,
+                    initials: initials,
+                    fontSize: 13.5,
+                    borderRadius: AppRadius.smAll,
                   ),
                   if (_sortOption == MemberSortOption.mostVisitors)
                     Positioned(

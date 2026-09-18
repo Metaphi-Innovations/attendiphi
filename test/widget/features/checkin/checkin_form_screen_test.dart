@@ -104,30 +104,8 @@ void main() {
       expect(find.text('Substitute'), findsOneWidget);
       expect(find.text('Visitor'), findsOneWidget);
 
-      // By default Member fields are visible
-      expect(find.text('Select Member Name *'), findsOneWidget);
-      expect(find.text('Phone Number * (Auto-filled)'), findsOneWidget);
-    });
-
-    testWidgets('selecting a member from dropdown auto-fills name and phone number', (tester) async {
-      await tester.pumpWidget(createWidgetUnderTest());
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
-
-      // Tap on member dropdown button
-      final dropdownBtn = find.byTooltip('Select member');
-      expect(dropdownBtn, findsOneWidget);
-      await tester.tap(dropdownBtn);
-      await tester.pump(const Duration(milliseconds: 200));
-
-      // Select Rohan Mehta
-      expect(find.text('Rohan Mehta'), findsOneWidget);
-      await tester.tap(find.text('Rohan Mehta'));
-      await tester.pump(const Duration(milliseconds: 200));
-
-      // Name and Phone fields should be auto-filled
-      expect(find.text('Rohan Mehta'), findsOneWidget);
-      expect(find.text('9876543210'), findsOneWidget);
+      // By default Member face verification scanner is active
+      expect(find.text('Member Face Verification'), findsOneWidget);
     });
 
     testWidgets('switching to Substitute displays substitute form with member dropdown and photo card', (tester) async {
@@ -147,6 +125,37 @@ void main() {
       expect(find.text('Face Verification Photo *'), findsOneWidget);
     });
 
+    testWidgets('selecting a member from substitute dropdown auto-fills target member', (tester) async {
+      tester.view.physicalSize = const Size(1000, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      await tester.pumpWidget(createWidgetUnderTest());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Tap Substitute option
+      await tester.tap(find.text('Substitute'));
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // Tap on substitute member dropdown
+      final dropdownBtn = find.text('Select member you are substituting for');
+      expect(dropdownBtn, findsOneWidget);
+      await tester.tap(dropdownBtn);
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // Select Rohan Mehta
+      expect(find.text('Rohan Mehta'), findsOneWidget);
+      await tester.tap(find.text('Rohan Mehta'));
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // Member name should be selected
+      expect(find.text('Rohan Mehta'), findsOneWidget);
+    });
+
     testWidgets('switching to Visitor displays visitor form with company, category, invited by', (tester) async {
       await tester.pumpWidget(createWidgetUnderTest());
       await tester.pump();
@@ -164,26 +173,29 @@ void main() {
     });
 
     testWidgets('switching tabs resets and clears fields so new tab starts empty', (tester) async {
+      tester.view.physicalSize = const Size(1000, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
       await tester.pumpWidget(createWidgetUnderTest());
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      // Auto-fill member
-      final dropdownBtn = find.byTooltip('Select member');
-      await tester.tap(dropdownBtn);
+      // Switch to Visitor and enter name
+      await tester.tap(find.text('Visitor'));
       await tester.pump(const Duration(milliseconds: 200));
-      await tester.tap(find.text('Rohan Mehta'));
-      await tester.pump(const Duration(milliseconds: 200));
-      expect(find.text('Rohan Mehta'), findsOneWidget);
-      expect(find.text('9876543210'), findsOneWidget);
+      await tester.enterText(find.byType(TextField).first, 'John Doe');
+      await tester.pump();
 
       // Switch to Substitute
       await tester.tap(find.text('Substitute'));
       await tester.pump(const Duration(milliseconds: 200));
 
-      // Fields should be empty now
-      expect(find.text('Rohan Mehta'), findsNothing);
-      expect(find.text('9876543210'), findsNothing);
+      // Fields should be reset
+      expect(find.text('John Doe'), findsNothing);
       expect(find.text('Enter your full name'), findsOneWidget);
 
       // Verify phone icon is present
@@ -203,8 +215,8 @@ void main() {
       expect(find.text('Visitor Full Name *'), findsOneWidget);
       expect(find.text('Email Address *'), findsOneWidget);
 
-      // Submit button is present
-      expect(find.widgetWithText(AppButton, 'Check In'), findsOneWidget);
+      // Submit button is present with Check-In label
+      expect(find.widgetWithText(AppButton, 'Check-In'), findsOneWidget);
     });
   });
 }

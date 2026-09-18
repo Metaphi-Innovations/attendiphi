@@ -1,0 +1,461 @@
+// ignore_for_file: deprecated_member_use, avoid_web_libraries_in_flutter
+import 'dart:async';
+import 'dart:convert';
+import 'dart:html' as html;
+import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui_web' as ui_web;
+
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../../app/theme/app_colors.dart';
+import '../../app/theme/app_radius.dart';
+
+/// Opens a real HTML5 webcam capture modal on Flutter Web.
+Future<Uint8List?> captureCameraPhoto(BuildContext context) async {
+  return showDialog<Uint8List?>(
+    context: context,
+    barrierDismissible: false,
+    barrierColor: Colors.black.withAlpha(200),
+    builder: (ctx) => const _WebCameraCaptureDialogWidget(),
+  );
+}
+
+class _WebCameraCaptureDialogWidget extends StatefulWidget {
+  const _WebCameraCaptureDialogWidget();
+
+  @override
+  State<_WebCameraCaptureDialogWidget> createState() =>
+      _WebCameraCaptureDialogWidgetState();
+}
+
+class _WebCameraCaptureDialogWidgetState
+    extends State<_WebCameraCaptureDialogWidget> {
+  late final String _viewId;
+  html.VideoElement? _videoElement;
+  html.MediaStream? _mediaStream;
+
+  bool _isInitializing = true;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _viewId = 'web-camera-view-${DateTime.now().microsecondsSinceEpoch}';
+    _initWebcam();
+  }
+
+  Future<void> _initWebcam() async {
+    setState(() {
+      _isInitializing = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final mediaDevices = html.window.navigator.mediaDevices;
+      if (mediaDevices == null) {
+        throw Exception(
+            'MediaDevices API not supported in this browser. Please use Gallery upload.');
+      }
+
+      final stream = await mediaDevices.getUserMedia({
+        'video': {
+          'facingMode': 'user',
+          'width': {'ideal': 1280},
+          'height': {'ideal': 720},
+        },
+        'audio': false,
+      });
+
+      _mediaStream = stream;
+
+      final video = html.VideoElement()
+        ..autoplay = true
+        ..muted = true
+        ..setAttribute('playsinline', 'true')
+        ..style.width = '100%'
+        ..style.height = '100%'
+        ..style.objectFit = 'cover'
+        ..style.transform = 'scaleX(-1)'; // Mirror front webcam
+
+      video.srcObject = stream;
+      _videoElement = video;
+
+      // Register the web platform view
+      ui_web.platformViewRegistry.registerViewFactory(
+        _viewId,
+        (int viewId) => video,
+      );
+
+      if (mounted) {
+        setState(() {
+          _isInitializing = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isInitializing = false;
+          _errorMessage =
+              'Camera access was denied or not available. Please allow camera permissions in your browser or choose a photo from Gallery.';
+        });
+      }
+    }
+  }
+
+  void _capturePhoto() {
+    final video = _videoElement;
+    if (video == null) return;
+
+    final vw = video.videoWidth > 0 ? video.videoWidth : 640;
+    final vh = video.videoHeight > 0 ? video.videoHeight : 480;
+
+    // Crop tightly around center square (face & headshot) matching the oval guide
+    final cropSize = math.min(vw, vh);
+    final sx = (vw - cropSize) / 2;
+    final sy = (vh - cropSize) / 2;
+
+    const outSize = 600;
+    final canvas = html.CanvasElement(width: outSize, height: outSize);
+    final ctx = canvas.context2D;
+
+    // Flip horizontally to match mirror preview
+    ctx.translate(outSize, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImageScaledFromSource(
+      video,
+      sx,
+      sy,
+      cropSize,
+      cropSize,
+      0,
+      0,
+      outSize,
+      outSize,
+    );
+
+    final dataUrl = canvas.toDataUrl('image/jpeg', 0.85);
+    final base64String = dataUrl.split(',').last;
+    final bytes = base64Decode(base64String);
+
+    _stopCamera();
+    Navigator.of(context).pop(bytes);
+  }
+
+  Future<void> _pickFromGallery() async {
+    _stopCamera();
+    try {
+      final picker = ImagePicker();
+      final photo = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 800,
+        maxHeight: 800,
+        imageQuality: 85,
+      );
+      if (!mounted) return;
+      if (photo != null) {
+        final bytes = await photo.readAsBytes();
+        if (!mounted) return;
+        Navigator.of(context).pop(bytes);
+      } else {
+        Navigator.of(context).pop(null);
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context).pop(null);
+      }
+    }
+  }
+
+  void _stopCamera() {
+    if (_mediaStream != null) {
+      for (final track in _mediaStream!.getTracks()) {
+        track.stop();
+      }
+      _mediaStream = null;
+    }
+    if (_videoElement != null) {
+      _videoElement!.srcObject = null;
+      _videoElement = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _stopCamera();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Dialog(
+      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: AppRadius.lgAll),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Padding(
+          padding: const EdgeInsets.all(22),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Dialog Header
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withAlpha(25),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.camera_alt_rounded,
+                      color: AppColors.primary,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Take Member Photo',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Align face within frame and click Capture',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 20),
+                    tooltip: 'Cancel',
+                    onPressed: () {
+                      _stopCamera();
+                      Navigator.of(context).pop(null);
+                    },
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 18),
+
+              // Camera Viewport / Error State
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  height: 320,
+                  color: const Color(0xFF0F172A),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      if (_errorMessage != null)
+                        Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.videocam_off_rounded,
+                                  color: Color(0xFFF43F5E),
+                                  size: 40,
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  _errorMessage!,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12.5,
+                                    height: 1.4,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    OutlinedButton.icon(
+                                      onPressed: _initWebcam,
+                                      icon: const Icon(Icons.refresh_rounded,
+                                          size: 16),
+                                      label: const Text('Try Again'),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: Colors.white,
+                                        side: const BorderSide(
+                                            color: Colors.white54),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    ElevatedButton.icon(
+                                      onPressed: _pickFromGallery,
+                                      icon: const Icon(Icons.image_outlined,
+                                          size: 16),
+                                      label: const Text('From Gallery'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppColors.primary,
+                                        foregroundColor: Colors.white,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      else if (_isInitializing)
+                        const Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CircularProgressIndicator(
+                                color: AppColors.primary,
+                                strokeWidth: 3,
+                              ),
+                              SizedBox(height: 14),
+                              Text(
+                                'Starting camera...',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else ...[
+                        // Live Web Video Element View
+                        HtmlElementView(viewType: _viewId),
+
+                        // Vignette cutout overlay that dims room background outside the oval
+                        const IgnorePointer(
+                          child: CustomPaint(
+                            size: Size.infinite,
+                            painter: _FaceGuideOverlayPainter(
+                              ovalWidth: 180,
+                              ovalHeight: 235,
+                              borderColor: Colors.white,
+                              scrimColor: Color(0xA6000000), // 65% black scrim
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 18),
+
+              // Action Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        _stopCamera();
+                        Navigator.of(context).pop(null);
+                      },
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: ElevatedButton.icon(
+                      onPressed: (_isInitializing || _errorMessage != null)
+                          ? null
+                          : _capturePhoto,
+                      icon: const Icon(Icons.camera_alt_rounded, size: 18),
+                      label: const Text('Capture Photo'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        elevation: 0,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FaceGuideOverlayPainter extends CustomPainter {
+  const _FaceGuideOverlayPainter({
+    required this.ovalWidth,
+    required this.ovalHeight,
+    required this.borderColor,
+    required this.scrimColor,
+  });
+
+  final double ovalWidth;
+  final double ovalHeight;
+  final Color borderColor;
+  final Color scrimColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
+    final ovalRect = Rect.fromCenter(
+      center: Offset(size.width / 2, size.height / 2),
+      width: ovalWidth,
+      height: ovalHeight,
+    );
+
+    final path = Path()
+      ..addRect(rect)
+      ..addOval(ovalRect)
+      ..fillType = PathFillType.evenOdd;
+
+    final scrimPaint = Paint()
+      ..color = scrimColor
+      ..style = PaintingStyle.fill;
+
+    canvas.drawPath(path, scrimPaint);
+
+    final borderPaint = Paint()
+      ..color = borderColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5;
+
+    canvas.drawOval(ovalRect, borderPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _FaceGuideOverlayPainter oldDelegate) {
+    return oldDelegate.ovalWidth != ovalWidth ||
+        oldDelegate.ovalHeight != ovalHeight ||
+        oldDelegate.borderColor != borderColor ||
+        oldDelegate.scrimColor != scrimColor;
+  }
+}

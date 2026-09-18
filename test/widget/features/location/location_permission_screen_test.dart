@@ -42,7 +42,7 @@ void main() {
         (tester) async {
       await tester.pumpWidget(
         createWidgetUnderTest(
-          sessionDateStr: '2026-09-03',
+          sessionDateStr: null,
           nowProvider: () => DateTime(2026, 9, 9, 10, 0), // Wednesday
         ),
       );

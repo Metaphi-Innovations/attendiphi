@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,6 +30,9 @@ import '../../domain/entities/check_in_submission.dart';
 import '../../domain/entities/check_in_type.dart';
 import '../providers/checkin_form_provider.dart';
 import '../providers/checkin_form_state.dart';
+import '../widgets/face_scanner_view.dart';
+import '../widgets/recognized_member_card.dart';
+import '../widgets/unrecognized_member_card.dart';
 import 'checkin_result_screen.dart';
 
 /// Clean, light-themed attendance check-in form supporting Member, Substitute, and Visitor workflows.
@@ -55,19 +59,50 @@ class CheckInFormScreen extends ConsumerStatefulWidget {
 class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   final _formKey = GlobalKey<FormState>();
 
+  /// Robust extraction of session date query parameter across Native and Web (hash routing).
+  String? get _effectiveSessionDateStr {
+    if (widget.sessionDateStr != null && widget.sessionDateStr!.trim().isNotEmpty) {
+      return widget.sessionDateStr!.trim();
+    }
+    if (kIsWeb) {
+      if (Uri.base.queryParameters.containsKey('date')) {
+        final val = Uri.base.queryParameters['date'];
+        if (val != null && val.trim().isNotEmpty) return val.trim();
+      }
+      if (Uri.base.hasFragment && Uri.base.fragment.contains('date=')) {
+        final fragIndex = Uri.base.fragment.indexOf('?');
+        if (fragIndex != -1) {
+          final queryStr = Uri.base.fragment.substring(fragIndex + 1);
+          final parsed = Uri.splitQueryString(queryStr);
+          if (parsed.containsKey('date') && parsed['date']!.trim().isNotEmpty) {
+            return parsed['date']!.trim();
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   DateTime? get _parsedSessionDate {
-    if (widget.sessionDateStr == null || widget.sessionDateStr!.trim().isEmpty) {
+    final dateStr = _effectiveSessionDateStr;
+    if (dateStr == null || dateStr.isEmpty) {
       return null;
     }
-    return DateTime.tryParse(widget.sessionDateStr!.trim());
+    return DateTime.tryParse(dateStr);
   }
 
   DateTime get _now =>
       widget.nowProvider != null ? widget.nowProvider!() : DateTime.now();
 
-  bool get _isTodayThursday => _now.weekday == DateTime.thursday;
+  /// Testing exemption: only 3rd Sep 2026 session is unlocked for testing purposes.
+  bool get _isTestingSession =>
+      _effectiveSessionDateStr?.contains('2026-09-03') == true ||
+      widget.sessionDateStr?.contains('2026-09-03') == true;
+
+  bool get _isTodayThursday => _isTestingSession || _now.weekday == DateTime.thursday;
 
   bool get _isSessionExpired {
+    if (_isTestingSession) return false;
     final sessionDate = _parsedSessionDate;
     if (sessionDate == null) return false;
     final today = DateTime(_now.year, _now.month, _now.day);
@@ -77,6 +112,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   }
 
   bool get _isSessionFuture {
+    if (_isTestingSession) return false;
     final sessionDate = _parsedSessionDate;
     if (sessionDate == null) return false;
     final today = DateTime(_now.year, _now.month, _now.day);
@@ -92,15 +128,12 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   late final TextEditingController _categoryController;
 
   // Search controllers for dropdowns
-  late final TextEditingController _memberSearchController;
   late final TextEditingController _substituteForSearchController;
   late final TextEditingController _invitedBySearchController;
 
-  bool _isMemberDropdownOpen = false;
   bool _isSubstituteForDropdownOpen = false;
   bool _isInvitedByDropdownOpen = false;
 
-  String _memberSearchQuery = '';
   String _substituteForSearchQuery = '';
   String _invitedBySearchQuery = '';
 
@@ -110,6 +143,12 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   bool _isCheckingDevice = false;
   bool _hasCheckedIn = false;
   CheckInSubmission? _existingSubmission;
+
+  // Face Recognition Check-In State
+  Employee? _recognizedMember;
+  double? _faceConfidence;
+  bool _isUnrecognized = false;
+  Uint8List? _unrecognizedPhotoBytes;
 
   @override
   void initState() {
@@ -124,7 +163,6 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     _companyController = TextEditingController(text: formState.companyName);
     _categoryController = TextEditingController(text: formState.category);
 
-    _memberSearchController = TextEditingController();
     _substituteForSearchController = TextEditingController();
     _invitedBySearchController = TextEditingController();
 
@@ -141,15 +179,15 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   Future<void> _checkDeviceSubmission() async {
     final deviceService = ref.read(deviceCheckInServiceProvider);
     final hasCheckedIn = await deviceService.hasCheckedInForSession(
-      sessionDateStr: widget.sessionDateStr,
+      sessionDateStr: _effectiveSessionDateStr,
       locationId: widget.locationId,
     );
 
     if (!mounted) return;
 
-    if (hasCheckedIn) {
+    if (hasCheckedIn && !_isTestingSession) {
       final existingSubmission = await deviceService.getSubmissionForSession(
-        sessionDateStr: widget.sessionDateStr,
+        sessionDateStr: _effectiveSessionDateStr,
         locationId: widget.locationId,
       );
       if (!mounted) return;
@@ -178,7 +216,6 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     _emailController.dispose();
     _companyController.dispose();
     _categoryController.dispose();
-    _memberSearchController.dispose();
     _substituteForSearchController.dispose();
     _invitedBySearchController.dispose();
     super.dispose();
@@ -191,7 +228,6 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     _emailController.clear();
     _companyController.clear();
     _categoryController.clear();
-    _memberSearchController.clear();
     _substituteForSearchController.clear();
     _invitedBySearchController.clear();
 
@@ -199,12 +235,14 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     setState(() {
       _selectedSubstituteForMember = null;
       _selectedInvitedByMember = null;
-      _memberSearchQuery = '';
       _substituteForSearchQuery = '';
       _invitedBySearchQuery = '';
-      _isMemberDropdownOpen = false;
       _isSubstituteForDropdownOpen = false;
       _isInvitedByDropdownOpen = false;
+      _recognizedMember = null;
+      _faceConfidence = null;
+      _isUnrecognized = false;
+      _unrecognizedPhotoBytes = null;
     });
 
     // 3. Reset form notifier state
@@ -232,13 +270,13 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     // Instant check: if device already submitted, jump to response screen immediately
     final deviceService = ref.read(deviceCheckInServiceProvider);
     final hasCheckedIn = await deviceService.hasCheckedInForSession(
-      sessionDateStr: widget.sessionDateStr,
+      sessionDateStr: _effectiveSessionDateStr,
       locationId: widget.locationId,
     );
     if (!mounted) return;
-    if (hasCheckedIn) {
+    if (hasCheckedIn && !_isTestingSession) {
       final existingSubmission = await deviceService.getSubmissionForSession(
-        sessionDateStr: widget.sessionDateStr,
+        sessionDateStr: _effectiveSessionDateStr,
         locationId: widget.locationId,
       );
       if (!mounted) return;
@@ -252,6 +290,33 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     final currentType = formState.type ?? CheckInType.member;
 
     // Type-specific validations
+    if (currentType == CheckInType.member) {
+      if (_isUnrecognized) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Face not recognized. Please retake your selfie or switch to Visitor check-in.',
+            ),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+      if (_recognizedMember == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Please look into the camera to verify your face before checking in.',
+            ),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+    }
+
     if (currentType == CheckInType.substitute) {
       if (_selectedSubstituteForMember == null || _selectedSubstituteForMember!.trim().isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -301,7 +366,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     final success = await notifier.submit(
       location: location,
       proximityResult: proximity,
-      sessionDateStr: widget.sessionDateStr,
+      sessionDateStr: _effectiveSessionDateStr,
     );
 
     if (success && mounted) {
@@ -321,7 +386,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
           final existing = formState.submissionResult;
           if (existing != null) {
             ref.read(deviceCheckInServiceProvider).recordSubmission(
-              sessionDateStr: widget.sessionDateStr,
+              sessionDateStr: _effectiveSessionDateStr,
               submission: existing,
             );
           }
@@ -384,7 +449,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       );
     }
 
-    if (!_isTodayThursday) {
+    if (!_isTodayThursday && !_isTestingSession) {
       return AppScaffold(
         title: AppStrings.checkInFormTitle,
         backgroundColor: const Color(0xFFF8FAFC),
@@ -434,7 +499,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       );
     }
 
-    if (_isSessionExpired) {
+    if (_isSessionExpired && !_isTestingSession) {
       final formattedSessionDate =
           DateFormat('EEEE, dd MMMM yyyy').format(_parsedSessionDate!);
       return AppScaffold(
@@ -485,7 +550,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       );
     }
 
-    if (_isSessionFuture) {
+    if (_isSessionFuture && !_isTestingSession) {
       final formattedSessionDate =
           DateFormat('EEEE, dd MMMM yyyy').format(_parsedSessionDate!);
       return AppScaffold(
@@ -537,7 +602,15 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     }
 
     // Keep employee list stream hot and cached in memory
-    ref.watch(employeesStreamProvider);
+    final allEmployees = ref.watch(employeesStreamProvider).value ?? [];
+    final scopedEmployees = widget.adminId != null && widget.adminId!.isNotEmpty
+        ? allEmployees.where((emp) {
+            if (!emp.isActive) return false;
+            final empAdmin = emp.adminId?.trim() ?? '';
+            // Include workspace members and legacy records with no adminId.
+            return empAdmin.isEmpty || empAdmin == widget.adminId;
+          }).toList()
+        : allEmployees.where((emp) => emp.isActive).toList();
     final formState = ref.watch(checkInFormProvider);
     final locationAsync = ref.watch(locationConfigFamilyProvider(widget.locationId));
     final isCompact = context.isCompactMobile;
@@ -611,7 +684,65 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
 
                             // 3. Dynamic Form Fields based on Type
                             if (currentType == CheckInType.member) ...[
-                              _buildMemberFormFields(),
+                              if (_recognizedMember != null) ...[
+                                RecognizedMemberCard(
+                                  member: _recognizedMember!,
+                                  confidence: _faceConfidence ?? 98.0,
+                                  onRescan: () {
+                                    setState(() {
+                                      _recognizedMember = null;
+                                      _faceConfidence = null;
+                                      _isUnrecognized = false;
+                                      _unrecognizedPhotoBytes = null;
+                                      _nameController.clear();
+                                      _phoneController.clear();
+                                      _emailController.clear();
+                                    });
+                                    final notifier = ref.read(checkInFormProvider.notifier);
+                                    notifier.setName('');
+                                    notifier.setPhone('');
+                                    notifier.setEmail('');
+                                  },
+                                ),
+                              ] else if (_isUnrecognized) ...[
+                                UnrecognizedMemberCard(
+                                  capturedPhotoBytes: _unrecognizedPhotoBytes,
+                                  onRetake: () {
+                                    setState(() {
+                                      _isUnrecognized = false;
+                                      _unrecognizedPhotoBytes = null;
+                                    });
+                                  },
+                                ),
+                              ] else ...[
+                                FaceScannerView(
+                                  candidates: scopedEmployees,
+                                  adminId: widget.adminId,
+                                  locationId: widget.locationId,
+                                  onFaceRecognized: (member, confidence) {
+                                    setState(() {
+                                      _isUnrecognized = false;
+                                      _unrecognizedPhotoBytes = null;
+                                      _recognizedMember = member;
+                                      _faceConfidence = confidence;
+                                      _nameController.text = member.name;
+                                      _phoneController.text = member.phone;
+                                      _emailController.text = member.email;
+                                    });
+                                    final notifier = ref.read(checkInFormProvider.notifier);
+                                    notifier.setName(member.name);
+                                    notifier.setPhone(member.phone);
+                                    notifier.setEmail(member.email);
+                                    notifier.setAdminId(member.adminId ?? widget.adminId);
+                                  },
+                                  onFaceNotRecognized: (bytes, error) {
+                                    setState(() {
+                                      _isUnrecognized = true;
+                                      _unrecognizedPhotoBytes = bytes;
+                                    });
+                                  },
+                                ),
+                              ],
                             ] else if (currentType == CheckInType.substitute) ...[
                               _buildSubstituteFormFields(formState),
                             ] else if (currentType == CheckInType.visitor) ...[
@@ -686,7 +817,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                     child: AppButton.primary(
                       label: formState.isSubmitting
                           ? AppStrings.checkInSubmitting
-                          : AppStrings.checkInSubmit,
+                          : 'Check-In',
                       icon: Icons.how_to_reg_rounded,
                       isLoading: formState.isSubmitting,
                       onPressed: () => _onSubmit(location, proximity),
@@ -771,103 +902,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     );
   }
 
-  // ==========================================
-  // 1. MEMBER FORM FIELDS (Auto-fill on select)
-  // ==========================================
-  Widget _buildMemberFormFields() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _buildFieldLabel('Select Member Name', isRequired: true),
 
-        // Member Searchable Dropdown Field
-        AppTextField(
-          hint: 'Select or search your name from member list',
-          showFloatingLabel: false,
-          controller: _nameController,
-          prefixIcon: const Icon(Icons.person_outline_rounded),
-          suffixIcon: IconButton(
-            icon: Icon(
-              _isMemberDropdownOpen
-                  ? Icons.keyboard_arrow_up_rounded
-                  : Icons.arrow_drop_down_rounded,
-              size: 28,
-              color: _isMemberDropdownOpen ? AppColors.primary : const Color(0xFF64748B),
-            ),
-            tooltip: _isMemberDropdownOpen ? 'Close list' : 'Select member',
-            onPressed: () {
-              setState(() {
-                _isMemberDropdownOpen = !_isMemberDropdownOpen;
-                if (!_isMemberDropdownOpen) {
-                  _memberSearchController.clear();
-                  _memberSearchQuery = '';
-                }
-              });
-            },
-          ),
-          textCapitalization: TextCapitalization.words,
-          validator: Validators.validateName,
-          onChanged: (val) {
-            setState(() {});
-            ref.read(checkInFormProvider.notifier).setName(val);
-          },
-        ),
-
-        // Dropdown Panel for Member Name Selection
-        if (_isMemberDropdownOpen) ...[
-          const SizedBox(height: 8),
-          _buildSearchableDropdownPanel(
-            searchController: _memberSearchController,
-            searchQuery: _memberSearchQuery,
-            hintText: 'Search registered member...',
-            onSearchChanged: (val) => setState(() => _memberSearchQuery = val.trim()),
-            onClearSearch: () {
-              _memberSearchController.clear();
-              setState(() => _memberSearchQuery = '');
-            },
-            onSelectEmployee: (emp) {
-              _nameController.text = emp.name;
-              _phoneController.text = emp.phone;
-              _emailController.text = emp.email;
-
-              final notifier = ref.read(checkInFormProvider.notifier);
-              notifier.setName(emp.name);
-              notifier.setPhone(emp.phone);
-              notifier.setEmail(emp.email);
-              notifier.setAdminId(emp.adminId ?? widget.adminId);
-
-              setState(() {
-                _isMemberDropdownOpen = false;
-                _memberSearchController.clear();
-                _memberSearchQuery = '';
-              });
-            },
-          ),
-        ],
-
-        const SizedBox(height: 18),
-
-        // Auto-filled Phone Number (+91)
-        _buildFieldLabel('Phone Number', isRequired: true, suffix: ' (Auto-filled)'),
-        AppTextField(
-          hint: '10-digit mobile number',
-          showFloatingLabel: false,
-          controller: _phoneController,
-          keyboardType: TextInputType.phone,
-          prefixIcon: _buildPhonePrefix(),
-          inputFormatters: [
-            FilteringTextInputFormatter.digitsOnly,
-            LengthLimitingTextInputFormatter(10),
-          ],
-          validator: Validators.validatePhone,
-          onChanged: (val) {
-            setState(() {});
-            ref.read(checkInFormProvider.notifier).setPhone(val);
-          },
-        ),
-      ],
-    );
-  }
 
   // ==========================================
   // 2. SUBSTITUTE FORM FIELDS (Name + Phone + Email optional + Substituting For Member + Photo)

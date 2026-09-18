@@ -9,6 +9,8 @@ class Employee {
     this.designation = '',
     this.isActive = true,
     this.adminId,
+    this.photoUrl,
+    this.faceEmbedding,
     this.createdAt,
     this.updatedAt,
   });
@@ -37,6 +39,12 @@ class Employee {
   /// Unique ID of the Admin account whose workspace this employee belongs to.
   final String? adminId;
 
+  /// Optional profile/face photo URL.
+  final String? photoUrl;
+
+  /// 192-dimension normalized biometric face embedding vector.
+  final List<double>? faceEmbedding;
+
   /// Timestamp when employee was added.
   final DateTime? createdAt;
 
@@ -52,6 +60,8 @@ class Employee {
     String? designation,
     bool? isActive,
     String? adminId,
+    String? photoUrl,
+    List<double>? faceEmbedding,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -64,6 +74,8 @@ class Employee {
       designation: designation ?? this.designation,
       isActive: isActive ?? this.isActive,
       adminId: adminId ?? this.adminId,
+      photoUrl: photoUrl ?? this.photoUrl,
+      faceEmbedding: faceEmbedding ?? this.faceEmbedding,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -79,12 +91,21 @@ class Employee {
       'designation': designation,
       'isActive': isActive,
       'adminId': adminId,
+      if (photoUrl != null) 'photoUrl': photoUrl,
+      if (faceEmbedding != null) 'faceEmbedding': faceEmbedding,
       'createdAt': createdAt?.toIso8601String(),
       'updatedAt': updatedAt?.toIso8601String(),
     };
   }
 
   factory Employee.fromMap(Map<String, dynamic> map, {String? docId}) {
+    List<double>? parsedEmbedding;
+    if (map['faceEmbedding'] is List) {
+      parsedEmbedding = (map['faceEmbedding'] as List)
+          .map((e) => (e as num).toDouble())
+          .toList();
+    }
+
     return Employee(
       id: docId ?? map['id']?.toString() ?? '',
       name: map['name']?.toString() ?? '',
@@ -94,6 +115,8 @@ class Employee {
       designation: map['designation']?.toString() ?? '',
       isActive: map['isActive'] as bool? ?? true,
       adminId: map['adminId']?.toString(),
+      photoUrl: map['photoUrl']?.toString(),
+      faceEmbedding: parsedEmbedding,
       createdAt: map['createdAt'] != null
           ? DateTime.tryParse(map['createdAt'].toString())
           : null,

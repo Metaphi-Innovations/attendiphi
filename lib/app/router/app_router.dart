@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -21,6 +22,28 @@ import '../../features/qr_checkin/presentation/screens/qr_scanner_screen.dart';
 import '../../features/qr_checkin/presentation/screens/venue_qr_display_screen.dart';
 import '../../features/substitute/presentation/screens/photo_capture_screen.dart';
 import 'route_names.dart';
+
+/// Robust helper to extract query parameters on both Native and Flutter Web (with hash routing).
+String? _extractQueryParam(GoRouterState state, String key) {
+  final val = state.uri.queryParameters[key];
+  if (val != null && val.trim().isNotEmpty) return val.trim();
+
+  if (kIsWeb) {
+    if (Uri.base.queryParameters.containsKey(key)) {
+      final baseVal = Uri.base.queryParameters[key];
+      if (baseVal != null && baseVal.trim().isNotEmpty) return baseVal.trim();
+    }
+    if (Uri.base.hasFragment && Uri.base.fragment.contains('?')) {
+      final fragIndex = Uri.base.fragment.indexOf('?');
+      final queryStr = Uri.base.fragment.substring(fragIndex + 1);
+      final parsed = Uri.splitQueryString(queryStr);
+      if (parsed.containsKey(key) && parsed[key]!.trim().isNotEmpty) {
+        return parsed[key]!.trim();
+      }
+    }
+  }
+  return null;
+}
 
 /// Key for the root navigator.
 final rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
@@ -181,8 +204,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: RouteNames.locationPermission,
         name: 'location_permission',
         builder: (context, state) {
-          final queryAdminId = state.uri.queryParameters['adminId'];
-          final queryDate = state.uri.queryParameters['date'];
+          final queryAdminId = _extractQueryParam(state, 'adminId');
+          final queryDate = _extractQueryParam(state, 'date');
           final location =
               state.extra as LocationConfig? ??
               const LocationConfig(
@@ -218,9 +241,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: RouteNames.checkinForm,
         name: 'checkin_form',
         builder: (context, state) {
-          final locationId = state.pathParameters['locationId'] ?? 'location_x';
-          final queryAdminId = state.uri.queryParameters['adminId'];
-          final queryDate = state.uri.queryParameters['date'];
+          final locationId = state.pathParameters['locationId'] ??
+              _extractQueryParam(state, 'locationId') ??
+              'location_x';
+          final queryAdminId = _extractQueryParam(state, 'adminId');
+          final queryDate = _extractQueryParam(state, 'date');
           final proximityResult = state.extra as ProximityResult?;
           return CheckInFormScreen(
             locationId: locationId,

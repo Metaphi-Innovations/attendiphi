@@ -136,7 +136,7 @@ class _PageLoadingTransitionWrapperState
         .contains('TestWidgetsFlutterBinding');
 
     final duration = widget.minimumDuration ??
-        (isTest ? Duration.zero : const Duration(milliseconds: 300));
+        (isTest ? Duration.zero : const Duration(seconds: 1));
 
     if (duration == Duration.zero) {
       _isLoading = false;

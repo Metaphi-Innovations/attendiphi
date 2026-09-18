@@ -12,7 +12,7 @@
 ## 🌐 Live Application
 
 - **Production Portal**: [https://attendiphi-by-metaphi.web.app](https://attendiphi-by-metaphi.web.app/#/daily-attendance)
-- **Alternate / Dev URL**: [https://qr-checkin-dev.web.app](https://qr-checkin-dev.web.app/#/daily-attendance)
+
 
 ---
 
