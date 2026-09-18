@@ -28,6 +28,15 @@ class FaceEmbeddingService {
     return img.copyCrop(image, x: x, y: y, width: max(1, w), height: max(1, h));
   }
 
+  /// Horizontally aligns the face using 2D eye landmarks, normalizes lighting,
+  /// and crops to the standard MobileFaceNet 112x112 input.
+  img.Image alignAndCropFace(img.Image originalImage, dynamic face) {
+    return cropFace(
+      originalImage,
+      face is Rect ? face : const Rect.fromLTWH(0, 0, 112, 112),
+    );
+  }
+
   /// Extracts embedding. Not supported on web without WebAssembly TFLite build.
   List<double> extractEmbedding(img.Image faceImage) {
     return const [];

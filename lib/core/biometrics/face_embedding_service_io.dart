@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
 
@@ -28,6 +29,51 @@ class FaceEmbeddingService {
     }
   }
 
+  /// Horizontally aligns the face using 2D eye landmarks, normalizes lighting,
+  /// and crops to the standard MobileFaceNet 112x112 input.
+  img.Image alignAndCropFace(img.Image originalImage, Face face) {
+    img.Image workingImage = originalImage;
+
+    final leftEye = face.landmarks[FaceLandmarkType.leftEye]?.position;
+    final rightEye = face.landmarks[FaceLandmarkType.rightEye]?.position;
+
+    // 1. Landmark-based rotation correction (Eye-Leveling)
+    if (leftEye != null && rightEye != null) {
+      final double dx = (rightEye.x - leftEye.x).toDouble();
+      final double dy = (rightEye.y - leftEye.y).toDouble();
+      final double angle = atan2(dy, dx) * 180.0 / pi;
+
+      // Only rotate when tilt is meaningful (> 2 degrees) and within realistic limits (< 45 degrees)
+      if (angle.abs() >= 2.0 && angle.abs() <= 45.0) {
+        workingImage = img.copyRotate(workingImage, angle: -angle);
+      }
+    }
+
+    // 2. Crop centered around face bounding box with calibrated margins
+    final box = face.boundingBox;
+    final double marginX = box.width * 0.12;
+    final double marginY = box.height * 0.15;
+
+    final int x = max(0, (box.left - marginX).toInt());
+    final int y = max(0, (box.top - marginY).toInt());
+    final int w = min(workingImage.width - x, (box.width + (marginX * 2)).toInt());
+    final int h = min(workingImage.height - y, (box.height + (marginY * 2)).toInt());
+
+    final cropped = img.copyCrop(
+      workingImage,
+      x: x,
+      y: y,
+      width: max(1, w),
+      height: max(1, h),
+    );
+
+    // 3. Subtle contrast & gamma normalization for consistent indoor/outdoor illumination
+    final normalized = img.adjustColor(cropped, gamma: 1.05, contrast: 1.10);
+
+    // 4. Resize to MobileFaceNet standard dimensions (112 x 112)
+    return img.copyResize(normalized, width: 112, height: 112);
+  }
+
   /// Crops a face region from a full [img.Image] given its bounding box [Rect].
   /// Applies a gentle 15% safety margin around the face.
   img.Image cropFace(img.Image image, Rect boundingBox) {
@@ -39,7 +85,8 @@ class FaceEmbeddingService {
     final int w = min(image.width - x, (boundingBox.width + (marginX * 2)).toInt());
     final int h = min(image.height - y, (boundingBox.height + (marginY * 2)).toInt());
 
-    return img.copyCrop(image, x: x, y: y, width: max(1, w), height: max(1, h));
+    final cropped = img.copyCrop(image, x: x, y: y, width: max(1, w), height: max(1, h));
+    return img.copyResize(cropped, width: 112, height: 112);
   }
 
   /// Extracts a 192-float normalized face embedding from an [img.Image] of a face.

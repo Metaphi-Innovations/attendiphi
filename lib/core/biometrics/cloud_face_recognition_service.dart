@@ -83,6 +83,7 @@ class CloudFaceRecognitionService {
           Employee? bestCandidate;
           double bestSimilarity = -1.0;
           double secondBestSimilarity = -1.0;
+          var scoredCount = 0;
 
           final resolved = await Future.wait(
             candidatesWithPhoto.map((candidate) async {
@@ -98,6 +99,7 @@ class CloudFaceRecognitionService {
             if (candBank == null || !candBank.hasValidFeatures) continue;
 
             final sim = probeBank.maxSimilarity(candBank);
+            scoredCount++;
             if (sim > bestSimilarity) {
               secondBestSimilarity = bestSimilarity;
               bestSimilarity = sim;
@@ -107,26 +109,32 @@ class CloudFaceRecognitionService {
             }
           }
 
-          // Same person across cameras/lighting typically lands 0.62–0.92.
-          // Different people (even similar skin tone) stay lower, especially
-          // when a margin vs the runner-up is required in a multi-member chapter.
-          const double strongMatch = 0.74;
-          const double likelyMatch = 0.64;
-          const double minMargin = 0.045;
+          // 1:N identification: accept the unique nearest enrolled photo.
+          // Same person (tight roster headshot vs wide live selfie) often
+          // scores ~0.58–0.88. Wrong person should lose on margin, not on
+          // an absolute bar that also rejects the true member.
+          const double likelyMatch = 0.58;
+          const double strongMatch = 0.70;
+          const double soloMatch = 0.72;
+          const double minMargin = 0.03;
+
+          final margin = bestSimilarity -
+              (secondBestSimilarity < 0 ? 0.0 : secondBestSimilarity);
 
           AppLogger.info(
-            'Visual match analysis: best=${bestCandidate?.name} ($bestSimilarity), runnerUp=$secondBestSimilarity',
+            'Visual match analysis: best=${bestCandidate?.name} ($bestSimilarity), runnerUp=$secondBestSimilarity, margin=$margin, scored=$scoredCount',
             tag: 'CloudFaceRecognitionService',
           );
 
           if (bestCandidate != null) {
-            final photoCount = candidatesWithPhoto.length;
-            final margin = bestSimilarity - (secondBestSimilarity < 0 ? 0.0 : secondBestSimilarity);
-            final isStrong = bestSimilarity >= strongMatch;
-            final isLikely = bestSimilarity >= likelyMatch &&
-                (photoCount == 1 || margin >= minMargin);
+            final unique = scoredCount < 2 ||
+                margin >= minMargin ||
+                bestSimilarity >= strongMatch;
+            final meetsScore = scoredCount >= 2
+                ? bestSimilarity >= likelyMatch
+                : bestSimilarity >= soloMatch;
 
-            if (isStrong || isLikely) {
+            if (unique && meetsScore) {
               final confidence = (bestSimilarity * 100.0).clamp(78.0, 99.0);
               AppLogger.info(
                 '✓ Client Face Match found: ${bestCandidate.name} (confidence: ${confidence.toStringAsFixed(1)}%)',
@@ -257,8 +265,14 @@ class _FaceSignatureBank {
       final signatures = <_FaceSignature>[];
 
       void addFrom(img.Image source) {
-        for (final crop in _cropWindows) {
-          final extracted = _FaceSignature.fromImage(_applyCrop(source, crop));
+        final rois = <img.Image>[
+          source,
+          _faceRoi(source),
+          _applyCrop(source, (0.18, 0.10, 0.64, 0.78)),
+          _applyCrop(source, (0.24, 0.14, 0.52, 0.62)),
+        ];
+        for (final roi in rois) {
+          final extracted = _FaceSignature.fromImage(roi);
           if (extracted != null) signatures.add(extracted);
         }
       }
@@ -275,13 +289,46 @@ class _FaceSignatureBank {
     }
   }
 
-  /// Crop windows as (xRatio, yRatio, widthRatio, heightRatio).
-  static const List<(double, double, double, double)> _cropWindows = [
-    (0.0, 0.0, 1.0, 1.0),
-    (0.175, 0.12, 0.65, 0.76),
-    (0.22, 0.16, 0.56, 0.64),
-    (0.10, 0.06, 0.80, 0.84),
-  ];
+  static img.Image _faceRoi(img.Image source) {
+    var minX = source.width;
+    var minY = source.height;
+    var maxX = 0;
+    var maxY = 0;
+    var count = 0;
+    final step = max(1, min(source.width, source.height) ~/ 90);
+    for (var y = 0; y < source.height; y += step) {
+      for (var x = 0; x < source.width; x += step) {
+        final p = source.getPixel(x, y);
+        if (!_isSkin(p.r.toDouble(), p.g.toDouble(), p.b.toDouble())) {
+          continue;
+        }
+        count++;
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+    }
+    final sampled =
+        (source.width / step).ceil() * (source.height / step).ceil();
+    if (count < sampled * 0.04 || maxX <= minX || maxY <= minY) {
+      return _applyCrop(source, (0.18, 0.10, 0.64, 0.78));
+    }
+    final padX = max(8, ((maxX - minX) * 0.18).round());
+    final padY = max(8, ((maxY - minY) * 0.22).round());
+    final x = max(0, minX - padX);
+    final y = max(0, minY - padY);
+    final w = min(source.width - x, (maxX - minX) + padX * 2);
+    final h = min(source.height - y, (maxY - minY) + padY * 2);
+    return img.copyCrop(source, x: x, y: y, width: max(1, w), height: max(1, h));
+  }
+
+  static bool _isSkin(double r, double g, double b) {
+    final y = 0.299 * r + 0.587 * g + 0.114 * b;
+    final cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
+    final cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
+    return y > 40 && cb > 77 && cb < 135 && cr > 130 && cr < 180;
+  }
 
   static img.Image _applyCrop(
     img.Image source,
@@ -317,8 +364,9 @@ class _FaceSignatureBank {
     if (perProbe.isEmpty) return 0.0;
     perProbe.sort();
     final median = perProbe[perProbe.length ~/ 2];
-    // Peak catches the best crop/mirror pair; median rejects a single lucky crop.
-    return (0.45 * peak + 0.55 * median).clamp(0.0, 1.0);
+    // Peak is the correctly aligned face crop (roster headshot vs live selfie).
+    // Median only slightly regularizes so one noisy window cannot dominate.
+    return (0.80 * peak + 0.20 * median).clamp(0.0, 1.0);
   }
 }
 
@@ -327,12 +375,14 @@ class _FaceSignature {
   final List<double> hog;
   final List<double> lbp;
   final List<double> structure;
+  final int dHash;
   final bool hasValidFeatures;
 
   const _FaceSignature({
     required this.hog,
     required this.lbp,
     required this.structure,
+    required this.dHash,
     required this.hasValidFeatures,
   });
 
@@ -476,6 +526,7 @@ class _FaceSignature {
         hog: hog,
         lbp: lbp,
         structure: structure,
+        dHash: _differenceHash(face),
         hasValidFeatures: hasFeatures,
       );
     } catch (_) {
@@ -508,6 +559,30 @@ class _FaceSignature {
     }
   }
 
+  static int _differenceHash(img.Image face) {
+    final small = img.copyResize(face, width: 9, height: 8);
+    var hash = 0;
+    for (var y = 0; y < 8; y++) {
+      for (var x = 0; x < 8; x++) {
+        final left = small.getPixel(x, y);
+        final right = small.getPixel(x + 1, y);
+        final lLuma = 0.299 * left.r + 0.587 * left.g + 0.114 * left.b;
+        final rLuma = 0.299 * right.r + 0.587 * right.g + 0.114 * right.b;
+        hash = (hash << 1) | (lLuma > rLuma ? 1 : 0);
+      }
+    }
+    return hash;
+  }
+
+  static int _hamming(int a, int b) {
+    final x = a ^ b;
+    var bits = 0;
+    for (var i = 0; i < 64; i++) {
+      bits += (x >> i) & 1;
+    }
+    return bits;
+  }
+
   double compareWith(_FaceSignature other) {
     if (!hasValidFeatures || !other.hasValidFeatures) {
       return 0.0;
@@ -532,6 +607,9 @@ class _FaceSignature {
     final r = (structDot / structure.length).clamp(-1.0, 1.0);
     final structSim = ((r + 1.0) / 2.0).clamp(0.0, 1.0);
 
-    return (0.42 * hogSim + 0.28 * lbpSim + 0.30 * structSim).clamp(0.0, 1.0);
+    final dHashSim = (1.0 - (_hamming(dHash, other.dHash) / 64.0)).clamp(0.0, 1.0);
+
+    return (0.30 * hogSim + 0.18 * lbpSim + 0.30 * structSim + 0.22 * dHashSim)
+        .clamp(0.0, 1.0);
   }
 }

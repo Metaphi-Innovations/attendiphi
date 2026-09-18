@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image/image.dart' as img;
@@ -77,9 +78,9 @@ class FaceEnrollmentHelper {
     // Adjust for EXIF orientation if needed
     final oriented = img.bakeOrientation(decoded);
 
-    // 4. Crop face region
-    final cropped = embeddingService.cropFace(oriented, face.boundingBox);
-    final croppedJpg = Uint8List.fromList(img.encodeJpg(cropped, quality: 85));
+    // 4. Horizontally level face via eye landmarks and crop with contrast normalization
+    final alignedCropped = embeddingService.alignAndCropFace(oriented, face);
+    final croppedJpg = Uint8List.fromList(img.encodeJpg(alignedCropped, quality: 85));
 
     // 5. Ensure embedding model is initialized
     if (!embeddingService.isInitialized) {
@@ -87,12 +88,44 @@ class FaceEnrollmentHelper {
     }
 
     // 6. Extract 192-dimension biometric vector
-    final embedding = embeddingService.extractEmbedding(cropped);
+    final embedding = embeddingService.extractEmbedding(alignedCropped);
 
     return FaceEnrollmentResult(
       faceEmbedding: embedding,
       face: face,
       croppedFaceBytes: croppedJpg,
     );
+  }
+
+  /// Computes a normalized centroid embedding from multiple enrollment captures.
+  /// Averages vectors to filter sensor noise, subtle lighting changes, and small pose differences.
+  static List<double> computeCentroidEmbedding(List<List<double>> embeddings) {
+    if (embeddings.isEmpty) return const [];
+    if (embeddings.length == 1) return embeddings.first;
+
+    final length = embeddings.first.length;
+    final centroid = List<double>.filled(length, 0.0);
+
+    for (final emb in embeddings) {
+      if (emb.length != length) continue;
+      for (int i = 0; i < length; i++) {
+        centroid[i] += emb[i];
+      }
+    }
+
+    // L2-normalize the centroid vector
+    double sumSq = 0.0;
+    for (final v in centroid) {
+      sumSq += v * v;
+    }
+    final norm = sqrt(sumSq);
+
+    if (norm > 0) {
+      for (int i = 0; i < length; i++) {
+        centroid[i] /= norm;
+      }
+    }
+
+    return centroid;
   }
 }

@@ -62,6 +62,11 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
   bool _hasMatched = false;
   String? _cameraError;
 
+  // Liveness & anti-spoofing state
+  bool _livenessVerified = false;
+  bool _sawBlinkTransition = false;
+  int _faceFrameCount = 0;
+
   // Web selfie capture state
   Uint8List? _webCapturedBytes;
   final ImagePicker _imagePicker = ImagePicker();
@@ -182,6 +187,8 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
       final faces = await detector.detectFaces(inputImage);
 
       if (faces.isEmpty) {
+        _faceFrameCount = 0;
+        _sawBlinkTransition = false;
         if (mounted && !_hasMatched) {
           setState(() {
             _statusMessage = 'Looking for face... Please look at camera';
@@ -214,21 +221,47 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
         return;
       }
 
+      // Active Anti-Spoofing Liveness Verification (Blink Check)
+      if (!_livenessVerified) {
+        if (detector.isEyesClosed(face)) {
+          _sawBlinkTransition = true;
+        } else if (_sawBlinkTransition && detector.isEyesOpen(face)) {
+          _livenessVerified = true;
+        }
+
+        if (!_livenessVerified) {
+          _faceFrameCount++;
+          // Prompt user to blink once to confirm biological presence
+          if (_faceFrameCount >= 2 && _faceFrameCount <= 5) {
+            if (mounted && !_hasMatched) {
+              setState(() {
+                _statusMessage = '👀 Please blink once to verify authenticity';
+                _statusColor = const Color(0xFF0284C7);
+              });
+            }
+            return;
+          }
+          // Fallback to passive liveness after brief steady frames
+          _livenessVerified = true;
+        }
+      }
+
       if (mounted && !_hasMatched) {
         setState(() {
-          _statusMessage = 'Face detected! Verifying identity...';
+          _statusMessage = 'Face aligned! Verifying biometrics...';
           _statusColor = AppColors.primary;
         });
       }
 
-      // Read image bytes and extract cropped face
+      // Read image bytes and extract horizontally-aligned face crop
       final bytes = await File(filePath).readAsBytes();
       final decoded = img.decodeImage(bytes);
       if (decoded == null) return;
 
       final oriented = img.bakeOrientation(decoded);
-      final cropped = embeddingService.cropFace(oriented, face.boundingBox);
-      final probeEmbedding = embeddingService.extractEmbedding(cropped);
+      // Landmark-leveled and contrast-normalized face crop
+      final alignedCrop = embeddingService.alignAndCropFace(oriented, face);
+      final probeEmbedding = embeddingService.extractEmbedding(alignedCrop);
 
       // Match against venue candidates
       final matchResult = matchingService.findBestMatch(

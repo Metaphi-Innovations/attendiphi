@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
@@ -31,6 +32,7 @@ class FaceDetectorService {
   void _initDetector() {
     if (kIsWeb) return;
     final options = FaceDetectorOptions(
+      enableLandmarks: true, // Extract eyes, nose, mouth landmarks for 2D facial alignment
       enableClassification: true, // Needed for eye open and smile probability (liveness)
       enableTracking: true,
       performanceMode: FaceDetectorMode.accurate,
@@ -46,6 +48,42 @@ class FaceDetectorService {
       _initDetector();
     }
     return await _detector?.processImage(inputImage) ?? [];
+  }
+
+  /// Calculates the rotation angle in degrees between the left eye and right eye.
+  /// Returns 0.0 if landmarks are unavailable.
+  /// A positive angle indicates the head is tilted rightwards; negative for leftwards.
+  double computeEyeRotationAngle(Face face) {
+    final leftEye = face.landmarks[FaceLandmarkType.leftEye]?.position;
+    final rightEye = face.landmarks[FaceLandmarkType.rightEye]?.position;
+
+    if (leftEye == null || rightEye == null) {
+      // Fallback to Euler angle Z (roll) if landmarks are not registered
+      return face.headEulerAngleZ ?? 0.0;
+    }
+
+    // In image coordinate space:
+    // Left eye is on subject's left (appears on camera right in non-mirrored, or vice versa)
+    final double dx = (rightEye.x - leftEye.x).toDouble();
+    final double dy = (rightEye.y - leftEye.y).toDouble();
+
+    if (dx.abs() < 1e-6) return 0.0;
+
+    // Angle in degrees from horizontal
+    final double rad = atan2(dy, dx);
+    return rad * 180.0 / pi;
+  }
+
+  /// Computes the inter-pupillary Euclidean distance between both eyes.
+  double? computeInterEyeDistance(Face face) {
+    final leftEye = face.landmarks[FaceLandmarkType.leftEye]?.position;
+    final rightEye = face.landmarks[FaceLandmarkType.rightEye]?.position;
+
+    if (leftEye == null || rightEye == null) return null;
+
+    final dx = (rightEye.x - leftEye.x).toDouble();
+    final dy = (rightEye.y - leftEye.y).toDouble();
+    return sqrt(dx * dx + dy * dy);
   }
 
   /// Validates whether a detected face meets production quality & orientation standards.

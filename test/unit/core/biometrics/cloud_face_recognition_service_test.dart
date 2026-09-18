@@ -113,6 +113,93 @@ void main() {
       expect(result.errorMessage, contains('Server face check unavailable (500)'));
     });
 
+    test('Matches Omkar selfie to Omkar, not Rinku, when both members are enrolled', () async {
+      img.Image buildRinku() {
+        final imgObj = img.Image(width: 96, height: 96);
+        img.fill(imgObj, color: img.ColorRgb8(210, 170, 140));
+        img.fillRect(imgObj, x1: 18, y1: 8, x2: 78, y2: 28, color: img.ColorRgb8(40, 28, 20));
+        img.fillRect(imgObj, x1: 28, y1: 34, x2: 40, y2: 42, color: img.ColorRgb8(30, 20, 20));
+        img.fillRect(imgObj, x1: 56, y1: 34, x2: 68, y2: 42, color: img.ColorRgb8(30, 20, 20));
+        img.fillRect(imgObj, x1: 44, y1: 46, x2: 52, y2: 60, color: img.ColorRgb8(150, 110, 90));
+        img.fillRect(imgObj, x1: 34, y1: 68, x2: 62, y2: 76, color: img.ColorRgb8(170, 70, 70));
+        return imgObj;
+      }
+
+      img.Image buildOmkar() {
+        final imgObj = img.Image(width: 96, height: 96);
+        img.fill(imgObj, color: img.ColorRgb8(90, 70, 55));
+        img.fillRect(imgObj, x1: 8, y1: 6, x2: 88, y2: 22, color: img.ColorRgb8(20, 16, 12));
+        img.fillRect(imgObj, x1: 22, y1: 40, x2: 34, y2: 50, color: img.ColorRgb8(15, 10, 10));
+        img.fillRect(imgObj, x1: 62, y1: 40, x2: 74, y2: 50, color: img.ColorRgb8(15, 10, 10));
+        img.fillRect(imgObj, x1: 44, y1: 52, x2: 54, y2: 68, color: img.ColorRgb8(80, 55, 40));
+        img.fillRect(imgObj, x1: 30, y1: 74, x2: 66, y2: 84, color: img.ColorRgb8(50, 30, 25));
+        return imgObj;
+      }
+
+      final rinkuPhoto = base64Encode(Uint8List.fromList(img.encodeJpg(buildRinku())));
+      final omkarPhoto = base64Encode(Uint8List.fromList(img.encodeJpg(buildOmkar())));
+      final omkarSelfie = base64Encode(
+        Uint8List.fromList(img.encodeJpg(img.flipHorizontal(buildOmkar()))),
+      );
+
+      final rinku = Employee(
+        id: 'emp_rinku',
+        name: 'Rinku Saroj',
+        phone: '7303469139',
+        photoUrl: rinkuPhoto,
+      );
+      final omkar = Employee(
+        id: 'emp_omkar',
+        name: 'Omkar Anarse',
+        phone: '8356011246',
+        photoUrl: omkarPhoto,
+      );
+
+      final service = CloudFaceRecognitionService();
+      final result = await service.matchFace(
+        photoBase64: omkarSelfie,
+        candidates: [rinku, omkar],
+      );
+
+      expect(result.isMatch, isTrue);
+      expect(result.matchedMember?.id, equals('emp_omkar'));
+      expect(result.matchedMember?.name, equals('Omkar Anarse'));
+    });
+
+    test('Matches roster headshot against a wider live selfie of the same member', () async {
+      img.Image buildFace() {
+        final imgObj = img.Image(width: 80, height: 80);
+        img.fill(imgObj, color: img.ColorRgb8(190, 145, 120));
+        img.fillRect(imgObj, x1: 18, y1: 8, x2: 62, y2: 24, color: img.ColorRgb8(35, 22, 16));
+        img.fillRect(imgObj, x1: 22, y1: 30, x2: 32, y2: 38, color: img.ColorRgb8(25, 18, 16));
+        img.fillRect(imgObj, x1: 48, y1: 30, x2: 58, y2: 38, color: img.ColorRgb8(25, 18, 16));
+        img.fillRect(imgObj, x1: 36, y1: 40, x2: 44, y2: 52, color: img.ColorRgb8(150, 105, 85));
+        img.fillRect(imgObj, x1: 28, y1: 58, x2: 52, y2: 66, color: img.ColorRgb8(90, 50, 45));
+        return imgObj;
+      }
+
+      final headshot = buildFace();
+      final wideSelfie = img.Image(width: 160, height: 160);
+      img.fill(wideSelfie, color: img.ColorRgb8(210, 220, 230));
+      img.compositeImage(wideSelfie, headshot, dstX: 40, dstY: 28);
+
+      final omkar = Employee(
+        id: 'emp_omkar',
+        name: 'Omkar Anarse',
+        phone: '8356011246',
+        photoUrl: base64Encode(Uint8List.fromList(img.encodeJpg(headshot))),
+      );
+
+      final service = CloudFaceRecognitionService();
+      final result = await service.matchFace(
+        photoBase64: base64Encode(Uint8List.fromList(img.encodeJpg(wideSelfie))),
+        candidates: [omkar],
+      );
+
+      expect(result.isMatch, isTrue);
+      expect(result.matchedMember?.id, equals('emp_omkar'));
+    });
+
     test('Matches enrolled member when live selfie is mirrored and brighter', () async {
       img.Image buildFace({required int brightnessOffset}) {
         final imgObj = img.Image(width: 96, height: 96);

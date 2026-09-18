@@ -149,6 +149,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   double? _faceConfidence;
   bool _isUnrecognized = false;
   Uint8List? _unrecognizedPhotoBytes;
+  int _faceScanGeneration = 0;
 
   @override
   void initState() {
@@ -156,24 +157,25 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     // Warm up employee / member list in memory so dropdown opens instantly
     ref.read(employeesStreamProvider);
 
-    final formState = ref.read(checkInFormProvider);
-    _nameController = TextEditingController(text: formState.name);
-    _phoneController = TextEditingController(text: formState.phone);
-    _emailController = TextEditingController(text: formState.email);
-    _companyController = TextEditingController(text: formState.companyName);
-    _categoryController = TextEditingController(text: formState.category);
+    // Always start this QR scan with empty identity fields so the previous
+    // member on a shared device cannot leak into the next selfie.
+    _nameController = TextEditingController();
+    _phoneController = TextEditingController();
+    _emailController = TextEditingController();
+    _companyController = TextEditingController();
+    _categoryController = TextEditingController();
 
     _substituteForSearchController = TextEditingController();
     _invitedBySearchController = TextEditingController();
 
-    _selectedSubstituteForMember = formState.substituteForMember;
-    _selectedInvitedByMember = formState.invitedByMember;
-
-    if (widget.adminId != null && widget.adminId!.isNotEmpty) {
-      ref.read(checkInFormProvider.notifier).setAdminId(widget.adminId);
-    }
-
-    _checkDeviceSubmission();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(checkInFormProvider.notifier).reset();
+      if (widget.adminId != null && widget.adminId!.isNotEmpty) {
+        ref.read(checkInFormProvider.notifier).setAdminId(widget.adminId);
+      }
+      _checkDeviceSubmission();
+    });
   }
 
   Future<void> _checkDeviceSubmission() async {
@@ -243,6 +245,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       _faceConfidence = null;
       _isUnrecognized = false;
       _unrecognizedPhotoBytes = null;
+      _faceScanGeneration++;
     });
 
     // 3. Reset form notifier state
@@ -694,6 +697,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                                       _faceConfidence = null;
                                       _isUnrecognized = false;
                                       _unrecognizedPhotoBytes = null;
+                                      _faceScanGeneration++;
                                       _nameController.clear();
                                       _phoneController.clear();
                                       _emailController.clear();
@@ -711,11 +715,13 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                                     setState(() {
                                       _isUnrecognized = false;
                                       _unrecognizedPhotoBytes = null;
+                                      _faceScanGeneration++;
                                     });
                                   },
                                 ),
                               ] else ...[
                                 FaceScannerView(
+                                  key: ValueKey('face-scan-$_faceScanGeneration'),
                                   candidates: scopedEmployees,
                                   adminId: widget.adminId,
                                   locationId: widget.locationId,

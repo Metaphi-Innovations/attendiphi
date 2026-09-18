@@ -76,6 +76,26 @@ void main() {
       expect(result.confidence, greaterThan(90.0));
     });
 
+    test('findBestMatch is false when two members are similarly close', () {
+      final probe = createMockEmbedding(5.0);
+      final almostSame = List<double>.from(probe);
+      almostSame[0] += 0.01;
+      final alsoClose = List<double>.from(probe);
+      alsoClose[1] += 0.012;
+
+      final result = service.findBestMatch(
+        probeEmbedding: probe,
+        candidates: [
+          Employee(id: 'emp_a', name: 'Rinku Saroj', faceEmbedding: almostSame),
+          Employee(id: 'emp_b', name: 'Omkar Anarse', faceEmbedding: alsoClose),
+        ],
+        threshold: 0.75,
+      );
+
+      expect(result, isNotNull);
+      expect(result!.isMatch, isFalse);
+    });
+
     test('findBestMatch returns isMatch = false when distance exceeds threshold', () {
       final probe = createMockEmbedding(10.0);
       final candidateEmb = createMockEmbedding(20.0);
@@ -97,6 +117,46 @@ void main() {
 
       expect(result, isNotNull);
       expect(result!.isMatch, isFalse);
+    });
+
+    test('Cosine similarity calculation produces exact mathematical values', () {
+      final vecA = [1.0, 0.0, 0.0];
+      final vecB = [1.0, 0.0, 0.0];
+      final vecOrthogonal = [0.0, 1.0, 0.0];
+      final vecOpposite = [-1.0, 0.0, 0.0];
+
+      expect(service.calculateCosineSimilarity(vecA, vecB), closeTo(1.0, 0.0001));
+      expect(service.calculateCosineSimilarity(vecA, vecOrthogonal), closeTo(0.0, 0.0001));
+      expect(service.calculateCosineSimilarity(vecA, vecOpposite), closeTo(-1.0, 0.0001));
+    });
+
+    test('cosineToConfidence maps 1.0 to 100% and low similarity to 0%', () {
+      expect(service.cosineToConfidence(1.0), equals(100.0));
+      expect(service.cosineToConfidence(0.72), closeTo(65.0, 1.0));
+      expect(service.cosineToConfidence(0.10), equals(0.0));
+    });
+
+    test('findBestMatch populates cosineSimilarity on match', () {
+      final probe = createMockEmbedding(5.0);
+      final matchedEmbedding = List<double>.from(probe);
+
+      final candidates = [
+        Employee(
+          id: 'emp_1',
+          name: 'Target Person',
+          faceEmbedding: matchedEmbedding,
+        ),
+      ];
+
+      final result = service.findBestMatch(
+        probeEmbedding: probe,
+        candidates: candidates,
+      );
+
+      expect(result, isNotNull);
+      expect(result!.isMatch, isTrue);
+      expect(result.cosineSimilarity, isNotNull);
+      expect(result.cosineSimilarity, closeTo(1.0, 0.01));
     });
 
     test('findBestMatch returns null when no candidate has an embedding', () {
