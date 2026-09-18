@@ -109,32 +109,33 @@ class CloudFaceRecognitionService {
             }
           }
 
-          // 1:N identification: accept the unique nearest enrolled photo.
-          // Same person (tight roster headshot vs wide live selfie) often
-          // scores ~0.58–0.88. Wrong person should lose on margin, not on
-          // an absolute bar that also rejects the true member.
-          const double likelyMatch = 0.58;
-          const double strongMatch = 0.70;
+          // 1:N identification. Never assign member A because they are merely
+          // "closest" — a live selfie of Omkar must beat Rinku (and everyone
+          // else) by a margin. A high absolute score is not enough.
+          const double likelyMatch = 0.60;
           const double soloMatch = 0.72;
-          const double minMargin = 0.03;
+          const double minMargin = 0.05;
 
           final margin = bestSimilarity -
               (secondBestSimilarity < 0 ? 0.0 : secondBestSimilarity);
+          final templates = candidatesWithPhoto.length;
 
           AppLogger.info(
-            'Visual match analysis: best=${bestCandidate?.name} ($bestSimilarity), runnerUp=$secondBestSimilarity, margin=$margin, scored=$scoredCount',
+            'Visual match analysis: best=${bestCandidate?.name} ($bestSimilarity), runnerUp=$secondBestSimilarity, margin=$margin, scored=$scoredCount, templates=$templates',
             tag: 'CloudFaceRecognitionService',
           );
 
           if (bestCandidate != null) {
-            final unique = scoredCount < 2 ||
-                margin >= minMargin ||
-                bestSimilarity >= strongMatch;
-            final meetsScore = scoredCount >= 2
-                ? bestSimilarity >= likelyMatch
-                : bestSimilarity >= soloMatch;
+            // Missing templates: do not pin the selfie on the only photo that loaded.
+            final templatesReady = templates <= 1 || scoredCount >= 2;
+            final unique = templates <= 1
+                ? scoredCount == 1
+                : (scoredCount >= 2 && margin >= minMargin);
+            final meetsScore = templates <= 1
+                ? bestSimilarity >= soloMatch
+                : bestSimilarity >= likelyMatch;
 
-            if (unique && meetsScore) {
+            if (templatesReady && unique && meetsScore) {
               final confidence = (bestSimilarity * 100.0).clamp(78.0, 99.0);
               AppLogger.info(
                 '✓ Client Face Match found: ${bestCandidate.name} (confidence: ${confidence.toStringAsFixed(1)}%)',
@@ -253,11 +254,23 @@ class _FaceSignatureBank {
   const _FaceSignatureBank(this._signatures);
 
   final List<_FaceSignature> _signatures;
+  static final Map<int, _FaceSignatureBank> _cache = {};
 
   bool get hasValidFeatures =>
       _signatures.any((s) => s.hasValidFeatures);
 
   static _FaceSignatureBank? fromBytes(Uint8List bytes) {
+    if (bytes.isEmpty) return null;
+    final int hash = Object.hash(
+      bytes.length,
+      bytes.first,
+      bytes[bytes.length ~/ 2],
+      bytes.last,
+    );
+    if (_cache.containsKey(hash)) {
+      return _cache[hash];
+    }
+
     try {
       final raw = img.decodeImage(bytes);
       if (raw == null) return null;
@@ -283,7 +296,12 @@ class _FaceSignatureBank {
       addFrom(mirrored);
 
       if (signatures.isEmpty) return null;
-      return _FaceSignatureBank(signatures);
+      final bank = _FaceSignatureBank(signatures);
+      if (_cache.length > 150) {
+        _cache.remove(_cache.keys.first);
+      }
+      _cache[hash] = bank;
+      return bank;
     } catch (_) {
       return null;
     }

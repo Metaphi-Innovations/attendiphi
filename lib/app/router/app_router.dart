@@ -53,7 +53,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     navigatorKey: rootNavigatorKey,
     initialLocation: RouteNames.adminLogin,
-    debugLogDiagnostics: true,
+    debugLogDiagnostics: kDebugMode,
     routes: [
       // ── 1. Superadmin & Sub-admin Entry Point ──────────────────────────────
       GoRoute(
@@ -248,6 +248,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           final queryDate = _extractQueryParam(state, 'date');
           final proximityResult = state.extra as ProximityResult?;
           return CheckInFormScreen(
+            key: ValueKey('checkin-${state.pageKey}'),
             locationId: locationId,
             proximityResult: proximityResult,
             adminId: queryAdminId,

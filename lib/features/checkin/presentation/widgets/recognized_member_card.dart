@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../core/utils/image_utils.dart';
@@ -11,11 +12,13 @@ class RecognizedMemberCard extends StatelessWidget {
     required this.member,
     required this.confidence,
     required this.onRescan,
+    this.capturedPhotoBytes,
   });
 
   final Employee member;
   final double confidence;
   final VoidCallback onRescan;
+  final Uint8List? capturedPhotoBytes;
 
   @override
   Widget build(BuildContext context) {
@@ -93,7 +96,6 @@ class RecognizedMemberCard extends StatelessWidget {
                   border: Border.all(color: AppColors.primaryLight, width: 2),
                 ),
                 child: () {
-                  final photo = member.photoUrl;
                   Widget buildFallback() => Center(
                         child: Text(
                           initials,
@@ -105,6 +107,17 @@ class RecognizedMemberCard extends StatelessWidget {
                         ),
                       );
 
+                  if (capturedPhotoBytes != null && capturedPhotoBytes!.isNotEmpty) {
+                    return ClipOval(
+                      child: Image.memory(
+                        capturedPhotoBytes!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => buildFallback(),
+                      ),
+                    );
+                  }
+
+                  final photo = member.photoUrl;
                   if (photo != null && photo.trim().isNotEmpty) {
                     if (photo.startsWith('http')) {
                       return ClipOval(

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/logger/app_logger.dart';
+import '../../../../core/utils/validators.dart';
 import '../../../location/domain/entities/location_config.dart';
 import '../../../location/domain/usecases/validate_user_proximity.dart';
 import '../../data/datasources/device_checkin_service.dart';
@@ -55,11 +56,25 @@ class CheckInFormNotifier extends Notifier<CheckInFormState> {
   }
 
   void clearPhoto() {
-    state = state.copyWith(photoBase64: null, clearError: true);
+    state = state.copyWith(clearPhoto: true, clearError: true);
   }
 
   void setAdminId(String? adminId) {
     state = state.copyWith(adminId: adminId, clearError: true);
+  }
+
+  void setRecognizedMember(String? memberId) {
+    if (memberId == null || memberId.isEmpty) {
+      state = state.copyWith(clearRecognizedMember: true, clearError: true);
+      return;
+    }
+    state = state.copyWith(recognizedMemberId: memberId, clearError: true);
+  }
+
+  /// Drops name/phone/email/photo/recognized id so the next person on a
+  /// shared phone cannot inherit the previous member.
+  void clearIdentity() {
+    state = state.copyWith(clearIdentity: true, clearError: true);
   }
 
   /// Submits the attendance record to Firestore and records it locally on this device.
@@ -81,7 +96,15 @@ class CheckInFormNotifier extends Notifier<CheckInFormState> {
       locationId: location.id,
     );
 
-    if (existingSubmission != null) {
+    final existingDigits = (existingSubmission?.userPhone ?? '')
+        .replaceAll(RegExp(r'\D'), '');
+    final incomingDigits =
+        Validators.formatPhoneWithCountryCode(state.phone).replaceAll(RegExp(r'\D'), '');
+    final samePersonAlreadyCheckedIn = existingDigits.isNotEmpty &&
+        incomingDigits.isNotEmpty &&
+        existingDigits == incomingDigits;
+
+    if (samePersonAlreadyCheckedIn) {
       // Return existing submission immediately without calling repository or duplicating Firestore
       state = state.copyWith(
         isSubmitting: false,

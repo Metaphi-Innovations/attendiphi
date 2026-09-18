@@ -154,6 +154,10 @@ void main() {
         submission: existing,
       );
 
+      notifier.setName('Pooja Nair');
+      notifier.setPhone('9876543210');
+      notifier.setType(CheckInType.member);
+
       // Submit for the same session date
       final success = await notifier.submit(
         location: testLocation,

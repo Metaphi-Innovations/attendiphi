@@ -15,7 +15,6 @@ import '../../../../core/logger/app_logger.dart';
 import '../../../../core/utils/image_utils.dart';
 import '../../../../core/widgets/web_camera_capture_dialog.dart';
 import '../../../employee/domain/entities/employee.dart';
-import '../providers/checkin_form_provider.dart';
 
 /// Live selfie camera widget for real-time face detection,
 /// anti-spoofing liveness verification, and member recognition.
@@ -34,7 +33,8 @@ class FaceScannerView extends ConsumerStatefulWidget {
   final List<Employee> candidates;
 
   /// Callback when a member face is verified with high confidence.
-  final void Function(Employee member, double confidence) onFaceRecognized;
+  final void Function(Employee member, double confidence, Uint8List selfieBytes)
+      onFaceRecognized;
 
   /// Callback when face analysis does not match any enrolled member.
   final void Function(Uint8List? capturedBytes, String? errorMessage)?
@@ -303,7 +303,7 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
 
         await Future.delayed(const Duration(seconds: 1));
         if (mounted) {
-          widget.onFaceRecognized(matched.candidate, matched.confidence);
+          widget.onFaceRecognized(matched.candidate, matched.confidence, bytes);
         }
       } else if (mounted && !_hasMatched) {
         setState(() {
@@ -329,10 +329,12 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
 
   /// Opens front camera on Web to capture a live selfie for biometrics verification.
   Future<void> _takeWebSelfie() async {
-    if (_isProcessingFrame || _hasMatched) return;
+    if (_isProcessingFrame) return;
+    _hasMatched = false;
 
     setState(() {
       _isProcessingFrame = true;
+      _webCapturedBytes = null;
       _statusMessage = 'Opening camera...';
       _statusColor = AppColors.primary;
     });
@@ -368,9 +370,6 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
       }
       final base64Photo = ImageUtils.bytesToBase64(bytes);
 
-      // Save photo into form state immediately so check-in persists photo proof
-      ref.read(checkInFormProvider.notifier).setPhotoBase64(base64Photo);
-
       if (mounted) {
         setState(() {
           _webCapturedBytes = bytes;
@@ -402,6 +401,7 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
           widget.onFaceRecognized(
             matchResult.matchedMember!,
             matchResult.confidence,
+            bytes,
           );
         }
       } else {

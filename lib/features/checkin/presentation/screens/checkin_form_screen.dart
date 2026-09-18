@@ -149,7 +149,19 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   double? _faceConfidence;
   bool _isUnrecognized = false;
   Uint8List? _unrecognizedPhotoBytes;
+  Uint8List? _liveSelfieBytes;
   int _faceScanGeneration = 0;
+
+  void _clearLocalIdentity() {
+    _recognizedMember = null;
+    _faceConfidence = null;
+    _isUnrecognized = false;
+    _unrecognizedPhotoBytes = null;
+    _liveSelfieBytes = null;
+    _nameController.clear();
+    _phoneController.clear();
+    _emailController.clear();
+  }
 
   @override
   void initState() {
@@ -171,9 +183,14 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       ref.read(checkInFormProvider.notifier).reset();
+      ref.read(checkInFormProvider.notifier).clearIdentity();
       if (widget.adminId != null && widget.adminId!.isNotEmpty) {
         ref.read(checkInFormProvider.notifier).setAdminId(widget.adminId);
       }
+      setState(() {
+        _clearLocalIdentity();
+        _faceScanGeneration++;
+      });
       _checkDeviceSubmission();
     });
   }
@@ -245,6 +262,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       _faceConfidence = null;
       _isUnrecognized = false;
       _unrecognizedPhotoBytes = null;
+      _liveSelfieBytes = null;
       _faceScanGeneration++;
     });
 
@@ -258,6 +276,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     notifier.setSubstituteForMember(null);
     notifier.setInvitedByMember(null);
     notifier.clearPhoto();
+    notifier.clearIdentity();
     notifier.setType(newType);
     if (widget.adminId != null && widget.adminId!.isNotEmpty) {
       notifier.setAdminId(widget.adminId);
@@ -691,21 +710,17 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                                 RecognizedMemberCard(
                                   member: _recognizedMember!,
                                   confidence: _faceConfidence ?? 98.0,
+                                  capturedPhotoBytes: _liveSelfieBytes,
                                   onRescan: () {
                                     setState(() {
-                                      _recognizedMember = null;
-                                      _faceConfidence = null;
-                                      _isUnrecognized = false;
-                                      _unrecognizedPhotoBytes = null;
+                                      _clearLocalIdentity();
                                       _faceScanGeneration++;
-                                      _nameController.clear();
-                                      _phoneController.clear();
-                                      _emailController.clear();
                                     });
                                     final notifier = ref.read(checkInFormProvider.notifier);
-                                    notifier.setName('');
-                                    notifier.setPhone('');
-                                    notifier.setEmail('');
+                                    notifier.clearIdentity();
+                                    if (widget.adminId != null && widget.adminId!.isNotEmpty) {
+                                      notifier.setAdminId(widget.adminId);
+                                    }
                                   },
                                 ),
                               ] else if (_isUnrecognized) ...[
@@ -725,10 +740,11 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                                   candidates: scopedEmployees,
                                   adminId: widget.adminId,
                                   locationId: widget.locationId,
-                                  onFaceRecognized: (member, confidence) {
+                                  onFaceRecognized: (member, confidence, selfieBytes) {
                                     setState(() {
                                       _isUnrecognized = false;
                                       _unrecognizedPhotoBytes = null;
+                                      _liveSelfieBytes = selfieBytes;
                                       _recognizedMember = member;
                                       _faceConfidence = confidence;
                                       _nameController.text = member.name;
@@ -736,16 +752,31 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                                       _emailController.text = member.email;
                                     });
                                     final notifier = ref.read(checkInFormProvider.notifier);
+                                    notifier.clearIdentity();
                                     notifier.setName(member.name);
                                     notifier.setPhone(member.phone);
                                     notifier.setEmail(member.email);
+                                    notifier.setRecognizedMember(member.id);
                                     notifier.setAdminId(member.adminId ?? widget.adminId);
+                                    notifier.setPhotoBase64(
+                                      ImageUtils.bytesToBase64(selfieBytes),
+                                    );
                                   },
                                   onFaceNotRecognized: (bytes, error) {
                                     setState(() {
+                                      _recognizedMember = null;
+                                      _faceConfidence = null;
                                       _isUnrecognized = true;
                                       _unrecognizedPhotoBytes = bytes;
+                                      _liveSelfieBytes = bytes;
+                                      _nameController.clear();
+                                      _phoneController.clear();
+                                      _emailController.clear();
                                     });
+                                    ref.read(checkInFormProvider.notifier).clearIdentity();
+                                    if (widget.adminId != null && widget.adminId!.isNotEmpty) {
+                                      ref.read(checkInFormProvider.notifier).setAdminId(widget.adminId);
+                                    }
                                   },
                                 ),
                               ],

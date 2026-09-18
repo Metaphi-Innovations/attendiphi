@@ -19,6 +19,7 @@ class CheckInFormState {
     this.isSubmitting = false,
     this.submissionResult,
     this.error,
+    this.recognizedMemberId,
   });
 
   final String name;
@@ -34,6 +35,9 @@ class CheckInFormState {
   final bool isSubmitting;
   final CheckInSubmission? submissionResult;
   final AppException? error;
+
+  /// Member id last verified from a live selfie in this form session.
+  final String? recognizedMemberId;
 
   bool get isMember => type == CheckInType.member;
   bool get isSubstitute => type == CheckInType.substitute;
@@ -55,22 +59,31 @@ class CheckInFormState {
     bool? isSubmitting,
     CheckInSubmission? submissionResult,
     AppException? error,
+    String? recognizedMemberId,
     bool clearError = false,
+    bool clearPhoto = false,
+    bool clearRecognizedMember = false,
+    bool clearIdentity = false,
   }) {
     return CheckInFormState(
-      name: name ?? this.name,
-      phone: phone ?? this.phone,
-      email: email ?? this.email,
+      name: clearIdentity ? '' : (name ?? this.name),
+      phone: clearIdentity ? '' : (phone ?? this.phone),
+      email: clearIdentity ? '' : (email ?? this.email),
       type: type ?? this.type,
       substituteForMember: substituteForMember ?? this.substituteForMember,
       companyName: companyName ?? this.companyName,
       category: category ?? this.category,
       invitedByMember: invitedByMember ?? this.invitedByMember,
-      photoBase64: photoBase64 ?? this.photoBase64,
+      photoBase64: (clearPhoto || clearIdentity)
+          ? null
+          : (photoBase64 ?? this.photoBase64),
       adminId: adminId ?? this.adminId,
       isSubmitting: isSubmitting ?? this.isSubmitting,
       submissionResult: submissionResult ?? this.submissionResult,
       error: clearError ? null : (error ?? this.error),
+      recognizedMemberId: (clearRecognizedMember || clearIdentity)
+          ? null
+          : (recognizedMemberId ?? this.recognizedMemberId),
     );
   }
 }
