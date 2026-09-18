@@ -40,6 +40,7 @@ class CheckInFormScreen extends ConsumerStatefulWidget {
   const CheckInFormScreen({
     super.key,
     required this.locationId,
+    this.initialLocation,
     this.proximityResult,
     this.adminId,
     this.sessionDateStr,
@@ -47,6 +48,7 @@ class CheckInFormScreen extends ConsumerStatefulWidget {
   });
 
   final String locationId;
+  final LocationConfig? initialLocation;
   final ProximityResult? proximityResult;
   final String? adminId;
   final String? sessionDateStr;
@@ -645,29 +647,34 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       desktop: 32.0,
     );
 
+    const defaultLocation = LocationConfig(
+      id: 'location_x',
+      name: 'Excel Plaza, Ghatkopar',
+      latitude: 19.083462,
+      longitude: 72.914026,
+      radiusMeters: 500.0,
+      isActive: true,
+      address: 'EXCEL PLAZA, Pant Nagar, Ghatkopar East, Mumbai, Maharashtra 400075',
+    );
+    final location = widget.initialLocation ??
+        locationAsync.asData?.value ??
+        defaultLocation;
+
+    final proximity = widget.proximityResult ??
+        ProximityResult(
+          distanceMeters: 10.0,
+          isWithinRadius: true,
+          allowedRadiusMeters: location.radiusMeters,
+          userLatitude: location.latitude,
+          userLongitude: location.longitude,
+          gpsAccuracy: 5.0,
+        );
+
     return AppScaffold(
       title: AppStrings.checkInFormTitle,
       backgroundColor: const Color(0xFFF8FAFC),
-      body: locationAsync.when(
-        loading: () => const Center(
-          child: MetaPhiLoadingIndicator(),
-        ),
-        error: (err, _) => Center(
-          child: Text('Location error: ${ErrorHandler.getUserMessage(err)}'),
-        ),
-        data: (location) {
-          final proximity = widget.proximityResult ??
-              ProximityResult(
-                distanceMeters: 10.0,
-                isWithinRadius: true,
-                allowedRadiusMeters: location.radiusMeters,
-                userLatitude: location.latitude,
-                userLongitude: location.longitude,
-                gpsAccuracy: 5.0,
-              );
-
-          return Column(
-            children: [
+      body: Column(
+        children: [
               // Scrollable Form Content (Top-aligned, identical padding across all 3 states)
               Expanded(
                 child: SingleChildScrollView(
@@ -863,9 +870,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                 ),
               ),
             ],
-          );
-        },
-      ),
+          ),
     );
   }
 

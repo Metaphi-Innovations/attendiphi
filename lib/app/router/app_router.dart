@@ -246,10 +246,25 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               'location_x';
           final queryAdminId = _extractQueryParam(state, 'adminId');
           final queryDate = _extractQueryParam(state, 'date');
-          final proximityResult = state.extra as ProximityResult?;
+          ProximityResult? proximityResult;
+          LocationConfig? initialLocation;
+          if (state.extra is ProximityResult) {
+            proximityResult = state.extra as ProximityResult;
+          } else if (state.extra is LocationConfig) {
+            initialLocation = state.extra as LocationConfig;
+          } else if (state.extra is Map) {
+            final map = state.extra as Map;
+            if (map['proximity'] is ProximityResult) {
+              proximityResult = map['proximity'] as ProximityResult;
+            }
+            if (map['location'] is LocationConfig) {
+              initialLocation = map['location'] as LocationConfig;
+            }
+          }
           return CheckInFormScreen(
-            key: ValueKey('checkin-${state.pageKey}'),
+            key: ValueKey('checkin-$locationId-$queryDate-$queryAdminId'),
             locationId: locationId,
+            initialLocation: initialLocation,
             proximityResult: proximityResult,
             adminId: queryAdminId,
             sessionDateStr: queryDate,

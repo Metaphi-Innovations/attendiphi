@@ -197,7 +197,7 @@ class _LocationPermissionScreenState
       (prev, next) {
         if (_hasCheckedIn || _existingSubmission != null) return;
         if (next is LocationValidationSuccess) {
-          Future.delayed(const Duration(seconds: 1), () {
+          Future.delayed(const Duration(milliseconds: 300), () {
             if (!context.mounted) return;
             final queryParams = [
               if (widget.adminId != null && widget.adminId!.isNotEmpty)
@@ -209,7 +209,7 @@ class _LocationPermissionScreenState
             final fullQuery = queryParams.isNotEmpty ? '?$queryParams' : '';
             context.go(
               '${RouteNames.checkinFormPath(widget.location.id)}$fullQuery',
-              extra: next.result,
+              extra: {'proximity': next.result, 'location': widget.location},
             );
           });
         }
@@ -856,7 +856,7 @@ class _LocationPermissionScreenState
           final queryStr = queryParams.isNotEmpty ? '?$queryParams' : '';
           context.go(
             '${RouteNames.checkinFormPath(widget.location.id)}$queryStr',
-            extra: state.result,
+            extra: {'proximity': state.result, 'location': widget.location},
           );
         },
       );

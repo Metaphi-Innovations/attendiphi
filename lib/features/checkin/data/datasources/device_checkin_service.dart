@@ -93,6 +93,9 @@ class DeviceCheckInService {
         final serverSubmission = await _remoteDataSource.getDeviceSubmission(
           deviceId,
           sessionDate,
+        ).timeout(
+          const Duration(milliseconds: 1500),
+          onTimeout: () => null,
         );
         if (serverSubmission != null) {
           // Re-persist locally so future checks are fast
@@ -182,6 +185,9 @@ class DeviceCheckInService {
         final serverSubmission = await _remoteDataSource.getDeviceSubmission(
           deviceId,
           sessionDate,
+        ).timeout(
+          const Duration(milliseconds: 1500),
+          onTimeout: () => null,
         );
         if (serverSubmission != null) {
           // Re-persist locally
