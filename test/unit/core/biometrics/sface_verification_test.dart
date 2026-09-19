@@ -232,7 +232,7 @@ void main() {
       const omkar = Employee(id: 'emp_1', name: 'Omkar');
       const personB = Employee(id: 'emp_2', name: 'Person B');
 
-      final frames = [
+      const frames = [
         SingleFrameMatchResult(
           status: FaceMatchStatus.match,
           bestCandidate: omkar,
