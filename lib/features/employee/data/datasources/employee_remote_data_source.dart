@@ -106,8 +106,16 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
         'faceModel': ?faceModel,
         'faceModelVersion': ?faceModelVersion,
         'photoUrl': ?photoUrl,
-        'faceEmbedding': ?faceEmbedding,
-        'faceTemplates': ?faceTemplates,
+        'faceEmbedding': faceEmbedding ??
+            (faceTemplates != null && faceTemplates.isNotEmpty
+                ? faceTemplates.first
+                : null),
+        'faceTemplates': faceTemplates != null
+            ? {
+                for (int i = 0; i < faceTemplates.length; i++)
+                  '$i': faceTemplates[i],
+              }
+            : null,
         'createdAt': now,
         'updatedAt': now,
       });
@@ -164,9 +172,13 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
       }
       if (faceEmbedding != null) {
         data['faceEmbedding'] = faceEmbedding;
+      } else if (faceTemplates != null && faceTemplates.isNotEmpty) {
+        data['faceEmbedding'] = faceTemplates.first;
       }
       if (faceTemplates != null) {
-        data['faceTemplates'] = faceTemplates;
+        data['faceTemplates'] = {
+          for (int i = 0; i < faceTemplates.length; i++) '$i': faceTemplates[i],
+        };
       }
       if (faceEnrolled != null) {
         data['faceEnrolled'] = faceEnrolled;

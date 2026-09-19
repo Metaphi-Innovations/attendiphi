@@ -229,8 +229,8 @@ void main() {
     });
 
     test('Decision requests retry when frames are inconsistent (< 60%)', () {
-      final omkar = Employee(id: 'emp_1', name: 'Omkar');
-      final personB = Employee(id: 'emp_2', name: 'Person B');
+      const omkar = Employee(id: 'emp_1', name: 'Omkar');
+      const personB = Employee(id: 'emp_2', name: 'Person B');
 
       final frames = [
         SingleFrameMatchResult(

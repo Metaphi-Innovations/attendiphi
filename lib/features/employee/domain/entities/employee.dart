@@ -131,7 +131,10 @@ class Employee {
       if (faceModelVersion != null) 'faceModelVersion': faceModelVersion,
       if (photoUrl != null) 'photoUrl': photoUrl,
       if (faceEmbedding != null) 'faceEmbedding': faceEmbedding,
-      if (faceTemplates != null) 'faceTemplates': faceTemplates,
+      if (faceTemplates != null)
+        'faceTemplates': {
+          for (int i = 0; i < faceTemplates!.length; i++) '$i': faceTemplates![i],
+        },
       'createdAt': createdAt?.toIso8601String(),
       'updatedAt': updatedAt?.toIso8601String(),
     };
@@ -146,11 +149,27 @@ class Employee {
     }
 
     List<List<double>>? parsedTemplates;
-    if (map['faceTemplates'] is List) {
-      parsedTemplates = (map['faceTemplates'] as List)
+    if (map['faceTemplates'] is Map) {
+      final tMap = map['faceTemplates'] as Map;
+      final sortedKeys = tMap.keys.toList()
+        ..sort((a, b) => a.toString().compareTo(b.toString()));
+      parsedTemplates = sortedKeys
+          .map((k) => tMap[k])
           .whereType<List>()
           .map((t) => t.map((e) => (e as num).toDouble()).toList())
           .toList();
+    } else if (map['faceTemplates'] is List) {
+      final tList = map['faceTemplates'] as List;
+      parsedTemplates = tList.map((item) {
+        if (item is Map && item['values'] is List) {
+          return (item['values'] as List)
+              .map((e) => (e as num).toDouble())
+              .toList();
+        } else if (item is List) {
+          return item.map((e) => (e as num).toDouble()).toList();
+        }
+        return <double>[];
+      }).where((t) => t.isNotEmpty).toList();
     }
 
     final bool isEnrolled = map['faceEnrolled'] as bool? ??
