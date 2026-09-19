@@ -18,6 +18,9 @@ abstract class EmployeeRemoteDataSource {
     String? adminId,
     String? photoUrl,
     List<double>? faceEmbedding,
+    bool faceEnrolled = false,
+    String? faceModel,
+    String? faceModelVersion,
   });
   Future<void> updateEmployee(
     String id,
@@ -30,6 +33,9 @@ abstract class EmployeeRemoteDataSource {
     String? adminId,
     String? photoUrl,
     List<double>? faceEmbedding,
+    bool? faceEnrolled,
+    String? faceModel,
+    String? faceModelVersion,
   });
   Future<void> toggleEmployeeStatus(String id, bool isActive);
   Future<void> deleteEmployee(String id);
@@ -69,6 +75,9 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
     String? adminId,
     String? photoUrl,
     List<double>? faceEmbedding,
+    bool faceEnrolled = false,
+    String? faceModel,
+    String? faceModelVersion,
   }) async {
     try {
       final cleanName = name.trim();
@@ -90,6 +99,9 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
         'designation': designation.trim(),
         'isActive': isActive,
         'adminId': adminId,
+        'faceEnrolled': faceEnrolled,
+        'faceModel': ?faceModel,
+        'faceModelVersion': ?faceModelVersion,
         'photoUrl': ?photoUrl,
         'faceEmbedding': ?faceEmbedding,
         'createdAt': now,
@@ -117,6 +129,9 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
     String? adminId,
     String? photoUrl,
     List<double>? faceEmbedding,
+    bool? faceEnrolled,
+    String? faceModel,
+    String? faceModelVersion,
   }) async {
     try {
       final cleanName = name.trim();
@@ -144,6 +159,15 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
       }
       if (faceEmbedding != null) {
         data['faceEmbedding'] = faceEmbedding;
+      }
+      if (faceEnrolled != null) {
+        data['faceEnrolled'] = faceEnrolled;
+      }
+      if (faceModel != null) {
+        data['faceModel'] = faceModel;
+      }
+      if (faceModelVersion != null) {
+        data['faceModelVersion'] = faceModelVersion;
       }
 
       await _collection.doc(id).update(data);

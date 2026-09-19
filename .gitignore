@@ -60,6 +60,8 @@ node_modules/
 # Temporary & Scratch files
 scratch/
 *.local
+*.ses
+.pytest_cache/
 
 # Firebase logs & cache
 .firebase/

@@ -4,6 +4,7 @@ import 'face_detector_service.dart';
 import 'face_embedding_service.dart';
 import 'face_enrollment_helper.dart';
 import 'face_matching_service.dart';
+import 'face_verification_service.dart';
 
 /// Provider for [FaceDetectorService].
 final faceDetectorServiceProvider = Provider<FaceDetectorService>((ref) {
@@ -31,6 +32,11 @@ final cloudFaceRecognitionServiceProvider =
   final service = CloudFaceRecognitionService(matchingService: matchingService);
   ref.onDispose(service.dispose);
   return service;
+});
+
+/// Provider for the abstract [FaceVerificationService].
+final faceVerificationServiceProvider = Provider<FaceVerificationService>((ref) {
+  return ref.watch(cloudFaceRecognitionServiceProvider);
 });
 
 /// Provider for [FaceEnrollmentHelper].

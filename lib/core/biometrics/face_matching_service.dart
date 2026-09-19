@@ -135,12 +135,14 @@ class FaceMatchingService {
       );
     }
 
-    // Require the nearest embedding to be clearly closer than the runner-up
-    // so a different member is not assigned when scores are close.
+    // Require the nearest embedding to beat the runner-up, and to pass
+    // both Euclidean (MobileFaceNet) and cosine checks.
     const minDistanceMargin = 0.12;
+    const minCosine = 0.70;
     final isSeparated = secondMinDistance.isInfinite ||
         (secondMinDistance - minDistance) >= minDistanceMargin;
-    final isMatch = minDistance <= threshold && isSeparated;
+    final isMatch =
+        minDistance <= threshold && bestCosine >= minCosine && isSeparated;
     final confidence = distanceToConfidence(minDistance, threshold: threshold);
 
     return FaceMatchResult(

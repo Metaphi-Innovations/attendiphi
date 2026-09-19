@@ -24,6 +24,9 @@ class EmployeeRepositoryImpl implements EmployeeRepository {
     String? adminId,
     String? photoUrl,
     List<double>? faceEmbedding,
+    bool faceEnrolled = false,
+    String? faceModel,
+    String? faceModelVersion,
   }) {
     return _remoteDataSource.addEmployee(
       name,
@@ -35,6 +38,9 @@ class EmployeeRepositoryImpl implements EmployeeRepository {
       adminId: adminId,
       photoUrl: photoUrl,
       faceEmbedding: faceEmbedding,
+      faceEnrolled: faceEnrolled,
+      faceModel: faceModel,
+      faceModelVersion: faceModelVersion,
     );
   }
 
@@ -50,6 +56,9 @@ class EmployeeRepositoryImpl implements EmployeeRepository {
     String? adminId,
     String? photoUrl,
     List<double>? faceEmbedding,
+    bool? faceEnrolled,
+    String? faceModel,
+    String? faceModelVersion,
   }) {
     return _remoteDataSource.updateEmployee(
       id,
@@ -62,6 +71,9 @@ class EmployeeRepositoryImpl implements EmployeeRepository {
       adminId: adminId,
       photoUrl: photoUrl,
       faceEmbedding: faceEmbedding,
+      faceEnrolled: faceEnrolled,
+      faceModel: faceModel,
+      faceModelVersion: faceModelVersion,
     );
   }
 

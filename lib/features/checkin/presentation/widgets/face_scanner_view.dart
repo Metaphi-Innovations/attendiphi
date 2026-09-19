@@ -191,7 +191,7 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
         _sawBlinkTransition = false;
         if (mounted && !_hasMatched) {
           setState(() {
-            _statusMessage = 'Looking for face... Please look at camera';
+            _statusMessage = 'Position your face inside the frame';
             _statusColor = const Color(0xFF64748B);
           });
         }
@@ -235,7 +235,7 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
           if (_faceFrameCount >= 2 && _faceFrameCount <= 5) {
             if (mounted && !_hasMatched) {
               setState(() {
-                _statusMessage = '👀 Please blink once to verify authenticity';
+                _statusMessage = 'Checking liveness... Please blink once';
                 _statusColor = const Color(0xFF0284C7);
               });
             }
@@ -248,7 +248,7 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
 
       if (mounted && !_hasMatched) {
         setState(() {
-          _statusMessage = 'Face aligned! Verifying biometrics...';
+          _statusMessage = 'Face detected. Verifying identity...';
           _statusColor = AppColors.primary;
         });
       }
@@ -296,7 +296,7 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
 
         if (mounted) {
           setState(() {
-            _statusMessage = '✓ Matched: ${matched.candidate.name}';
+            _statusMessage = '✓ Identity verified: ${matched.candidate.name}';
             _statusColor = AppColors.success;
           });
         }
@@ -307,7 +307,7 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
         }
       } else if (mounted && !_hasMatched) {
         setState(() {
-          _statusMessage = 'Face not recognized in this chapter list';
+          _statusMessage = 'Face not recognized. Please position your face clearly and try again.';
           _statusColor = const Color(0xFFE11D48);
         });
       }
@@ -392,7 +392,7 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
         _hasMatched = true;
         setState(() {
           _isProcessingFrame = false;
-          _statusMessage = '✓ Verified: ${matchResult.matchedMember!.name}';
+          _statusMessage = '✓ Identity verified: ${matchResult.matchedMember!.name}';
           _statusColor = AppColors.success;
         });
 
@@ -408,7 +408,7 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
         setState(() {
           _isProcessingFrame = false;
           _statusMessage = matchResult.errorMessage ??
-              'No matching member profile found.';
+              'Face not recognized. Please position your face clearly and try again.';
           _statusColor = const Color(0xFFE11D48);
         });
 

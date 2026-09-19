@@ -2,7 +2,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:html' as html;
-import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui_web' as ui_web;
 
@@ -111,28 +110,36 @@ class _WebCameraCaptureDialogWidgetState
     final vw = video.videoWidth > 0 ? video.videoWidth : 640;
     final vh = video.videoHeight > 0 ? video.videoHeight : 480;
 
-    // Crop tightly around center square (face & headshot) matching the oval guide
-    final cropSize = math.min(vw, vh);
-    final sx = (vw - cropSize) / 2;
-    final sy = (vh - cropSize) / 2;
+    // Crop the portrait window that sits inside the oval guide (180×235)
+    // so matching sees mostly face, not the room around the square frame.
+    const ovalAspect = 180 / 235;
+    var cropH = vh * 0.92;
+    var cropW = cropH * ovalAspect;
+    if (cropW > vw * 0.92) {
+      cropW = vw * 0.92;
+      cropH = cropW / ovalAspect;
+    }
+    final sx = (vw - cropW) / 2;
+    final sy = (vh - cropH) / 2;
 
-    const outSize = 600;
-    final canvas = html.CanvasElement(width: outSize, height: outSize);
+    const outW = 480;
+    final outH = (outW / ovalAspect).round();
+    final canvas = html.CanvasElement(width: outW, height: outH);
     final ctx = canvas.context2D;
 
     // Flip horizontally to match mirror preview
-    ctx.translate(outSize, 0);
+    ctx.translate(outW, 0);
     ctx.scale(-1, 1);
     ctx.drawImageScaledFromSource(
       video,
       sx,
       sy,
-      cropSize,
-      cropSize,
+      cropW,
+      cropH,
       0,
       0,
-      outSize,
-      outSize,
+      outW,
+      outH,
     );
 
     final dataUrl = canvas.toDataUrl('image/jpeg', 0.85);

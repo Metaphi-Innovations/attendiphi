@@ -13,6 +13,9 @@ abstract class EmployeeRepository {
     String? adminId,
     String? photoUrl,
     List<double>? faceEmbedding,
+    bool faceEnrolled = false,
+    String? faceModel,
+    String? faceModelVersion,
   });
   Future<void> updateEmployee(
     String id,
@@ -25,6 +28,9 @@ abstract class EmployeeRepository {
     String? adminId,
     String? photoUrl,
     List<double>? faceEmbedding,
+    bool? faceEnrolled,
+    String? faceModel,
+    String? faceModelVersion,
   });
   Future<void> toggleEmployeeStatus(String id, bool isActive);
   Future<void> deleteEmployee(String id);

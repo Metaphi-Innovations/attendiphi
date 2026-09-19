@@ -26,6 +26,11 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Biometric face templates: Protected biometric store accessible only via Firebase Admin SDK
+    match /faceTemplates/{memberId} {
+      allow read, write: if false;
+    }
+
     // Admin devices collection for push notification token registration
     match /admin_devices/{tokenId} {
       allow read, write: if true;

@@ -11,6 +11,9 @@ class Employee {
     this.adminId,
     this.photoUrl,
     this.faceEmbedding,
+    this.faceEnrolled = false,
+    this.faceModel,
+    this.faceModelVersion,
     this.createdAt,
     this.updatedAt,
   });
@@ -42,8 +45,17 @@ class Employee {
   /// Optional profile/face photo URL.
   final String? photoUrl;
 
-  /// 192-dimension normalized biometric face embedding vector.
+  /// Optional legacy 192-dimension biometric face embedding vector.
   final List<double>? faceEmbedding;
+
+  /// Whether member has a validated neural biometric enrollment template.
+  final bool faceEnrolled;
+
+  /// Name of the biometric face model used for enrollment (e.g. 'arcface').
+  final String? faceModel;
+
+  /// Version of the biometric face model used for enrollment (e.g. 'v1').
+  final String? faceModelVersion;
 
   /// Timestamp when employee was added.
   final DateTime? createdAt;
@@ -62,6 +74,9 @@ class Employee {
     String? adminId,
     String? photoUrl,
     List<double>? faceEmbedding,
+    bool? faceEnrolled,
+    String? faceModel,
+    String? faceModelVersion,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -76,6 +91,9 @@ class Employee {
       adminId: adminId ?? this.adminId,
       photoUrl: photoUrl ?? this.photoUrl,
       faceEmbedding: faceEmbedding ?? this.faceEmbedding,
+      faceEnrolled: faceEnrolled ?? this.faceEnrolled,
+      faceModel: faceModel ?? this.faceModel,
+      faceModelVersion: faceModelVersion ?? this.faceModelVersion,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -91,6 +109,9 @@ class Employee {
       'designation': designation,
       'isActive': isActive,
       'adminId': adminId,
+      'faceEnrolled': faceEnrolled,
+      if (faceModel != null) 'faceModel': faceModel,
+      if (faceModelVersion != null) 'faceModelVersion': faceModelVersion,
       if (photoUrl != null) 'photoUrl': photoUrl,
       if (faceEmbedding != null) 'faceEmbedding': faceEmbedding,
       'createdAt': createdAt?.toIso8601String(),
@@ -106,6 +127,9 @@ class Employee {
           .toList();
     }
 
+    final bool isEnrolled = map['faceEnrolled'] as bool? ??
+        (parsedEmbedding != null && parsedEmbedding.isNotEmpty);
+
     return Employee(
       id: docId ?? map['id']?.toString() ?? '',
       name: map['name']?.toString() ?? '',
@@ -117,6 +141,9 @@ class Employee {
       adminId: map['adminId']?.toString(),
       photoUrl: map['photoUrl']?.toString(),
       faceEmbedding: parsedEmbedding,
+      faceEnrolled: isEnrolled,
+      faceModel: map['faceModel']?.toString(),
+      faceModelVersion: map['faceModelVersion']?.toString(),
       createdAt: map['createdAt'] != null
           ? DateTime.tryParse(map['createdAt'].toString())
           : null,

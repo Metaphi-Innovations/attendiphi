@@ -12,6 +12,7 @@ import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_radius.dart';
 import '../../../../app/theme/app_shadows.dart';
 import '../../../../core/biometrics/biometrics_provider.dart';
+import '../../../../core/biometrics/web_face_embedder.dart';
 import '../../../../core/responsive/responsive_breakpoints.dart';
 import '../../../../core/utils/image_utils.dart';
 import '../../../../core/widgets/app_card.dart';
@@ -268,10 +269,22 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                 final compressedJpg = Uint8List.fromList(img.encodeJpg(resized, quality: 80));
                 final base64Photo = ImageUtils.bytesToBase64(compressedJpg);
 
+                // Verify face presence and quality via Face Verification Service
+                final quality = await ref
+                    .read(cloudFaceRecognitionServiceProvider)
+                    .checkQuality(base64Photo);
+
+                if (!quality.isValid && quality.errorMessage != null) {
+                  throw Exception(quality.errorMessage);
+                }
+
+                final webEmbedding = await extractFaceEmbeddingWeb(base64Photo);
+
                 setDialogState(() {
+                  enrolledEmbedding = webEmbedding;
                   enrolledPhotoUrl = base64Photo;
                   enrolledImageBytes = compressedJpg;
-                  faceStatusMessage = '✓ Member photo attached successfully';
+                  faceStatusMessage = '✓ Face verified & biometrics enrolled';
                   isProcessingFace = false;
                 });
                 return;
@@ -900,6 +913,13 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
 
                                           final repo = ref.read(
                                               employeeRepositoryProvider);
+                                          final bool hasFaceBiometrics =
+                                              (enrolledPhotoUrl != null &&
+                                                  enrolledPhotoUrl!
+                                                      .isNotEmpty) ||
+                                              (enrolledEmbedding != null &&
+                                                  enrolledEmbedding!
+                                                      .isNotEmpty);
                                           if (isEditing) {
                                             await repo.updateEmployee(
                                               existingMember.id,
@@ -912,6 +932,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                                   targetAdminId,
                                               photoUrl: enrolledPhotoUrl,
                                               faceEmbedding: enrolledEmbedding,
+                                              faceEnrolled: hasFaceBiometrics,
                                             );
                                             if (ctx.mounted) {
                                               Navigator.pop(ctx);
@@ -939,6 +960,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                               adminId: targetAdminId,
                                               photoUrl: enrolledPhotoUrl,
                                               faceEmbedding: enrolledEmbedding,
+                                              faceEnrolled: hasFaceBiometrics,
                                             );
                                             if (ctx.mounted) {
                                               Navigator.pop(ctx);
