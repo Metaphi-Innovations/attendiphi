@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../../app/theme/app_colors.dart';
 import '../../../../core/biometrics/biometrics_provider.dart';
+import '../../../../core/biometrics/face_matching_config.dart';
 import '../../../../core/biometrics/face_matching_service.dart';
 import '../../../../core/logger/app_logger.dart';
 import '../../../../core/utils/image_utils.dart';
@@ -70,6 +71,7 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
   // Web selfie capture state
   Uint8List? _webCapturedBytes;
   final ImagePicker _imagePicker = ImagePicker();
+  int _retryCount = 0;
 
   String _statusMessage = 'Align your face within the frame';
   Color _statusColor = const Color(0xFF64748B);
@@ -327,7 +329,7 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
     }
   }
 
-  /// Opens front camera on Web to capture a live selfie for biometrics verification.
+  /// Opens front camera on Web to capture a live selfie burst for biometrics verification.
   Future<void> _takeWebSelfie() async {
     if (_isProcessingFrame) return;
     _hasMatched = false;
@@ -340,9 +342,12 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
     });
 
     try {
-      Uint8List? bytes;
+      List<Uint8List>? frames;
       if (kIsWeb) {
-        bytes = await WebCameraCaptureHelper.capturePhoto(context);
+        frames = await WebCameraCaptureHelper.captureBurstPhotos(
+          context,
+          count: FaceMatchingConfig.burstFrameCount,
+        );
       } else {
         final photo = await _imagePicker.pickImage(
           source: ImageSource.camera,
@@ -352,11 +357,13 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
           imageQuality: 85,
         );
         if (photo != null) {
-          bytes = await photo.readAsBytes();
+          final bytes = await photo.readAsBytes();
+          frames = [bytes];
         }
       }
 
-      if (bytes == null) {
+      final capturedFrames = frames;
+      if (capturedFrames == null || capturedFrames.isEmpty) {
         if (mounted) {
           setState(() {
             _isProcessingFrame = false;
@@ -368,52 +375,116 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
         }
         return;
       }
-      final base64Photo = ImageUtils.bytesToBase64(bytes);
+
+      final primaryBytes = capturedFrames.first;
 
       if (mounted) {
         setState(() {
-          _webCapturedBytes = bytes;
-          _statusMessage = 'Analyzing face and verifying identity...';
+          _webCapturedBytes = primaryBytes;
+          _statusMessage = capturedFrames.length > 1
+              ? 'Analyzing biometrics across ${capturedFrames.length} frames...'
+              : 'Analyzing face and verifying identity...';
           _statusColor = AppColors.primary;
         });
       }
 
       final cloudService = ref.read(cloudFaceRecognitionServiceProvider);
-      final matchResult = await cloudService.matchFace(
-        photoBase64: base64Photo,
-        candidates: widget.candidates,
-        adminId: widget.adminId,
-        locationId: widget.locationId,
-      );
 
-      if (!mounted) return;
+      if (capturedFrames.length > 1) {
+        final photosBase64 =
+            capturedFrames.map(ImageUtils.bytesToBase64).toList();
+        final decision = await cloudService.matchMultiFrameBurst(
+          photosBase64: photosBase64,
+          candidates: widget.candidates,
+          adminId: widget.adminId,
+        );
 
-      if (matchResult.isMatch && matchResult.matchedMember != null) {
-        _hasMatched = true;
-        setState(() {
-          _isProcessingFrame = false;
-          _statusMessage = '✓ Identity verified: ${matchResult.matchedMember!.name}';
-          _statusColor = AppColors.success;
-        });
+        if (!mounted) return;
 
-        await Future.delayed(const Duration(seconds: 1));
-        if (mounted) {
-          widget.onFaceRecognized(
-            matchResult.matchedMember!,
-            matchResult.confidence,
-            bytes,
-          );
+        if (decision.verified && decision.matchedMember != null) {
+          _hasMatched = true;
+          _retryCount = 0;
+          setState(() {
+            _isProcessingFrame = false;
+            _statusMessage = '✓ Face Verified: ${decision.matchedMember!.name}';
+            _statusColor = AppColors.success;
+          });
+
+          await Future.delayed(const Duration(seconds: 1));
+          if (mounted) {
+            widget.onFaceRecognized(
+              decision.matchedMember!,
+              decision.averageScore * 100.0,
+              primaryBytes,
+            );
+          }
+        } else {
+          final shouldAllowRetry = decision.shouldRetry &&
+              _retryCount < FaceMatchingConfig.maxVerificationRetries;
+
+          if (shouldAllowRetry) {
+            _retryCount++;
+          }
+
+          setState(() {
+            _isProcessingFrame = false;
+            _statusMessage = shouldAllowRetry
+                ? '${decision.statusMessage} (Attempt $_retryCount/${FaceMatchingConfig.maxVerificationRetries + 1})'
+                : decision.statusMessage;
+            _statusColor = const Color(0xFFE11D48);
+          });
+
+          if (widget.onFaceNotRecognized != null) {
+            widget.onFaceNotRecognized!(primaryBytes, decision.statusMessage);
+          }
         }
       } else {
-        setState(() {
-          _isProcessingFrame = false;
-          _statusMessage = matchResult.errorMessage ??
-              'Face not recognized. Please position your face clearly and try again.';
-          _statusColor = const Color(0xFFE11D48);
-        });
+        // Single frame fallback
+        final base64Photo = ImageUtils.bytesToBase64(primaryBytes);
+        final matchResult = await cloudService.matchFace(
+          photoBase64: base64Photo,
+          candidates: widget.candidates,
+          adminId: widget.adminId,
+          locationId: widget.locationId,
+        );
 
-        if (widget.onFaceNotRecognized != null) {
-          widget.onFaceNotRecognized!(bytes, matchResult.errorMessage);
+        if (!mounted) return;
+
+        if (matchResult.isMatch && matchResult.matchedMember != null) {
+          _hasMatched = true;
+          _retryCount = 0;
+          setState(() {
+            _isProcessingFrame = false;
+            _statusMessage = '✓ Face Verified: ${matchResult.matchedMember!.name}';
+            _statusColor = AppColors.success;
+          });
+
+          await Future.delayed(const Duration(seconds: 1));
+          if (mounted) {
+            widget.onFaceRecognized(
+              matchResult.matchedMember!,
+              matchResult.confidence,
+              primaryBytes,
+            );
+          }
+        } else {
+          final shouldAllowRetry = matchResult.isAmbiguous &&
+              _retryCount < FaceMatchingConfig.maxVerificationRetries;
+
+          if (shouldAllowRetry) {
+            _retryCount++;
+          }
+
+          setState(() {
+            _isProcessingFrame = false;
+            _statusMessage = matchResult.errorMessage ??
+                'Face not recognized. Please position your face clearly and try again.';
+            _statusColor = const Color(0xFFE11D48);
+          });
+
+          if (widget.onFaceNotRecognized != null) {
+            widget.onFaceNotRecognized!(primaryBytes, matchResult.errorMessage);
+          }
         }
       }
     } catch (e, st) {

@@ -18,6 +18,7 @@ abstract class EmployeeRemoteDataSource {
     String? adminId,
     String? photoUrl,
     List<double>? faceEmbedding,
+    List<List<double>>? faceTemplates,
     bool faceEnrolled = false,
     String? faceModel,
     String? faceModelVersion,
@@ -33,6 +34,7 @@ abstract class EmployeeRemoteDataSource {
     String? adminId,
     String? photoUrl,
     List<double>? faceEmbedding,
+    List<List<double>>? faceTemplates,
     bool? faceEnrolled,
     String? faceModel,
     String? faceModelVersion,
@@ -75,6 +77,7 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
     String? adminId,
     String? photoUrl,
     List<double>? faceEmbedding,
+    List<List<double>>? faceTemplates,
     bool faceEnrolled = false,
     String? faceModel,
     String? faceModelVersion,
@@ -104,6 +107,7 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
         'faceModelVersion': ?faceModelVersion,
         'photoUrl': ?photoUrl,
         'faceEmbedding': ?faceEmbedding,
+        'faceTemplates': ?faceTemplates,
         'createdAt': now,
         'updatedAt': now,
       });
@@ -129,6 +133,7 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
     String? adminId,
     String? photoUrl,
     List<double>? faceEmbedding,
+    List<List<double>>? faceTemplates,
     bool? faceEnrolled,
     String? faceModel,
     String? faceModelVersion,
@@ -159,6 +164,9 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
       }
       if (faceEmbedding != null) {
         data['faceEmbedding'] = faceEmbedding;
+      }
+      if (faceTemplates != null) {
+        data['faceTemplates'] = faceTemplates;
       }
       if (faceEnrolled != null) {
         data['faceEnrolled'] = faceEnrolled;

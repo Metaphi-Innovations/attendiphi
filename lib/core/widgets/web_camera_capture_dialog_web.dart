@@ -13,16 +13,48 @@ import '../../app/theme/app_radius.dart';
 
 /// Opens a real HTML5 webcam capture modal on Flutter Web.
 Future<Uint8List?> captureCameraPhoto(BuildContext context) async {
-  return showDialog<Uint8List?>(
+  final dynamic result = await showDialog(
     context: context,
     barrierDismissible: false,
     barrierColor: Colors.black.withAlpha(200),
     builder: (ctx) => const _WebCameraCaptureDialogWidget(),
   );
+  if (result is Uint8List) return result;
+  if (result is List<Uint8List> && result.isNotEmpty) return result.first;
+  return null;
+}
+
+/// Opens the HTML5 webcam to capture a multi-frame burst of photos.
+Future<List<Uint8List>?> captureBurstPhotos(
+  BuildContext context, {
+  int count = 5,
+  int intervalMs = 200,
+}) async {
+  final dynamic result = await showDialog(
+    context: context,
+    barrierDismissible: false,
+    barrierColor: Colors.black.withAlpha(200),
+    builder: (ctx) => _WebCameraCaptureDialogWidget(
+      isBurst: true,
+      burstCount: count,
+      intervalMs: intervalMs,
+    ),
+  );
+  if (result is List<Uint8List>) return result;
+  if (result is Uint8List) return [result];
+  return null;
 }
 
 class _WebCameraCaptureDialogWidget extends StatefulWidget {
-  const _WebCameraCaptureDialogWidget();
+  const _WebCameraCaptureDialogWidget({
+    this.isBurst = false,
+    this.burstCount = 5,
+    this.intervalMs = 200,
+  });
+
+  final bool isBurst;
+  final int burstCount;
+  final int intervalMs;
 
   @override
   State<_WebCameraCaptureDialogWidget> createState() =>
@@ -37,6 +69,8 @@ class _WebCameraCaptureDialogWidgetState
 
   bool _isInitializing = true;
   String? _errorMessage;
+  bool _isCapturingBurst = false;
+  int _burstProgress = 0;
 
   @override
   void initState() {
@@ -103,15 +137,13 @@ class _WebCameraCaptureDialogWidgetState
     }
   }
 
-  void _capturePhoto() {
+  Uint8List? _grabSingleFrame() {
     final video = _videoElement;
-    if (video == null) return;
+    if (video == null) return null;
 
     final vw = video.videoWidth > 0 ? video.videoWidth : 640;
     final vh = video.videoHeight > 0 ? video.videoHeight : 480;
 
-    // Crop the portrait window that sits inside the oval guide (180×235)
-    // so matching sees mostly face, not the room around the square frame.
     const ovalAspect = 180 / 235;
     var cropH = vh * 0.92;
     var cropW = cropH * ovalAspect;
@@ -144,10 +176,41 @@ class _WebCameraCaptureDialogWidgetState
 
     final dataUrl = canvas.toDataUrl('image/jpeg', 0.85);
     final base64String = dataUrl.split(',').last;
-    final bytes = base64Decode(base64String);
+    return base64Decode(base64String);
+  }
 
-    _stopCamera();
-    Navigator.of(context).pop(bytes);
+  Future<void> _capturePhoto() async {
+    if (widget.isBurst) {
+      setState(() {
+        _isCapturingBurst = true;
+        _burstProgress = 1;
+      });
+
+      final frames = <Uint8List>[];
+      for (int i = 0; i < widget.burstCount; i++) {
+        final frame = _grabSingleFrame();
+        if (frame != null) {
+          frames.add(frame);
+        }
+        if (mounted) {
+          setState(() {
+            _burstProgress = i + 1;
+          });
+        }
+        if (i < widget.burstCount - 1) {
+          await Future.delayed(Duration(milliseconds: widget.intervalMs));
+        }
+      }
+
+      _stopCamera();
+      if (mounted) {
+        Navigator.of(context).pop(frames);
+      }
+    } else {
+      final bytes = _grabSingleFrame();
+      _stopCamera();
+      Navigator.of(context).pop(bytes);
+    }
   }
 
   Future<void> _pickFromGallery() async {
@@ -391,11 +454,26 @@ class _WebCameraCaptureDialogWidgetState
                   Expanded(
                     flex: 2,
                     child: ElevatedButton.icon(
-                      onPressed: (_isInitializing || _errorMessage != null)
+                      onPressed: (_isInitializing || _errorMessage != null || _isCapturingBurst)
                           ? null
                           : _capturePhoto,
-                      icon: const Icon(Icons.camera_alt_rounded, size: 18),
-                      label: const Text('Capture Photo'),
+                      icon: _isCapturingBurst
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : const Icon(Icons.camera_alt_rounded, size: 18),
+                      label: Text(
+                        _isCapturingBurst
+                            ? 'Hold still... ($_burstProgress/${widget.burstCount})'
+                            : widget.isBurst
+                                ? 'Verify Face (${widget.burstCount} Frames)'
+                                : 'Capture Photo',
+                      ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primary,
                         foregroundColor: Colors.white,

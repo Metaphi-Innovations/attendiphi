@@ -202,6 +202,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
     final formKey = GlobalKey<FormState>();
 
     List<double>? enrolledEmbedding = existingMember?.faceEmbedding;
+    List<List<double>>? enrolledTemplates = existingMember?.faceTemplates;
     String? enrolledPhotoUrl = existingMember?.photoUrl;
     Uint8List? enrolledImageBytes;
     File? enrolledImageFile;
@@ -230,11 +231,17 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
             try {
               Uint8List? rawBytes;
               File? photoFile;
+              List<Uint8List>? burstFrames;
 
               if (source == ImageSource.camera && kIsWeb) {
-                // Open real HTML5 webcam live viewfinder dialog on Web
-                rawBytes = await WebCameraCaptureHelper.capturePhoto(context);
-                if (rawBytes == null) return;
+                // Capture multi-frame burst for robust template enrollment
+                burstFrames = await WebCameraCaptureHelper.captureBurstPhotos(
+                  context,
+                  count: 5,
+                  intervalMs: 220,
+                );
+                if (burstFrames == null || burstFrames.isEmpty) return;
+                rawBytes = burstFrames.first;
               } else {
                 final picker = ImagePicker();
                 final photo = await picker.pickImage(
@@ -253,38 +260,56 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
 
               setDialogState(() {
                 isProcessingFace = true;
-                faceStatusMessage = 'Processing photo...';
+                faceStatusMessage = 'Extracting and validating SFace biometrics...';
               });
 
               if (kIsWeb) {
-                // Pure Dart image processing for Web browser
-                final decoded = img.decodeImage(rawBytes);
-                if (decoded == null) {
-                  throw Exception('Could not decode photo. Please select a valid JPEG/PNG image.');
+                final validTemplates = <List<double>>[];
+                final candidateFrames = (burstFrames != null && burstFrames.isNotEmpty)
+                    ? burstFrames
+                    : [rawBytes];
+
+                for (final frameBytes in candidateFrames) {
+                  final base64Photo = ImageUtils.bytesToBase64(frameBytes);
+                  final frame = await validateAndExtractFaceFrameWeb(base64Photo);
+                  if (frame.isValid && frame.embedding != null && frame.embedding!.length == 128) {
+                    validTemplates.add(frame.embedding!);
+                  }
                 }
-                final oriented = img.bakeOrientation(decoded);
-                final resized = oriented.width > 600 || oriented.height > 600
-                    ? img.copyResize(oriented, width: 600)
-                    : oriented;
-                final compressedJpg = Uint8List.fromList(img.encodeJpg(resized, quality: 80));
+
+                if (validTemplates.isEmpty) {
+                  throw Exception('Could not detect a clear face. Please look directly at the camera in good lighting.');
+                }
+
+                if (validTemplates.length > 1) {
+                  final isConsistent = ref
+                      .read(faceMatchingServiceProvider)
+                      .validateEnrollmentConsistency(validTemplates);
+                  if (!isConsistent) {
+                    throw Exception(
+                      'Face enrollment is inconsistent across frames. Please keep your face centered in good lighting and try again.',
+                    );
+                  }
+                }
+
+                final decoded = img.decodeImage(rawBytes);
+                Uint8List compressedJpg = rawBytes;
+                if (decoded != null) {
+                  final oriented = img.bakeOrientation(decoded);
+                  final resized = oriented.width > 600 || oriented.height > 600
+                      ? img.copyResize(oriented, width: 600)
+                      : oriented;
+                  compressedJpg = Uint8List.fromList(img.encodeJpg(resized, quality: 80));
+                }
                 final base64Photo = ImageUtils.bytesToBase64(compressedJpg);
 
-                // Verify face presence and quality via Face Verification Service
-                final quality = await ref
-                    .read(cloudFaceRecognitionServiceProvider)
-                    .checkQuality(base64Photo);
-
-                if (!quality.isValid && quality.errorMessage != null) {
-                  throw Exception(quality.errorMessage);
-                }
-
-                final webEmbedding = await extractFaceEmbeddingWeb(base64Photo);
-
                 setDialogState(() {
-                  enrolledEmbedding = webEmbedding;
+                  enrolledTemplates = validTemplates;
+                  enrolledEmbedding = validTemplates.first;
                   enrolledPhotoUrl = base64Photo;
                   enrolledImageBytes = compressedJpg;
-                  faceStatusMessage = '✓ Face verified & biometrics enrolled';
+                  faceStatusMessage =
+                      '✓ Enrolled ${validTemplates.length} SFace biometric templates';
                   isProcessingFace = false;
                 });
                 return;
@@ -917,6 +942,9 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                               (enrolledPhotoUrl != null &&
                                                   enrolledPhotoUrl!
                                                       .isNotEmpty) ||
+                                              (enrolledTemplates != null &&
+                                                  enrolledTemplates!
+                                                      .isNotEmpty) ||
                                               (enrolledEmbedding != null &&
                                                   enrolledEmbedding!
                                                       .isNotEmpty);
@@ -932,6 +960,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                                   targetAdminId,
                                               photoUrl: enrolledPhotoUrl,
                                               faceEmbedding: enrolledEmbedding,
+                                              faceTemplates: enrolledTemplates,
                                               faceEnrolled: hasFaceBiometrics,
                                             );
                                             if (ctx.mounted) {
@@ -960,6 +989,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                               adminId: targetAdminId,
                                               photoUrl: enrolledPhotoUrl,
                                               faceEmbedding: enrolledEmbedding,
+                                              faceTemplates: enrolledTemplates,
                                               faceEnrolled: hasFaceBiometrics,
                                             );
                                             if (ctx.mounted) {

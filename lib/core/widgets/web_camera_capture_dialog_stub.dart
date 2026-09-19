@@ -21,3 +21,14 @@ Future<Uint8List?> captureCameraPhoto(BuildContext context) async {
     return null;
   }
 }
+
+/// Stub burst capture for non-web platforms.
+Future<List<Uint8List>?> captureBurstPhotos(
+  BuildContext context, {
+  int count = 5,
+  int intervalMs = 200,
+}) async {
+  final single = await captureCameraPhoto(context);
+  if (single == null) return null;
+  return [single];
+}

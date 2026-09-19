@@ -11,6 +11,7 @@ class Employee {
     this.adminId,
     this.photoUrl,
     this.faceEmbedding,
+    this.faceTemplates,
     this.faceEnrolled = false,
     this.faceModel,
     this.faceModelVersion,
@@ -45,16 +46,30 @@ class Employee {
   /// Optional profile/face photo URL.
   final String? photoUrl;
 
-  /// Optional legacy 192-dimension biometric face embedding vector.
+  /// Primary or legacy biometric face embedding vector.
   final List<double>? faceEmbedding;
+
+  /// Multi-frame biometric templates (3-5 live SFace 128-d embeddings).
+  final List<List<double>>? faceTemplates;
+
+  /// Returns all available biometric templates for this employee.
+  List<List<double>> get allFaceTemplates {
+    if (faceTemplates != null && faceTemplates!.isNotEmpty) {
+      return faceTemplates!;
+    }
+    if (faceEmbedding != null && faceEmbedding!.isNotEmpty) {
+      return [faceEmbedding!];
+    }
+    return const [];
+  }
 
   /// Whether member has a validated neural biometric enrollment template.
   final bool faceEnrolled;
 
-  /// Name of the biometric face model used for enrollment (e.g. 'arcface').
+  /// Name of the biometric face model used for enrollment (e.g. 'sface').
   final String? faceModel;
 
-  /// Version of the biometric face model used for enrollment (e.g. 'v1').
+  /// Version of the biometric face model used for enrollment (e.g. '2021dec').
   final String? faceModelVersion;
 
   /// Timestamp when employee was added.
@@ -74,6 +89,7 @@ class Employee {
     String? adminId,
     String? photoUrl,
     List<double>? faceEmbedding,
+    List<List<double>>? faceTemplates,
     bool? faceEnrolled,
     String? faceModel,
     String? faceModelVersion,
@@ -91,6 +107,7 @@ class Employee {
       adminId: adminId ?? this.adminId,
       photoUrl: photoUrl ?? this.photoUrl,
       faceEmbedding: faceEmbedding ?? this.faceEmbedding,
+      faceTemplates: faceTemplates ?? this.faceTemplates,
       faceEnrolled: faceEnrolled ?? this.faceEnrolled,
       faceModel: faceModel ?? this.faceModel,
       faceModelVersion: faceModelVersion ?? this.faceModelVersion,
@@ -114,6 +131,7 @@ class Employee {
       if (faceModelVersion != null) 'faceModelVersion': faceModelVersion,
       if (photoUrl != null) 'photoUrl': photoUrl,
       if (faceEmbedding != null) 'faceEmbedding': faceEmbedding,
+      if (faceTemplates != null) 'faceTemplates': faceTemplates,
       'createdAt': createdAt?.toIso8601String(),
       'updatedAt': updatedAt?.toIso8601String(),
     };
@@ -127,8 +145,17 @@ class Employee {
           .toList();
     }
 
+    List<List<double>>? parsedTemplates;
+    if (map['faceTemplates'] is List) {
+      parsedTemplates = (map['faceTemplates'] as List)
+          .whereType<List>()
+          .map((t) => t.map((e) => (e as num).toDouble()).toList())
+          .toList();
+    }
+
     final bool isEnrolled = map['faceEnrolled'] as bool? ??
-        (parsedEmbedding != null && parsedEmbedding.isNotEmpty);
+        ((parsedTemplates != null && parsedTemplates.isNotEmpty) ||
+         (parsedEmbedding != null && parsedEmbedding.isNotEmpty));
 
     return Employee(
       id: docId ?? map['id']?.toString() ?? '',
@@ -141,6 +168,7 @@ class Employee {
       adminId: map['adminId']?.toString(),
       photoUrl: map['photoUrl']?.toString(),
       faceEmbedding: parsedEmbedding,
+      faceTemplates: parsedTemplates,
       faceEnrolled: isEnrolled,
       faceModel: map['faceModel']?.toString(),
       faceModelVersion: map['faceModelVersion']?.toString(),
