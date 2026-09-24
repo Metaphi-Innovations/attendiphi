@@ -67,7 +67,8 @@ class DeviceCheckInService {
   }
 
   /// Checks whether this device has already submitted attendance for the specified session.
-  /// First checks local storage/cookies, then falls back to a Firestore server-side query.
+  /// Checks whether this device has already submitted attendance for the specified session.
+  /// First checks local storage/cookies, then checks the server-side deviceSessionLocks collection.
   Future<bool> hasCheckedInForSession({
     String? sessionDateStr,
     String? locationId,
@@ -88,10 +89,34 @@ class DeviceCheckInService {
 
     if (!probeServer) return false;
 
-    // 3. Server-side fallback: query Firestore by deviceId (critical for iOS)
+    // 3. Server-side check: query Firestore deviceSessionLocks (public read)
     if (_remoteDataSource != null) {
       try {
         final deviceId = await getOrCreateDeviceId();
+        final sessionDateYmd = () {
+          final s = sessionDateStr?.trim();
+          if (s != null && s.length >= 10) return s.substring(0, 10);
+          final now = DateTime.now();
+          final m = now.month.toString().padLeft(2, '0');
+          final d = now.day.toString().padLeft(2, '0');
+          return '${now.year}-$m-$d';
+        }();
+
+        final isLocked = await _remoteDataSource.isDeviceSessionLocked(
+          deviceId: deviceId,
+          sessionDateYmd: sessionDateYmd,
+        ).timeout(
+          const Duration(milliseconds: 2000),
+          onTimeout: () => false,
+        );
+
+        if (isLocked) {
+          // Re-persist lightweight cookie locally so future checks are instant
+          CookieHelper.setCookie(key, '1');
+          return true;
+        }
+
+        // Secondary fallback for admin accounts capable of reading checkIns
         final sessionDate = _parseSessionDate(sessionDateStr);
         final serverSubmission = await _remoteDataSource.getDeviceSubmission(
           deviceId,
@@ -101,7 +126,6 @@ class DeviceCheckInService {
           onTimeout: () => null,
         );
         if (serverSubmission != null) {
-          // Re-persist locally so future checks are fast
           await recordSubmission(
             sessionDateStr: sessionDateStr,
             submission: serverSubmission,
@@ -121,9 +145,15 @@ class DeviceCheckInService {
 
   CheckInSubmission? _parseStoredSubmission(String? jsonStr) {
     if (jsonStr == null || jsonStr.isEmpty || jsonStr == '1') return null;
-    final decoded = jsonDecode(jsonStr);
-    if (decoded is! Map) return null;
-    return CheckInSubmission.fromMap(Map<String, dynamic>.from(decoded));
+    final trimmed = jsonStr.trim();
+    if (!trimmed.startsWith('{')) return null;
+    try {
+      final decoded = jsonDecode(trimmed);
+      if (decoded is! Map) return null;
+      return CheckInSubmission.fromMap(Map<String, dynamic>.from(decoded));
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Retrieves the recorded attendance submission for this session from local storage / cookies.
@@ -184,6 +214,21 @@ class DeviceCheckInService {
       locationId: locationId,
     );
     if (local != null) return local;
+
+    // Check last submission if session date matches
+    final last = await getLastSubmission();
+    if (last != null) {
+      if (sessionDateStr != null && sessionDateStr.trim().isNotEmpty) {
+        final target = _parseSessionDate(sessionDateStr);
+        if (last.timestamp.year == target.year &&
+            last.timestamp.month == target.month &&
+            last.timestamp.day == target.day) {
+          return last;
+        }
+      } else {
+        return last;
+      }
+    }
 
     if (!probeServer) return null;
 

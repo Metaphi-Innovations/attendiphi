@@ -30,6 +30,12 @@ abstract class CheckInRemoteDataSource {
     required String deviceId,
     required String sessionDateYmd,
   });
+
+  /// Checks if a device session lock exists for `deviceSessionLocks/{deviceId}_{sessionDate}`.
+  Future<bool> isDeviceSessionLocked({
+    required String deviceId,
+    required String sessionDateYmd,
+  });
 }
 
 /// Cloud Firestore implementation of [CheckInRemoteDataSource].
@@ -428,6 +434,32 @@ class CheckInRemoteDataSourceImpl implements CheckInRemoteDataSource {
         tag: 'CheckInRemoteDataSource',
       );
       rethrow;
+    }
+  }
+
+  @override
+  Future<bool> isDeviceSessionLocked({
+    required String deviceId,
+    required String sessionDateYmd,
+  }) async {
+    final id = deviceId.trim();
+    final date = sessionDateYmd.trim();
+    if (id.isEmpty || date.isEmpty) return false;
+
+    final lockId = '${id}_$date';
+    final docRef = _firestore
+        .collection(AppConstants.deviceSessionLocksCollection)
+        .doc(lockId);
+
+    try {
+      final doc = await docRef.get();
+      return doc.exists;
+    } catch (e, st) {
+      AppLogger.warning(
+        'isDeviceSessionLocked check failed ($lockId): $e\n$st',
+        tag: 'CheckInRemoteDataSource',
+      );
+      return false;
     }
   }
 

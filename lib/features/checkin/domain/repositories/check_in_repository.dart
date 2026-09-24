@@ -34,6 +34,12 @@ abstract class CheckInRepository {
     required String sessionDateYmd,
   });
 
+  /// Checks if a device session lock exists for [deviceId] on [sessionDateYmd].
+  Future<bool> isDeviceSessionLocked({
+    required String deviceId,
+    required String sessionDateYmd,
+  });
+
   /// Streams check-ins for the admin dashboard.
   Stream<List<CheckInSubmission>> streamCheckIns({String? locationId});
 

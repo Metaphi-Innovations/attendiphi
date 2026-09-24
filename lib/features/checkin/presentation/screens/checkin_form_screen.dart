@@ -139,7 +139,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   String? _selectedSubstituteForMember;
   String? _selectedInvitedByMember;
 
-  bool _isCheckingDevice = false;
+  bool _isCheckingDevice = true;
   bool _hasCheckedIn = false;
   CheckInSubmission? _existingSubmission;
 
@@ -406,12 +406,11 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
 
 
   Future<void> _onSubmit(LocationConfig location, ProximityResult proximity) async {
-    // Instant local check only — do not wait on a Firestore probe here.
     final deviceService = ref.read(deviceCheckInServiceProvider);
     final hasCheckedIn = await deviceService.hasCheckedInForSession(
       sessionDateStr: _effectiveSessionDateStr,
       locationId: widget.locationId,
-      probeServer: false,
+      probeServer: true,
     );
     if (!mounted) return;
     if (hasCheckedIn) {

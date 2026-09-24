@@ -59,6 +59,17 @@ class CheckInRepositoryImpl implements CheckInRepository {
   }
 
   @override
+  Future<bool> isDeviceSessionLocked({
+    required String deviceId,
+    required String sessionDateYmd,
+  }) {
+    return _remoteDataSource.isDeviceSessionLocked(
+      deviceId: deviceId,
+      sessionDateYmd: sessionDateYmd,
+    );
+  }
+
+  @override
   Stream<List<CheckInSubmission>> streamCheckIns({String? locationId}) {
     return _remoteDataSource.streamCheckIns(locationId: locationId);
   }
