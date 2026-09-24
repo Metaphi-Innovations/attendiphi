@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../../core/constants/app_constants.dart';
@@ -22,6 +24,12 @@ abstract class CheckInRemoteDataSource {
   Future<bool> hasIdentityCheckedIn(String phone, DateTime sessionDate);
   Future<CheckInSubmission?> getIdentitySubmission(String phone, DateTime sessionDate);
   Future<CheckInSubmission?> getDeviceSubmission(String deviceId, DateTime sessionDate);
+
+  /// Creates `deviceSessionLocks/{deviceId}_{sessionDate}` once. Fails if already claimed.
+  Future<void> claimDeviceSessionLock({
+    required String deviceId,
+    required String sessionDateYmd,
+  });
 }
 
 /// Cloud Firestore implementation of [CheckInRemoteDataSource].
@@ -33,10 +41,7 @@ class CheckInRemoteDataSourceImpl implements CheckInRemoteDataSource {
   @override
   Future<void> createCheckIn(CheckInSubmission submission) async {
     try {
-      final isTestingSession = submission.timestamp.year == 2026 &&
-          submission.timestamp.month == 9 &&
-          submission.timestamp.day == 3;
-      if (submission.timestamp.weekday != DateTime.thursday && !isTestingSession) {
+      if (submission.timestamp.weekday != DateTime.thursday) {
         throw const CheckInSubmissionFailedException(
           userMessage: 'Check-in is available on Thursday only.',
           technicalMessage:
@@ -51,7 +56,16 @@ class CheckInRemoteDataSourceImpl implements CheckInRemoteDataSource {
       await docRef.set({
         ...submission.toMap(),
         'createdAt': FieldValue.serverTimestamp(),
-      });
+      }).timeout(
+        const Duration(seconds: 8),
+        onTimeout: () {
+          throw const ServerException(
+            userMessage:
+                'Network is slow. Your face was verified — tap Member to try saving again.',
+            technicalMessage: 'Firestore check-in write timed out after 8s',
+          );
+        },
+      );
 
       AppLogger.info(
         'Check-in recorded: ${submission.userName} (${submission.type.name}) at ${submission.locationName}',
@@ -246,8 +260,7 @@ class CheckInRemoteDataSourceImpl implements CheckInRemoteDataSource {
   Stream<List<CheckInSubmission>> streamCheckIns({String? locationId}) {
     Query<Map<String, dynamic>> query = _firestore
         .collection(AppConstants.checkInsCollection)
-        .orderBy('timestamp', descending: true)
-        .limit(150);
+        .orderBy('timestamp', descending: true);
 
     if (locationId != null && locationId.isNotEmpty) {
       query = query.where('locationId', isEqualTo: locationId);
@@ -369,6 +382,52 @@ class CheckInRemoteDataSourceImpl implements CheckInRemoteDataSource {
         tag: 'CheckInRemoteDataSource',
       );
       return null;
+    }
+  }
+
+  @override
+  Future<void> claimDeviceSessionLock({
+    required String deviceId,
+    required String sessionDateYmd,
+  }) async {
+    final id = deviceId.trim();
+    final date = sessionDateYmd.trim();
+    if (id.isEmpty || date.isEmpty) {
+      throw const CheckInSubmissionFailedException(
+        userMessage: 'Could not verify this device for check-in. Please try again.',
+        technicalMessage: 'claimDeviceSessionLock missing deviceId or sessionDate',
+      );
+    }
+
+    final lockId = '${id}_$date';
+    final docRef = _firestore
+        .collection(AppConstants.deviceSessionLocksCollection)
+        .doc(lockId);
+
+    try {
+      await _firestore.runTransaction((transaction) async {
+        final existing = await transaction.get(docRef);
+        if (existing.exists) {
+          throw const DuplicateCheckInException(
+            userMessage:
+                'This device has already recorded attendance for today.',
+            technicalMessage: 'deviceSessionLocks already-exists',
+          );
+        }
+        transaction.set(docRef, {
+          'deviceId': id,
+          'sessionDate': date,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      });
+    } on DuplicateCheckInException {
+      rethrow;
+    } on FirebaseException catch (e) {
+      AppLogger.warning(
+        'claimDeviceSessionLock failed: ${e.code}',
+        tag: 'CheckInRemoteDataSource',
+      );
+      rethrow;
     }
   }
 

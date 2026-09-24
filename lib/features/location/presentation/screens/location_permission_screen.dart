@@ -50,7 +50,7 @@ class _LocationPermissionScreenState
   bool _hasCheckedIn = false;
   CheckInSubmission? _existingSubmission;
 
-  /// Robust extraction of session date query parameter across Native and Web (hash routing).
+  /// Robust extraction of session date query parameter across Native and Web.
   String? get _effectiveSessionDateStr {
     if (widget.sessionDateStr != null && widget.sessionDateStr!.trim().isNotEmpty) {
       return widget.sessionDateStr!.trim();
@@ -85,15 +85,9 @@ class _LocationPermissionScreenState
   DateTime get _now =>
       widget.nowProvider != null ? widget.nowProvider!() : DateTime.now();
 
-  /// Testing exemption: only 3rd Sep 2026 session is unlocked for testing purposes.
-  bool get _isTestingSession =>
-      _effectiveSessionDateStr?.contains('2026-09-03') == true ||
-      widget.sessionDateStr?.contains('2026-09-03') == true;
-
-  bool get _isTodayThursday => _isTestingSession || _now.weekday == DateTime.thursday;
+  bool get _isTodayThursday => _now.weekday == DateTime.thursday;
 
   bool get _isSessionExpired {
-    if (_isTestingSession) return false;
     final sessionDate = _parsedSessionDate;
     if (sessionDate == null) return false;
     final today = DateTime(_now.year, _now.month, _now.day);
@@ -103,7 +97,6 @@ class _LocationPermissionScreenState
   }
 
   bool get _isSessionFuture {
-    if (_isTestingSession) return false;
     final sessionDate = _parsedSessionDate;
     if (sessionDate == null) return false;
     final today = DateTime(_now.year, _now.month, _now.day);
@@ -132,7 +125,7 @@ class _LocationPermissionScreenState
 
     if (!mounted) return;
 
-    if (hasCheckedIn && !_isTestingSession) {
+    if (hasCheckedIn) {
       final existingSubmission = await deviceService.getSubmissionForSession(
         sessionDateStr: _effectiveSessionDateStr,
         locationId: widget.location.id,
@@ -143,7 +136,13 @@ class _LocationPermissionScreenState
         _existingSubmission = existingSubmission;
         _isCheckingDevice = false;
       });
-      context.go(RouteNames.checkinResult, extra: existingSubmission);
+      context.go(
+        RouteNames.checkinResultPath(
+          checkInId: existingSubmission?.id,
+          memberId: existingSubmission?.memberId,
+        ),
+        extra: existingSubmission,
+      );
       return;
     }
 
@@ -152,7 +151,7 @@ class _LocationPermissionScreenState
     });
 
     // Automatically initiate location check on screen entrance only if session is active on Thursday or testing session
-    if ((_isTodayThursday && !_isSessionExpired && !_isSessionFuture) || _isTestingSession) {
+    if (_isTodayThursday && !_isSessionExpired && !_isSessionFuture) {
       _pulseController.repeat();
       ref
           .read(locationValidationFamilyProvider(widget.location).notifier)
@@ -169,7 +168,11 @@ class _LocationPermissionScreenState
   @override
   Widget build(BuildContext context) {
     if (_hasCheckedIn || _existingSubmission != null) {
-      return CheckInResultScreen(submission: _existingSubmission);
+      return CheckInResultScreen(
+        submission: _existingSubmission,
+        memberId: _existingSubmission?.memberId,
+        checkInId: _existingSubmission?.id,
+      );
     }
 
     if (_isCheckingDevice) {
@@ -231,14 +234,14 @@ class _LocationPermissionScreenState
             constraints: const BoxConstraints(
               maxWidth: ResponsiveBreakpoints.maxFormWidth,
             ),
-            child: (!_isTodayThursday && !_isTestingSession)
+            child: !_isTodayThursday
                 ? _buildNotThursdayView(context)
-                : (_isSessionExpired && !_isTestingSession)
+                : _isSessionExpired
                     ? _buildExpiredSessionView(
-                        context, _parsedSessionDate ?? DateTime(2026, 9, 3))
-                    : (_isSessionFuture && !_isTestingSession)
+                        context, _parsedSessionDate ?? DateTime.now())
+                    : _isSessionFuture
                         ? _buildFutureSessionView(
-                            context, _parsedSessionDate ?? DateTime(2026, 9, 3))
+                            context, _parsedSessionDate ?? DateTime.now())
                         : Column(
                         children: [
                           SizedBox(height: isCompact ? 10 : 20),

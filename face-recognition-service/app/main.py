@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -46,6 +47,7 @@ def health_check():
         "model_version": settings.FACE_MODEL_VERSION,
         "match_threshold": settings.FACE_MATCH_THRESHOLD,
         "margin_threshold": settings.FACE_MARGIN_THRESHOLD,
+        "enroll_consistency_threshold": settings.ENROLL_CONSISTENCY_THRESHOLD,
     }
 
 @app.post("/face/quality", response_model=QualityResponse)
@@ -91,17 +93,8 @@ def evaluate_face_quality(request: QualityRequest):
         error_message=error_msg,
     )
 
-@app.post("/face/enroll", response_model=EnrollResponse)
-def enroll_member_face(request: EnrollRequest):
-    """
-    Enrolls a member's face into the protected biometric template store:
-    1. Validates presence of exactly one face.
-    2. Enforces quality criteria (sharpness, lighting, pose).
-    3. Computes deep neural embedding vector.
-    4. Writes protected template to 'faceTemplates/{memberId}'.
-    5. Flags 'faceEnrolled: true' on employee document.
-    """
-    image = decode_base64_image(request.photo_base64)
+def _extract_enrollment_embedding(photo_base64: str) -> tuple:
+    image = decode_base64_image(photo_base64)
     if image is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -122,7 +115,7 @@ def enroll_member_face(request: EnrollRequest):
 
     face = faces[0]
     is_valid, quality_error, metrics = face_quality_service.validate_quality(
-        image, face.bbox, face.landmarks
+        image, face.bbox, face.landmarks, for_enroll=True
     )
     if not is_valid:
         raise HTTPException(
@@ -130,17 +123,77 @@ def enroll_member_face(request: EnrollRequest):
             detail=quality_error or "Photo does not meet biometric quality criteria.",
         )
 
-    # Align and crop to standard canonical face dimensions
     aligned_face = face_embedding_service.align_and_crop_face(image, face.raw_face_array)
     embedding = face_embedding_service.extract_embedding(aligned_face)
+    return embedding, metrics
 
-    # Store into protected Firestore collection
-    quality_score = min(1.0, metrics.get("sharpness", 60.0) / 100.0)
+
+@app.post("/face/enroll", response_model=EnrollResponse)
+def enroll_member_face(request: EnrollRequest):
+    """
+    Enrolls a member's face into the protected biometric template store:
+    1. Validates presence of exactly one face per frame.
+    2. Enforces enroll-quality criteria (sharpness, lighting, pose).
+    3. Computes deep neural embedding vector(s).
+    4. Writes protected template to 'faceTemplates/{memberId}'.
+    5. Flags 'faceEnrolled: true' on employee document.
+    """
+    photos: list[str] = []
+    if request.photos_base64:
+        photos.extend([p for p in request.photos_base64 if p])
+    if request.photo_base64:
+        if request.photo_base64 not in photos:
+            photos.insert(0, request.photo_base64)
+
+    if not photos:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provide photo_base64 or photos_base64 for enrollment.",
+        )
+
+    extracted: list[list[float]] = []
+    quality_scores: list[float] = []
+    last_error: Optional[HTTPException] = None
+    for photo in photos:
+        try:
+            embedding, metrics = _extract_enrollment_embedding(photo)
+            extracted.append(embedding)
+            quality_scores.append(min(1.0, metrics.get("sharpness", 60.0) / 100.0))
+        except HTTPException as exc:
+            last_error = exc
+
+    if not extracted:
+        if last_error is not None:
+            raise last_error
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Photo does not meet biometric quality criteria.",
+        )
+
+    is_burst = len(photos) > 1
+    if is_burst and len(extracted) < settings.MIN_ENROLLMENT_TEMPLATES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Need at least {settings.MIN_ENROLLMENT_TEMPLATES} clear enrollment frames. "
+                "Please keep your face centered in good lighting and try again."
+            ),
+        )
+
+    if len(extracted) > 1 and not face_matching_service.validate_enrollment_consistency(extracted):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Face enrollment is inconsistent across frames. Please keep your face centered in good lighting and try again.",
+        )
+
+    centroid = face_matching_service.compute_centroid(extracted)
+    quality_score = float(sum(quality_scores) / len(quality_scores)) if quality_scores else 0.0
     stored = firebase_service.store_face_template(
         member_id=request.member_id,
         chapter_id=request.chapter_id,
-        embedding=embedding,
+        embedding=centroid,
         quality_score=quality_score,
+        embeddings=extracted,
     )
 
     if not stored:

@@ -23,3 +23,12 @@ final employeesStreamProvider = StreamProvider<List<Employee>>((ref) {
   final repository = ref.watch(employeeRepositoryProvider);
   return repository.streamEmployees();
 });
+
+/// Server-first fetch of one member document by id. Used by the Successful
+/// screen so a stale Firestore cache cannot display an old name.
+final employeeByIdProvider =
+    FutureProvider.family<Employee?, String>((ref, id) async {
+  final trimmed = id.trim();
+  if (trimmed.isEmpty) return null;
+  return ref.watch(employeeRepositoryProvider).getEmployee(trimmed);
+});

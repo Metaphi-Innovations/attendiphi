@@ -27,6 +27,13 @@ abstract class CheckInRepository {
   /// Retrieves the existing submission for a specific deviceId on a given date if present.
   Future<CheckInSubmission?> getDeviceSubmission(String deviceId, DateTime sessionDate);
 
+  /// Atomically claims one-device-one-check-in for [deviceId] on [sessionDateYmd].
+  /// Throws [DuplicateCheckInException] if the lock already exists.
+  Future<void> claimDeviceSessionLock({
+    required String deviceId,
+    required String sessionDateYmd,
+  });
+
   /// Streams check-ins for the admin dashboard.
   Stream<List<CheckInSubmission>> streamCheckIns({String? locationId});
 

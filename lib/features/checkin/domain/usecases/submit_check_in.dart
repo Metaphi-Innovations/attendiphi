@@ -39,6 +39,7 @@ class SubmitCheckIn {
     String? adminId,
     String? sessionDateStr,
     String? deviceId,
+    String? recognizedMemberId,
   }) async {
     // 1. Validate Form Fields
     final nameError = Validators.validateName(name);
@@ -92,20 +93,17 @@ class SubmitCheckIn {
       }
     }
 
-    // 4. Strict Thursday-Only Business Rule Validation
+    // 4. Strict Thursday-Only Business Rule Validation (client UX only)
     final now = nowProvider != null ? nowProvider!() : DateTime.now();
-    final isTestingSession = sessionDateStr?.trim() == '2026-09-03' ||
-        sessionDateStr?.contains('2026-09-03') == true;
 
-    if (now.weekday != DateTime.thursday && !isTestingSession) {
+    if (now.weekday != DateTime.thursday) {
       throw const CheckInSubmissionFailedException(
         userMessage: 'Check-in is available on Thursday only.',
         technicalMessage: 'Check-in rejected: Today is not Thursday',
       );
     }
 
-    // Validate QR session date matches current Thursday session
-    if (sessionDateStr != null && sessionDateStr.trim().isNotEmpty && !isTestingSession) {
+    if (sessionDateStr != null && sessionDateStr.trim().isNotEmpty) {
       final parsed = DateTime.tryParse(sessionDateStr.trim());
       if (parsed != null) {
         final isSameDate = parsed.year == now.year &&
@@ -121,10 +119,7 @@ class SubmitCheckIn {
       }
     }
 
-    // For testing session 2026-09-03, preserve valid Thursday timestamp
-    final submissionTimestamp = isTestingSession
-        ? DateTime(2026, 9, 3, now.hour, now.minute, now.second)
-        : now;
+    final submissionTimestamp = now;
 
     final docId = _uuid.v4();
 
@@ -148,39 +143,69 @@ class SubmitCheckIn {
       photoBase64: photoBase64,
       adminId: adminId,
       deviceId: deviceId,
+      memberId: recognizedMemberId,
+      verificationMethod: recognizedMemberId != null ? 'face' : null,
+      faceVerified: recognizedMemberId != null,
     );
 
     // 5. Server-side duplicate validation: run Phone and Device checks concurrently in parallel
     final formattedPhone = Validators.formatPhoneWithCountryCode(phone);
     final hasDevice = deviceId != null && deviceId.trim().isNotEmpty;
 
-    final results = await Future.wait([
-      _repository.getIdentitySubmission(formattedPhone, submissionTimestamp),
-      if (hasDevice)
-        _repository.getDeviceSubmission(deviceId.trim(), submissionTimestamp)
-      else
-        Future<CheckInSubmission?>.value(null),
-    ]);
+    try {
+      final results = await Future.wait([
+        _repository.getIdentitySubmission(formattedPhone, submissionTimestamp),
+        if (hasDevice)
+          _repository.getDeviceSubmission(deviceId.trim(), submissionTimestamp)
+        else
+          Future<CheckInSubmission?>.value(null),
+      ]);
 
-    final existingPhoneSubmission = results[0];
-    final existingDeviceSubmission = results.length > 1 ? results[1] : null;
+      final existingPhoneSubmission = results[0];
+      final existingDeviceSubmission = results.length > 1 ? results[1] : null;
 
-    if (existingPhoneSubmission != null && !isTestingSession) {
-      throw DuplicateCheckInException(
-        userMessage: 'This phone number has already submitted attendance for today.',
-        existingSubmissionData: existingPhoneSubmission.toMap(),
+      if (existingPhoneSubmission != null) {
+        throw DuplicateCheckInException(
+          userMessage: 'This phone number has already submitted attendance for today.',
+          existingSubmissionData: existingPhoneSubmission.toMap(),
+        );
+      }
+
+      if (existingDeviceSubmission != null) {
+        throw DuplicateCheckInException(
+          userMessage: 'This device has already recorded attendance for today.',
+          existingSubmissionData: existingDeviceSubmission.toMap(),
+        );
+      }
+    } on DuplicateCheckInException {
+      rethrow;
+    } catch (_) {
+      // Unauthenticated QR clients cannot read checkIns after rules lock-down.
+      // Device uniqueness is enforced via deviceSessionLocks create-once below.
+    }
+
+    // 5b. Server-enforced one-device-one-check-in (public create-once lock).
+    if (hasDevice) {
+      final sessionDateYmd = () {
+        final fromQr = sessionDateStr?.trim() ?? '';
+        if (fromQr.length >= 10) return fromQr.substring(0, 10);
+        final t = submissionTimestamp;
+        final m = t.month.toString().padLeft(2, '0');
+        final d = t.day.toString().padLeft(2, '0');
+        return '${t.year}-$m-$d';
+      }();
+      await _repository.claimDeviceSessionLock(
+        deviceId: deviceId.trim(),
+        sessionDateYmd: sessionDateYmd,
       );
     }
 
-    if (existingDeviceSubmission != null && !isTestingSession) {
-      throw DuplicateCheckInException(
-        userMessage: 'This device has already recorded attendance for today.',
-        existingSubmissionData: existingDeviceSubmission.toMap(),
-      );
-    }
-
-    // 6. Save to Firestore
-    await _repository.submitCheckIn(submission);
+    // 6. Save to Firestore. Member selfies are not stored on the attendance
+    // document — keeping that payload off the write makes success navigation fast.
+    final stored = type.isMember
+        ? submission.copyWith(photoBase64: '')
+        : submission;
+    await _repository.submitCheckIn(stored);
 
     // 6. Trigger Admin Push Notification dispatch (non-blocking)
     if (notificationDispatchService != null) {

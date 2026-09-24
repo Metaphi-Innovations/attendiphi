@@ -217,23 +217,83 @@ class FaceMatchingService {
     );
   }
 
+  /// Returns true when [templates] meet the minimum count and pairwise consistency
+  /// required to persist a web enrollment.
+  bool isEnrollmentTemplateSetValid(
+    List<List<double>> templates, {
+    int minCount = FaceMatchingConfig.minimumEnrollmentTemplates,
+    double threshold = FaceMatchingConfig.enrollmentConsistencyThreshold,
+  }) {
+    final kept = pruneEnrollmentOutliers(templates);
+    if (kept.length < minCount) return false;
+    return validateEnrollmentConsistency(kept, threshold: threshold);
+  }
+
+  /// Drops templates whose mean pairwise similarity looks like a different person.
+  List<List<double>> pruneEnrollmentOutliers(
+    List<List<double>> templates, {
+    double minMean = FaceMatchingConfig.enrollmentOutlierMeanThreshold,
+  }) {
+    if (templates.length <= FaceMatchingConfig.minimumEnrollmentTemplates) {
+      return List<List<double>>.from(templates);
+    }
+    final means = <int, double>{};
+    for (var i = 0; i < templates.length; i++) {
+      var sum = 0.0;
+      var n = 0;
+      for (var j = 0; j < templates.length; j++) {
+        if (i == j || templates[i].length != templates[j].length) continue;
+        sum += calculateCosineSimilarity(templates[i], templates[j]);
+        n++;
+      }
+      means[i] = n == 0 ? 0.0 : sum / n;
+    }
+    final kept = <List<double>>[];
+    for (var i = 0; i < templates.length; i++) {
+      if ((means[i] ?? 0) >= minMean) kept.add(templates[i]);
+    }
+    if (kept.length >= FaceMatchingConfig.minimumEnrollmentTemplates) {
+      return kept;
+    }
+    final ranked = List<int>.generate(templates.length, (i) => i)
+      ..sort((a, b) => (means[b] ?? 0).compareTo(means[a] ?? 0));
+    return [
+      for (var k = 0; k < FaceMatchingConfig.minimumEnrollmentTemplates; k++)
+        templates[ranked[k]],
+    ];
+  }
+
+  /// Share of pairs at or above [threshold]. Pose-diverse same-person frames
+  /// are allowed; a totally different face still fails the ratio.
+  double enrollmentPairwisePassRatio(
+    List<List<double>> templates, {
+    double threshold = FaceMatchingConfig.enrollmentConsistencyThreshold,
+  }) {
+    if (templates.length < 2) return 0.0;
+    var pairs = 0;
+    var good = 0;
+    for (var i = 0; i < templates.length; i++) {
+      for (var j = i + 1; j < templates.length; j++) {
+        if (templates[i].length != templates[j].length) continue;
+        pairs++;
+        if (calculateCosineSimilarity(templates[i], templates[j]) >= threshold) {
+          good++;
+        }
+      }
+    }
+    if (pairs == 0) return 0.0;
+    return good / pairs;
+  }
+
   /// Validates consistency among 3–5 enrollment frames.
-  /// Requires every pair of enrollment templates to have Cosine similarity >= [threshold].
+  /// Requires most pairs (not every pair) to clear [threshold].
   bool validateEnrollmentConsistency(
     List<List<double>> templates, {
     double threshold = FaceMatchingConfig.enrollmentConsistencyThreshold,
   }) {
     if (templates.length < 2) return false;
-
-    for (int i = 0; i < templates.length; i++) {
-      for (int j = i + 1; j < templates.length; j++) {
-        final sim = calculateCosineSimilarity(templates[i], templates[j]);
-        if (sim < threshold) {
-          return false;
-        }
-      }
-    }
-    return true;
+    return enrollmentPairwisePassRatio(templates, threshold: threshold) >=
+        FaceMatchingConfig.enrollmentPairwisePassRatio;
   }
 
   /// Matches a single probe embedding against [candidates] using multi-template scoring
@@ -257,7 +317,9 @@ class FaceMatchingService {
     int evaluatedCount = 0;
 
     for (final candidate in candidates) {
-      final templates = candidate.allFaceTemplates;
+      final templates = candidate.allFaceTemplates
+          .where((t) => t.length == probeEmbedding.length)
+          .toList();
       if (templates.isEmpty) continue;
 
       evaluatedCount++;
@@ -265,7 +327,6 @@ class FaceMatchingService {
       // Multi-template: Score for candidate is the max similarity across all enrolled templates
       double candidateBestScore = -1.0;
       for (final template in templates) {
-        if (template.length != probeEmbedding.length) continue;
         final sim = calculateCosineSimilarity(probeEmbedding, template);
         if (sim > candidateBestScore) {
           candidateBestScore = sim;
@@ -353,36 +414,43 @@ class FaceMatchingService {
       );
     }
 
-    // Count winning occurrences by candidate ID
-    final Map<String, int> candidateWins = {};
-    final Map<String, Employee> candidateMap = {};
-    final Map<String, List<double>> candidateScores = {};
-    final Map<String, List<double>> candidateMargins = {};
+    final matchFrames = frameMatches
+        .where((f) => f.status == FaceMatchStatus.match && f.bestCandidate != null)
+        .toList();
+    final ambiguousFrames = frameMatches
+        .where((f) => f.status == FaceMatchStatus.ambiguous)
+        .toList();
 
-    for (final frame in frameMatches) {
-      if (frame.bestCandidate != null) {
-        final id = frame.bestCandidate!.id;
-        candidateWins[id] = (candidateWins[id] ?? 0) + 1;
-        candidateMap[id] = frame.bestCandidate!;
-        candidateScores.putIfAbsent(id, () => []).add(frame.bestScore);
-        candidateMargins.putIfAbsent(id, () => []).add(frame.margin);
-      }
-    }
-
-    if (candidateWins.isEmpty) {
+    if (matchFrames.length < minValidFrames) {
+      final retry = ambiguousFrames.isNotEmpty ||
+          frameMatches.length < minValidFrames;
       return MultiFrameMatchDecision(
         verified: false,
         averageScore: 0.0,
         averageMargin: 0.0,
         consistencyRate: 0.0,
-        validFramesCount: frameMatches.length,
+        validFramesCount: matchFrames.length,
         totalFramesCount: totalFramesCount,
-        statusMessage: 'Face not recognized in this chapter.',
-        shouldRetry: false,
+        statusMessage: ambiguousFrames.length > matchFrames.length
+            ? 'Face match ambiguous. Please look directly at the camera and try again.'
+            : 'Face not recognized. Please try again.',
+        shouldRetry: retry && ambiguousFrames.isNotEmpty,
       );
     }
 
-    // Find the candidate who won the most frames
+    final Map<String, int> candidateWins = {};
+    final Map<String, Employee> candidateMap = {};
+    final Map<String, List<double>> candidateScores = {};
+    final Map<String, List<double>> candidateMargins = {};
+
+    for (final frame in matchFrames) {
+      final id = frame.bestCandidate!.id;
+      candidateWins[id] = (candidateWins[id] ?? 0) + 1;
+      candidateMap[id] = frame.bestCandidate!;
+      candidateScores.putIfAbsent(id, () => []).add(frame.bestScore);
+      candidateMargins.putIfAbsent(id, () => []).add(frame.margin);
+    }
+
     String topId = candidateWins.keys.first;
     int topWins = candidateWins[topId]!;
     for (final entry in candidateWins.entries) {
@@ -393,45 +461,58 @@ class FaceMatchingService {
     }
 
     final topCandidate = candidateMap[topId]!;
-    final consistencyRate = topWins / frameMatches.length;
-
+    final consistencyRate = topWins / matchFrames.length;
     final scores = candidateScores[topId] ?? [];
     final avgScore = scores.isNotEmpty
         ? scores.reduce((a, b) => a + b) / scores.length
         : 0.0;
-
+    final bestScore = scores.isEmpty
+        ? 0.0
+        : scores.reduce((a, b) => a > b ? a : b);
     final margins = candidateMargins[topId] ?? [];
+    final bestMargin = margins.isEmpty
+        ? 0.0
+        : margins.reduce((a, b) => a > b ? a : b);
     final avgMargin = margins.isNotEmpty
         ? margins.reduce((a, b) => a + b) / margins.length
         : 0.0;
 
-    // Check multi-frame consistency
-    if (consistencyRate < consistencyThreshold) {
+    if (consistencyRate < consistencyThreshold || topWins < minValidFrames) {
       return MultiFrameMatchDecision(
         verified: false,
         averageScore: avgScore,
         averageMargin: avgMargin,
         consistencyRate: consistencyRate,
-        validFramesCount: frameMatches.length,
+        validFramesCount: matchFrames.length,
         totalFramesCount: totalFramesCount,
-        statusMessage: 'Face verification inconsistent across frames. Please retry.',
+        statusMessage:
+            'Face verification inconsistent across frames. Please retry.',
         shouldRetry: true,
       );
     }
 
-    // Check if frames were ambiguous
-    final ambiguousFramesCount = frameMatches
-        .where((f) => f.bestCandidate?.id == topId && f.isAmbiguous)
-        .length;
-
-    if (ambiguousFramesCount > frameMatches.length / 2 ||
-        avgMargin < FaceMatchingConfig.marginThreshold) {
+    if (bestScore < FaceMatchingConfig.similarityThreshold) {
       return MultiFrameMatchDecision(
         verified: false,
         averageScore: avgScore,
         averageMargin: avgMargin,
         consistencyRate: consistencyRate,
-        validFramesCount: frameMatches.length,
+        validFramesCount: matchFrames.length,
+        totalFramesCount: totalFramesCount,
+        statusMessage: 'Face not recognized. Please try again.',
+        shouldRetry: false,
+      );
+    }
+
+    if (bestMargin < FaceMatchingConfig.marginThreshold &&
+        matchFrames.any((f) =>
+            f.bestCandidate?.id == topId && f.secondBestCandidate != null)) {
+      return MultiFrameMatchDecision(
+        verified: false,
+        averageScore: avgScore,
+        averageMargin: avgMargin,
+        consistencyRate: consistencyRate,
+        validFramesCount: matchFrames.length,
         totalFramesCount: totalFramesCount,
         statusMessage:
             'Face match ambiguous. Please look directly at the camera and try again.',
@@ -439,28 +520,13 @@ class FaceMatchingService {
       );
     }
 
-    // Check if score cleared similarity threshold
-    if (avgScore < FaceMatchingConfig.similarityThreshold) {
-      return MultiFrameMatchDecision(
-        verified: false,
-        averageScore: avgScore,
-        averageMargin: avgMargin,
-        consistencyRate: consistencyRate,
-        validFramesCount: frameMatches.length,
-        totalFramesCount: totalFramesCount,
-        statusMessage: 'Face not recognized in this chapter.',
-        shouldRetry: false,
-      );
-    }
-
-    // High genuine match verified
     return MultiFrameMatchDecision(
       verified: true,
       matchedMember: topCandidate,
       averageScore: avgScore,
       averageMargin: avgMargin,
       consistencyRate: consistencyRate,
-      validFramesCount: frameMatches.length,
+      validFramesCount: matchFrames.length,
       totalFramesCount: totalFramesCount,
       statusMessage: 'Face Verified',
       shouldRetry: false,

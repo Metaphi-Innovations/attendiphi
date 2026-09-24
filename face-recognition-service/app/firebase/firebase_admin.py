@@ -64,20 +64,41 @@ class FirebaseService:
                 # 2. Query protected face template from faceTemplates/{memberId}
                 template_doc = self.db.collection("faceTemplates").doc(member_id).get()
                 embedding = None
+                embeddings = []
 
                 if template_doc.exists:
                     tmpl_data = template_doc.to_dict()
+                    embeddings = tmpl_data.get("embeddings") or []
                     embedding = tmpl_data.get("embedding")
 
                 # Fallback to employee document embedding if template not yet migrated
-                if not embedding and "faceEmbedding" in emp_data:
+                if (not embeddings) and not embedding and "faceEmbedding" in emp_data:
                     embedding = emp_data.get("faceEmbedding")
+                if not embeddings and "faceTemplates" in emp_data:
+                    raw_templates = emp_data.get("faceTemplates")
+                    if isinstance(raw_templates, dict):
+                        embeddings = [
+                            v["values"] if isinstance(v, dict) and isinstance(v.get("values"), list) else v
+                            for v in raw_templates.values()
+                        ]
+                        embeddings = [v for v in embeddings if isinstance(v, list) and v]
+                    elif isinstance(raw_templates, list):
+                        embeddings = []
+                        for v in raw_templates:
+                            if isinstance(v, list) and v:
+                                embeddings.append(v)
+                            elif isinstance(v, dict) and isinstance(v.get("values"), list):
+                                embeddings.append(v["values"])
 
-                if embedding and isinstance(embedding, list) and len(embedding) > 0:
+                if embedding and isinstance(embedding, list) and len(embedding) > 0 and not embeddings:
+                    embeddings = [embedding]
+
+                if embeddings:
                     candidates.append({
                         "member_id": member_id,
                         "name": name,
-                        "embedding": embedding,
+                        "embedding": embeddings[0],
+                        "embeddings": embeddings,
                     })
 
             logger.info(f"Retrieved {len(candidates)} candidate templates for chapter: {chapter_id}")
@@ -92,6 +113,7 @@ class FirebaseService:
         chapter_id: str,
         embedding: List[float],
         quality_score: float = 1.0,
+        embeddings: Optional[List[List[float]]] = None,
     ) -> bool:
         """
         Securely stores biometric template in protected 'faceTemplates/{memberId}' collection
@@ -102,12 +124,14 @@ class FirebaseService:
             return False
 
         try:
+            template_list = embeddings if embeddings else [embedding]
             # 1. Write protected template to faceTemplates
             template_ref = self.db.collection("faceTemplates").doc(member_id)
             template_ref.set({
                 "memberId": member_id,
                 "adminId": chapter_id,
                 "embedding": embedding,
+                "embeddings": template_list,
                 "faceModel": settings.FACE_MODEL_NAME,
                 "faceModelVersion": settings.FACE_MODEL_VERSION,
                 "qualityScore": quality_score,

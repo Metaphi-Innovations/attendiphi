@@ -19,12 +19,20 @@ class WebCameraCaptureHelper {
   static Future<List<Uint8List>?> captureBurstPhotos(
     BuildContext context, {
     int count = 5,
-    int intervalMs = 200,
+    int intervalMs = 280,
+    List<String>? poseGuides,
+    bool waitForFace = true,
+    bool allowGallery = false,
+    bool autoCapture = false,
   }) async {
     return platform.captureBurstPhotos(
       context,
       count: count,
       intervalMs: intervalMs,
+      poseGuides: poseGuides,
+      waitForFace: waitForFace,
+      allowGallery: allowGallery,
+      autoCapture: autoCapture,
     );
   }
 }

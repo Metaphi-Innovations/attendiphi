@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../checkin/domain/entities/check_in_submission.dart';
 import '../../../checkin/domain/entities/check_in_type.dart';
+import '../../../employee/domain/employee_lookup.dart';
 import '../../../employee/domain/entities/employee.dart';
 import '../../../employee/presentation/providers/employee_providers.dart';
 import 'admin_dashboard_provider.dart';
@@ -222,17 +223,17 @@ final attendanceMatrixProvider =
             subDate.day == thursday.day;
         if (!isSameDay) return false;
 
-        // Check if directly checked in as member or absent
-        final isDirectMember =
-            sub.userName.trim().toLowerCase() == member.name.trim().toLowerCase();
+        if (sub.type.isVisitor) return false;
 
-        // Check if substitute checked in for this member
-        final isSubstituteForMember = sub.type == CheckInType.substitute &&
-            sub.substituteForMember != null &&
-            sub.substituteForMember!.trim().toLowerCase() ==
-                member.name.trim().toLowerCase();
+        if (sub.type.isSubstitute) {
+          return EmployeeLookup.forNamedMember(
+                [member],
+                sub.substituteForMember,
+              ) !=
+              null;
+        }
 
-        return isDirectMember || isSubstituteForMember;
+        return EmployeeLookup.forCheckIn([member], sub) != null;
       }).toList();
 
       if (matchingSubmissions.isNotEmpty) {

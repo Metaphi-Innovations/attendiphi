@@ -5,6 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/theme/app_radius.dart';
 import '../../../../core/responsive/responsive_breakpoints.dart';
 import '../../../../core/widgets/app_scaffold.dart';
+import '../../../employee/domain/employee_lookup.dart';
+import '../../../employee/domain/entities/employee.dart';
+import '../../../employee/presentation/providers/employee_providers.dart';
 import '../../data/datasources/device_checkin_service.dart';
 import '../../domain/entities/check_in_submission.dart';
 import '../widgets/gpay_success_animation.dart';
@@ -14,9 +17,17 @@ class CheckInResultScreen extends ConsumerStatefulWidget {
   const CheckInResultScreen({
     super.key,
     this.submission,
+    this.memberId,
+    this.checkInId,
   });
 
   final CheckInSubmission? submission;
+
+  /// Authoritative member document id for this check-in. Preferred over names.
+  final String? memberId;
+
+  /// Firestore check-in document id for this submission.
+  final String? checkInId;
 
   @override
   ConsumerState<CheckInResultScreen> createState() =>
@@ -53,23 +64,23 @@ class _CheckInResultScreenState extends ConsumerState<CheckInResultScreen>
       curve: Curves.easeOutCubic,
     ));
 
-    // If submission is null, load the last recorded submission from device storage
-    if (_resolvedSubmission == null) {
+    // Device last-submission is only a last resort when this route has no
+    // check-in extra and no memberId/checkInId in the URL.
+    final hasIdentity = widget.submission != null ||
+        (widget.memberId != null && widget.memberId!.trim().isNotEmpty) ||
+        (widget.checkInId != null && widget.checkInId!.trim().isNotEmpty);
+    if (!hasIdentity) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         final deviceService = ref.read(deviceCheckInServiceProvider);
         final last = await deviceService.getLastSubmission();
-        if (mounted && last != null) {
+        if (mounted && last != null && _resolvedSubmission == null) {
           setState(() => _resolvedSubmission = last);
         }
       });
     }
 
     // Stagger the card slide-in after the celebration burst
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (mounted) {
-        _cardFadeController.forward();
-      }
-    });
+    _cardFadeController.forward();
   }
 
   @override
@@ -79,9 +90,43 @@ class _CheckInResultScreenState extends ConsumerState<CheckInResultScreen>
   }
 
   @override
+  void didUpdateWidget(CheckInResultScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.submission != null &&
+        (widget.submission?.id != oldWidget.submission?.id ||
+            widget.submission?.memberId != oldWidget.submission?.memberId ||
+            widget.memberId != oldWidget.memberId)) {
+      _resolvedSubmission = widget.submission;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isCompact = context.isCompactMobile;
     final submission = _resolvedSubmission ?? widget.submission;
+    final memberId =
+        (widget.memberId ?? submission?.memberId)?.trim() ?? '';
+    Employee? authoritativeMember;
+    if (memberId.isNotEmpty) {
+      authoritativeMember =
+          ref.watch(employeeByIdProvider(memberId)).asData?.value;
+    }
+    final employees =
+        ref.watch(employeesStreamProvider).asData?.value ?? const <Employee>[];
+    final displayName = EmployeeLookup.successDisplayName(
+          submission: submission,
+          employees: employees,
+          memberId: memberId,
+          authoritativeMember: authoritativeMember,
+        ) ??
+        '';
+    final displayPhone = EmployeeLookup.successDisplayPhone(
+          submission: submission,
+          employees: employees,
+          memberId: memberId,
+          authoritativeMember: authoritativeMember,
+        ) ??
+        '';
 
     final hPadding = context.responsiveValue<double>(
       compactMobile: 16.0,
@@ -163,9 +208,9 @@ class _CheckInResultScreenState extends ConsumerState<CheckInResultScreen>
                             ],
                           ),
                           const SizedBox(height: 12),
-                          if (submission != null) ...[
+                          if (submission != null && displayName.isNotEmpty) ...[
                             Text(
-                              submission.userName,
+                              displayName,
                               style: const TextStyle(
                                 fontSize: 17,
                                 fontWeight: FontWeight.w800,
@@ -175,7 +220,7 @@ class _CheckInResultScreenState extends ConsumerState<CheckInResultScreen>
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              '${submission.userPhone} • ${submission.type.displayName}',
+                              '${displayPhone.isEmpty ? submission.userPhone : displayPhone} • ${submission.type.displayName}',
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w500,

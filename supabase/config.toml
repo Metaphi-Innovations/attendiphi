@@ -1,0 +1,7 @@
+project_id = "ktnhyohshdwqvvlgeynp"
+
+[functions.send-attendiphi-email]
+enabled = true
+verify_jwt = false
+import_map = "./functions/send-attendiphi-email/deno.json"
+entrypoint = "./functions/send-attendiphi-email/index.ts"

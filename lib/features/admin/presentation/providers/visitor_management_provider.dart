@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../checkin/domain/entities/check_in_submission.dart';
 import '../../../checkin/domain/entities/check_in_type.dart';
+import '../../../employee/domain/employee_lookup.dart';
+import '../../../employee/presentation/providers/employee_providers.dart';
 import 'admin_dashboard_provider.dart';
 
 /// Date range filter presets for Visitor screen.
@@ -107,21 +109,28 @@ final allVisitorsProvider =
   final checkInsAsync = ref.watch(checkInsStreamProvider);
 
   return checkInsAsync.whenData((checkIns) {
+    final employees = ref.watch(employeesStreamProvider).value ?? [];
     final rawVisitors =
         checkIns.where((c) => c.type == CheckInType.visitor).toList();
-    // Sort descending by timestamp first
     rawVisitors.sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
-    // Deduplicate by composite identity: (name, phone, date & time minute)
     final seenKeys = <String>{};
     final uniqueVisitors = <CheckInSubmission>[];
 
     for (final v in rawVisitors) {
-      final key = '${v.userName.trim().toLowerCase()}_${v.userPhone.trim()}_'
-          '${v.timestamp.year}-${v.timestamp.month}-${v.timestamp.day}_'
-          '${v.timestamp.hour}:${v.timestamp.minute}';
+      final liveInviter = EmployeeLookup.liveDisplayName(
+        employees,
+        v.invitedByMember,
+      );
+      final resolved = liveInviter.isNotEmpty && liveInviter != v.invitedByMember
+          ? v.copyWith(invitedByMember: liveInviter)
+          : v;
+      final key =
+          '${resolved.userName.trim().toLowerCase()}_${resolved.userPhone.trim()}_'
+          '${resolved.timestamp.year}-${resolved.timestamp.month}-${resolved.timestamp.day}_'
+          '${resolved.timestamp.hour}:${resolved.timestamp.minute}';
       if (seenKeys.add(key)) {
-        uniqueVisitors.add(v);
+        uniqueVisitors.add(resolved);
       }
     }
 

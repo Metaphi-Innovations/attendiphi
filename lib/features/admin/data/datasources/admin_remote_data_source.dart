@@ -3,10 +3,12 @@ import '../../../../core/constants/app_constants.dart';
 import '../../domain/entities/admin_user.dart';
 
 abstract class AdminRemoteDataSource {
-  Stream<List<AdminUser>> watchAdmins();
-  Future<List<AdminUser>> getAdmins();
+  Stream<List<AdminUser>> watchAdmins({String? createdBy});
+  Future<List<AdminUser>> getAdmins({String? createdBy});
   Future<AdminUser?> getAdminByEmail(String email);
+  Future<AdminUser?> getAdminById(String id);
   Future<AdminUser> createAdmin({
+    required String id,
     required String name,
     required String email,
     required String phone,
@@ -28,21 +30,35 @@ class AdminRemoteDataSourceImpl implements AdminRemoteDataSource {
       firestore.collection(AppConstants.adminsCollection);
 
   @override
-  Stream<List<AdminUser>> watchAdmins() {
-    return _adminsCollection
-        .orderBy('createdAt', descending: true)
-        .snapshots()
-        .map((snapshot) {
+  Stream<List<AdminUser>> watchAdmins({String? createdBy}) {
+    Query<Map<String, dynamic>> query = _adminsCollection;
+    final creator = createdBy?.trim() ?? '';
+    if (creator.isNotEmpty) {
+      query = query.where('createdBy', isEqualTo: creator);
+    }
+    return query.snapshots().map((snapshot) {
       return snapshot.docs.map(AdminUser.fromFirestore).toList();
     });
   }
 
   @override
-  Future<List<AdminUser>> getAdmins() async {
-    final snapshot = await _adminsCollection
-        .orderBy('createdAt', descending: true)
-        .get();
+  Future<List<AdminUser>> getAdmins({String? createdBy}) async {
+    Query<Map<String, dynamic>> query = _adminsCollection;
+    final creator = createdBy?.trim() ?? '';
+    if (creator.isNotEmpty) {
+      query = query.where('createdBy', isEqualTo: creator);
+    }
+    final snapshot = await query.get();
     return snapshot.docs.map(AdminUser.fromFirestore).toList();
+  }
+
+  @override
+  Future<AdminUser?> getAdminById(String id) async {
+    final trimmed = id.trim();
+    if (trimmed.isEmpty) return null;
+    final doc = await _adminsCollection.doc(trimmed).get();
+    if (!doc.exists) return null;
+    return AdminUser.fromFirestore(doc);
   }
 
   @override
@@ -59,6 +75,7 @@ class AdminRemoteDataSourceImpl implements AdminRemoteDataSource {
 
   @override
   Future<AdminUser> createAdmin({
+    required String id,
     required String name,
     required String email,
     required String phone,
@@ -66,36 +83,70 @@ class AdminRemoteDataSourceImpl implements AdminRemoteDataSource {
     String? createdBy,
     AdminRole role = AdminRole.admin,
   }) async {
+    final _ = role;
+    if (password.trim().length < 6) {
+      throw Exception('Password must be at least 6 characters.');
+    }
     final cleanEmail = email.trim().toLowerCase();
-
-    // Check if email already exists
-    final existing = await getAdminByEmail(cleanEmail);
-    if (existing != null) {
-      throw Exception('An admin with email "$cleanEmail" already exists.');
+    final uid = id.trim();
+    if (uid.isEmpty) {
+      throw Exception('Admin Firebase UID is required.');
     }
 
-    final docRef = _adminsCollection.doc();
+    final existingDoc = await _adminsCollection.doc(uid).get();
+    if (existingDoc.exists) {
+      throw Exception('An Admin account already exists for this email.');
+    }
+
+    try {
+      final existing = await getAdminByEmail(cleanEmail);
+      if (existing != null) {
+        throw Exception('An Admin account already exists for this email.');
+      }
+    } on FirebaseException {
+      // Listing by email may be denied for scoped admins; UID uniqueness still holds.
+    }
+
+    final docRef = _adminsCollection.doc(uid);
     final newAdmin = AdminUser(
-      id: docRef.id,
+      id: uid,
+      uid: uid,
       name: name.trim(),
       email: cleanEmail,
       phone: phone.trim(),
-      role: role,
-      plainPassword: password.trim(),
-      passwordHash: password.trim(),
+      role: AdminRole.admin,
+      plainPassword: '',
+      passwordHash: '',
+      passwordSalt: '',
       mustResetPassword: true,
       isActive: true,
       createdAt: DateTime.now(),
       createdBy: createdBy,
     );
 
-    await docRef.set(newAdmin.toMap());
+    // Firebase Auth stores the password. Do not persist plaintext or hashes.
+    // Do not use FieldValue.delete() with set() without merge:true.
+    await docRef.set({
+      'uid': uid,
+      'name': newAdmin.name,
+      'email': newAdmin.email,
+      'phone': newAdmin.phone,
+      'role': AdminRole.admin.value,
+      'mustResetPassword': true,
+      'isActive': true,
+      'createdAt': FieldValue.serverTimestamp(),
+      'createdBy': createdBy,
+      'assignedLocationIds': <String>[],
+    });
     return newAdmin;
   }
 
   @override
   Future<void> updateAdmin(AdminUser admin) async {
-    await _adminsCollection.doc(admin.id).update(admin.toMap());
+    await _adminsCollection.doc(admin.id).update({
+      ...admin.toMap(),
+      'plainPassword': FieldValue.delete(),
+    });
   }
 
   @override

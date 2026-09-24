@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../../../app/router/app_url.dart';
 import '../../../../app/router/route_names.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_radius.dart';
@@ -67,7 +68,6 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
     final thursdays = _getThursdaysForMonth(_selectedMonth);
     _selectedThursday = thursdays.firstWhere(
       (t) =>
-          (t.year == 2026 && t.month == 9 && t.day == 3) ||
           DateTime(t.year, t.month, t.day).isAtSameMomentAs(today) ||
           DateTime(t.year, t.month, t.day).isAfter(today),
       orElse: () =>
@@ -113,7 +113,13 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
   /// Builds the unique QR check-in payload for a given Thursday for the unified database.
   String _buildQrPayload(DateTime thursdayDate) {
     final dateStr = DateFormat('yyyy-MM-dd').format(thursdayDate);
-    return 'https://attendiphi-by-metaphi.web.app/#${RouteNames.locationPermission}?date=$dateStr&locationId=${widget.location.id}';
+    return AppUrl.public(
+      path: RouteNames.locationPermission,
+      queryParameters: {
+        'date': dateStr,
+        'locationId': widget.location.id,
+      },
+    );
   }
 
   void _onMonthChanged(DateTime newMonth) {
@@ -125,7 +131,6 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
         final today = DateTime(now.year, now.month, now.day);
         _selectedThursday = thursdays.firstWhere(
           (t) =>
-              (t.year == 2026 && t.month == 9 && t.day == 3) ||
               DateTime(t.year, t.month, t.day).isAtSameMomentAs(today) ||
               DateTime(t.year, t.month, t.day).isAfter(today),
           orElse: () => thursdays.first,
@@ -722,8 +727,7 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final selectedDay = DateTime(thursdayDate.year, thursdayDate.month, thursdayDate.day);
-    final isSelectedToday = (thursdayDate.year == 2026 && thursdayDate.month == 9 && thursdayDate.day == 3) ||
-        selectedDay.isAtSameMomentAs(today);
+    final isSelectedToday = selectedDay.isAtSameMomentAs(today);
     final isSelectedPast = !isSelectedToday && selectedDay.isBefore(today);
     final isCurrentMonthActive = _isMonthActive(thursdayDate);
 
@@ -1343,7 +1347,6 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
       final day = DateFormat('dd MMM yyyy').format(t);
       final tDay = DateTime(t.year, t.month, t.day);
       if (!isCurrentMonthActive) return day;
-      if (t.year == 2026 && t.month == 9 && t.day == 3) return '$day  • ACTIVE';
       if (tDay.isAtSameMomentAs(today)) return '$day  • ACTIVE';
       if (tDay.isBefore(today)) return '$day  • PAST';
       return '$day  • UPCOMING';
@@ -1497,8 +1500,7 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                 final thursdayDay =
                     DateTime(thursday.year, thursday.month, thursday.day);
 
-                final isSessionActive = (thursday.year == 2026 && thursday.month == 9 && thursday.day == 3) ||
-                    thursdayDay.isAtSameMomentAs(today);
+                final isSessionActive = thursdayDay.isAtSameMomentAs(today);
                 final isToday = isSessionActive;
                 final isPast = !isSessionActive && thursdayDay.isBefore(today);
 
@@ -1730,8 +1732,7 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
       _selectedThursday.month,
       _selectedThursday.day,
     );
-    final isSelectedActive = (_selectedThursday.year == 2026 && _selectedThursday.month == 9 && _selectedThursday.day == 3) ||
-        selectedDay.isAtSameMomentAs(today);
+    final isSelectedActive = selectedDay.isAtSameMomentAs(today);
     final isSelectedToday = isSelectedActive;
     final isSelectedPast = !isSelectedActive && selectedDay.isBefore(today);
 

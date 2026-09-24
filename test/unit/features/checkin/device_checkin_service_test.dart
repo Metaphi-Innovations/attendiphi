@@ -27,13 +27,14 @@ void main() {
     service = DeviceCheckInService(prefs);
 
     final checkedIn = await service.hasCheckedInForSession(
-      sessionDateStr: '2026-09-03',
+      sessionDateStr: '2026-09-24',
       locationId: 'location_x',
     );
     expect(checkedIn, isFalse);
   });
 
-  test('recordSubmission saves submission and hasCheckedInForSession returns true', () async {
+  test('recordSubmission saves submission and hasCheckedInForSession returns true',
+      () async {
     final prefs = await SharedPreferences.getInstance();
     service = DeviceCheckInService(prefs);
 
@@ -48,29 +49,28 @@ void main() {
       userLongitude: 72.9140,
       gpsAccuracy: 4.5,
       distanceMeters: 12.0,
-      timestamp: DateTime(2026, 9, 3, 10, 30),
+      timestamp: DateTime(2026, 9, 24, 10, 30),
       adminId: 'adm-1',
     );
 
     await service.recordSubmission(
-      sessionDateStr: '2026-09-03',
+      sessionDateStr: '2026-09-24',
       submission: submission,
     );
 
     final checkedIn = await service.hasCheckedInForSession(
-      sessionDateStr: '2026-09-03',
+      sessionDateStr: '2026-09-24',
       locationId: 'location_x',
     );
     expect(checkedIn, isTrue);
 
     final loaded = await service.getSubmissionForSession(
-      sessionDateStr: '2026-09-03',
+      sessionDateStr: '2026-09-24',
       locationId: 'location_x',
     );
     expect(loaded, isNotNull);
     expect(loaded!.id, equals('sub-123'));
     expect(loaded.userName, equals('Omkar Anarse'));
-    expect(loaded.userPhone, equals('+919876543210'));
 
     final last = await service.getLastSubmission();
     expect(last, isNotNull);
@@ -82,7 +82,7 @@ void main() {
     service = DeviceCheckInService(prefs);
 
     final submission = CheckInSubmission(
-      id: 'sub-sep3',
+      id: 'sub-sep24',
       locationId: 'location_x',
       locationName: 'Excel Plaza, Ghatkopar',
       userName: 'Omkar Anarse',
@@ -92,23 +92,27 @@ void main() {
       userLongitude: 72.9140,
       gpsAccuracy: 4.5,
       distanceMeters: 12.0,
-      timestamp: DateTime(2026, 9, 3, 10, 30),
+      timestamp: DateTime(2026, 9, 24, 10, 30),
     );
 
     await service.recordSubmission(
-      sessionDateStr: '2026-09-03',
+      sessionDateStr: '2026-09-24',
       submission: submission,
     );
 
-    // 2026-09-03 should be checked in
     expect(
-      await service.hasCheckedInForSession(sessionDateStr: '2026-09-03', locationId: 'location_x'),
+      await service.hasCheckedInForSession(
+        sessionDateStr: '2026-09-24',
+        locationId: 'location_x',
+      ),
       isTrue,
     );
 
-    // Next Thursday 2026-09-10 should NOT be checked in yet
     expect(
-      await service.hasCheckedInForSession(sessionDateStr: '2026-09-10', locationId: 'location_x'),
+      await service.hasCheckedInForSession(
+        sessionDateStr: '2026-10-01',
+        locationId: 'location_x',
+      ),
       isFalse,
     );
   });

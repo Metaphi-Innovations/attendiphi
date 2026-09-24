@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qr_checkin/core/biometrics/cloud_face_recognition_service.dart';
+import 'package:qr_checkin/core/biometrics/face_matching_config.dart';
 import 'package:qr_checkin/core/biometrics/web_face_embedder.dart';
 import 'package:qr_checkin/features/employee/domain/entities/employee.dart';
 
@@ -64,6 +65,25 @@ void main() {
       expect(result.errorMessage, contains('No enrolled member face profiles found'));
     });
 
+    test('Rejects automatic match when multiple faces are detected', () async {
+      final service = CloudFaceRecognitionService(
+        frameExtractor: (_) async => const ValidatedFaceFrame(
+          isValid: false,
+          faceCount: 2,
+          errorMessage:
+              'Please ensure only one person is in front of the camera.',
+        ),
+      );
+
+      final result = await service.matchFace(
+        photoBase64: 'mock_base64_data',
+        candidates: candidates,
+      );
+
+      expect(result.isMatch, isFalse);
+      expect(result.errorMessage, contains('only one person'));
+    });
+
     test('Handles invalid frame / no face detected gracefully', () async {
       final service = CloudFaceRecognitionService(
         frameExtractor: (_) async => const ValidatedFaceFrame(
@@ -100,6 +120,28 @@ void main() {
       expect(result.matchedMember?.id, equals('emp_101'));
       expect(result.matchedMember?.name, equals('Omkar Anarse'));
       expect(result.confidence, equals(100.0));
+    });
+
+    test('Skips native-only 192-d enrollments on the web matcher', () async {
+      final nativeOnly = Employee(
+        id: 'emp_native',
+        name: 'Native Enroll',
+        faceTemplates: [List<double>.filled(192, 0.01)],
+      );
+      final service = CloudFaceRecognitionService(
+        frameExtractor: (_) async => ValidatedFaceFrame(
+          isValid: true,
+          embedding: createMockVector(0),
+        ),
+      );
+
+      final result = await service.matchFace(
+        photoBase64: 'mock_base64_data',
+        candidates: [nativeOnly],
+      );
+
+      expect(result.isMatch, isFalse);
+      expect(result.errorMessage, contains('web face enrollment'));
     });
 
     test('Flags ambiguous match when runner-up margin is below threshold', () async {
@@ -148,7 +190,32 @@ void main() {
       expect(decision.verified, isTrue);
       expect(decision.matchedMember?.id, equals('emp_101'));
       expect(decision.consistencyRate, equals(1.0));
-      expect(decision.validFramesCount, equals(5));
+      expect(
+        decision.validFramesCount,
+        greaterThanOrEqualTo(FaceMatchingConfig.minimumValidFrames),
+      );
+    });
+
+    test('Multi-frame burst stops once enough frames already verify', () async {
+      var extractCount = 0;
+      final targetEmb = createMockVector(0);
+      final service = CloudFaceRecognitionService(
+        frameExtractor: (_) async {
+          extractCount++;
+          return ValidatedFaceFrame(
+            isValid: true,
+            embedding: targetEmb,
+          );
+        },
+      );
+
+      final decision = await service.matchMultiFrameBurst(
+        photosBase64: ['f1', 'f2', 'f3', 'f4', 'f5'],
+        candidates: candidates,
+      );
+
+      expect(decision.verified, isTrue);
+      expect(extractCount, equals(FaceMatchingConfig.minimumValidFrames));
     });
 
     test('Multi-frame burst rejects when inconsistent or poor quality', () async {

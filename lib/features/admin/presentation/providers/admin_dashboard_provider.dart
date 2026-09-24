@@ -7,6 +7,7 @@ import '../../../checkin/domain/entities/check_in_submission.dart';
 import '../../../checkin/domain/entities/check_in_type.dart';
 import '../../../checkin/domain/repositories/check_in_repository.dart';
 import '../../../checkin/presentation/providers/checkin_providers.dart';
+import '../../../employee/domain/employee_lookup.dart';
 import '../../../employee/presentation/providers/employee_providers.dart';
 /// Filter selection for the admin dashboard.
 enum AdminFilterType {
@@ -21,6 +22,7 @@ enum AdminFilterType {
 
 /// Real-time stream provider for check-ins across the unified database.
 final checkInsStreamProvider = StreamProvider<List<CheckInSubmission>>((ref) {
+  ref.keepAlive();
   final repository = ref.watch(checkInRepositoryProvider);
   return repository.streamCheckIns();
 });
@@ -308,17 +310,17 @@ final baseDashboardRecordsProvider =
   final resultRows = <CheckInSubmission>[];
 
   for (final emp in activeEmployees) {
-    final cleanEmpName = emp.name.trim().toLowerCase();
-    final cleanEmpPhone = emp.phone.replaceAll(RegExp(r'\D'), '');
-
     CheckInSubmission? matchedSubmission;
 
     if (daySubmissions.isNotEmpty) {
       // 1. Check if a substitute checked in for this member
       final subMatches = daySubmissions.where((r) {
         if (!r.type.isSubstitute) return false;
-        final subFor = (r.substituteForMember ?? '').trim().toLowerCase();
-        return subFor == cleanEmpName;
+        final target = EmployeeLookup.forNamedMember(
+          [emp],
+          r.substituteForMember,
+        );
+        return target != null;
       }).toList();
 
       if (subMatches.isNotEmpty) {
@@ -326,23 +328,22 @@ final baseDashboardRecordsProvider =
             .compareTo(a.createdAt ?? a.timestamp));
         final subCheckIn = subMatches.first;
         matchedSubmission = subCheckIn.copyWith(
-          userName: emp.name, // Member row
+          userName: emp.name,
           userPhone: emp.phone,
-          substituteName: subCheckIn.userName, // Substitute person's name
+          userEmail: emp.email,
+          substituteName: subCheckIn.userName,
           substituteForMember: emp.name,
           photoBase64: subCheckIn.photoBase64,
           type: CheckInType.substitute,
+          memberId: emp.id,
         );
       } else {
         // 2. Check if member checked in directly or was marked absent
         final memberMatches = daySubmissions.where((r) {
-          final cleanUserName = r.userName.trim().toLowerCase();
-          final cleanUserPhone = r.userPhone.replaceAll(RegExp(r'\D'), '');
-          final nameMatch = cleanUserName == cleanEmpName;
-          final phoneMatch = cleanEmpPhone.isNotEmpty &&
-              cleanUserPhone.isNotEmpty &&
-              cleanUserPhone.endsWith(cleanEmpPhone);
-          return (nameMatch || phoneMatch) && !r.type.isVisitor;
+          if (r.type.isVisitor) return false;
+          if (r.type.isSubstitute) return false;
+          final matched = EmployeeLookup.forCheckIn([emp], r);
+          return matched != null;
         }).toList();
 
         if (memberMatches.isNotEmpty) {
@@ -360,7 +361,9 @@ final baseDashboardRecordsProvider =
           matchedSubmission = m.copyWith(
             userName: emp.name,
             userPhone: emp.phone,
+            userEmail: emp.email,
             substituteName: null,
+            memberId: emp.id,
           );
         }
       }
@@ -391,6 +394,7 @@ final baseDashboardRecordsProvider =
             0,
           ),
           isVerified: false,
+          memberId: emp.id,
         ),
       );
     }

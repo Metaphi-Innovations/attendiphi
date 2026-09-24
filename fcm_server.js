@@ -127,41 +127,10 @@ admin.firestore().collection('admin_mail_dispatch').onSnapshot(async (snapshot) 
       const mailId = change.doc.id;
       const to = data.to;
       const subject = data.subject || 'Admin Credentials';
-      console.log(`\n📧 [NEW CREDENTIALS MAIL DISPATCHED]: To ${to} (Doc ID: ${mailId})`);
-      console.log(`🔑 Login ID: ${data.credentials?.email || to} | Role: ${data.credentials?.role || 'Admin'}`);
-
-      try {
-        let nodemailer;
-        try {
-          nodemailer = require('./functions/node_modules/nodemailer');
-        } catch (_) {}
-
-        const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER;
-        const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_PASS;
-
-        if (nodemailer && smtpUser && smtpPass) {
-          const transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: { user: smtpUser, pass: smtpPass },
-          });
-
-          await transporter.sendMail({
-            from: `"QR Check-in Super Admin" <${smtpUser}>`,
-            to: to,
-            subject: subject,
-            text: data.bodyText || '',
-            html: data.html || '',
-          });
-
-          await change.doc.ref.update({
-            status: 'sent',
-            sentAt: admin.firestore.FieldValue.serverTimestamp(),
-          });
-          console.log(`✅ Real Gmail delivered to ${to} via SMTP daemon.`);
-        }
-      } catch (err) {
-        console.error(`❌ Mail send error:`, err.message);
+      if (data.source === 'https' || (!data.bodyText && !data.html)) {
+        continue;
       }
+      console.log(`\n📧 [CREDENTIALS MAIL DOC IGNORED]: SMTP disabled here. Use Supabase SMTP Edge Function. To ${to} (Doc ID: ${mailId})`);
     }
   }
 }, (err) => {

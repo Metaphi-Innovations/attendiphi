@@ -1,10 +1,12 @@
 import 'dart:async';
-import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 
 import '../../features/employee/domain/entities/employee.dart';
 import '../logger/app_logger.dart';
+import 'face_matching_config.dart';
 import 'face_matching_service.dart';
 import 'face_verification_service.dart';
+import 'liveness_service.dart';
 import 'web_face_embedder.dart';
 
 /// Result of a face recognition attempt for callers.
@@ -31,25 +33,36 @@ typedef FaceFrameExtractor = Future<ValidatedFaceFrame> Function(String photoBas
 
 /// Production face recognition service using 100% client-side SFace neural embeddings
 /// in WebAssembly, Cosine similarity, margin separation, and multi-frame consistency.
+///
+/// QR check-in reads employee `faceEmbedding` / `faceTemplates` from Firestore in
+/// the browser. Those templates stay readable to unauthenticated clients unless a
+/// server-side matcher is added (not implemented; Spark plan / no Cloud Functions).
 class CloudFaceRecognitionService implements FaceVerificationService {
   CloudFaceRecognitionService({
     FaceMatchingService? matchingService,
-    http.Client? httpClient,
-    String? apiBaseUrl,
-    String? legacyFunctionUrl,
     FaceFrameExtractor? frameExtractor,
+    LivenessService? livenessService,
   })  : _matchingService = matchingService ?? FaceMatchingService(),
-        _httpClient = httpClient ?? http.Client(),
-        _frameExtractor = frameExtractor ?? validateAndExtractFaceFrameWeb;
+        _frameExtractor = frameExtractor ?? validateAndExtractFaceFrameWeb,
+        _livenessService = livenessService ?? const UnimplementedLivenessService();
 
   final FaceMatchingService _matchingService;
-  final http.Client _httpClient;
   final FaceFrameExtractor _frameExtractor;
+  final LivenessService _livenessService;
+  bool _initialized = false;
+
+  /// Loads detector + embedding models once. Safe to call repeatedly.
+  Future<void> initialize() async {
+    if (_initialized) return;
+    if (!kIsWeb) {
+      _initialized = true;
+      return;
+    }
+    _initialized = await initializeFaceRecognitionWeb();
+  }
 
   /// Dispose any active resources.
-  void dispose() {
-    _httpClient.close();
-  }
+  void dispose() {}
 
   // ── FaceVerificationService Implementation ──────────────────────────
 
@@ -112,8 +125,13 @@ class CloudFaceRecognitionService implements FaceVerificationService {
     Duration timeout = const Duration(seconds: 15),
   }) async {
     try {
-      final frame = await validateAndExtractFaceFrameWeb(photoBase64);
-      if (!frame.isValid || frame.embedding == null) {
+      final frame = await validateAndExtractFaceFrameWeb(
+        photoBase64,
+        forEnrollment: true,
+      );
+      if (!frame.isValid ||
+          !frame.meetsQuality(forEnrollment: true) ||
+          frame.embedding == null) {
         return FaceEnrollmentResultDto(
           success: false,
           memberId: memberId,
@@ -145,11 +163,19 @@ class CloudFaceRecognitionService implements FaceVerificationService {
     required List<Employee> candidates,
     String? adminId,
   }) async {
+    await initialize();
+
     final enrolledCandidates = candidates
-        .where((c) => c.allFaceTemplates.isNotEmpty && c.isActive)
+        .where((c) => c.hasSfaceTemplates && c.isActive)
         .toList();
 
     if (enrolledCandidates.isEmpty) {
+      final nativeOnly = candidates.any(
+        (c) =>
+            c.isActive &&
+            c.allFaceTemplates.isNotEmpty &&
+            !c.hasSfaceTemplates,
+      );
       return MultiFrameMatchDecision(
         verified: false,
         averageScore: 0.0,
@@ -157,22 +183,80 @@ class CloudFaceRecognitionService implements FaceVerificationService {
         consistencyRate: 0.0,
         validFramesCount: 0,
         totalFramesCount: photosBase64.length,
-        statusMessage: 'No enrolled member face profiles found for this chapter.',
+        statusMessage: nativeOnly
+            ? 'This member needs a web face enrollment. Re-enroll from User Management in the browser.'
+            : 'No enrolled member face profiles found for this chapter.',
         shouldRetry: false,
       );
     }
 
     final validMatches = <SingleFrameMatchResult>[];
+    var multipleFaceFrames = 0;
+    var noFaceFrames = 0;
+    String? lastFrameError;
 
     for (final photo in photosBase64) {
       final frame = await _frameExtractor(photo);
-      if (frame.isValid && frame.embedding != null && frame.embedding!.length == 128) {
-        final match = _matchingService.matchProbeAgainstCandidates(
-          probeEmbedding: frame.embedding!,
-          candidates: enrolledCandidates,
-        );
-        validMatches.add(match);
+      lastFrameError = frame.errorMessage;
+      if (frame.faceCount > 1) {
+        multipleFaceFrames++;
+        continue;
       }
+      if (!frame.isValid || frame.embedding == null || frame.embedding!.length != 128) {
+        if (frame.faceCount == 0) noFaceFrames++;
+        continue;
+      }
+      final match = _matchingService.matchProbeAgainstCandidates(
+        probeEmbedding: frame.embedding!,
+        candidates: enrolledCandidates,
+        similarityThreshold: FaceRecognitionConfig.matchThreshold,
+      );
+      AppLogger.info(
+        'burst frame status=${match.status} best=${match.bestCandidate?.id}:${match.bestScore.toStringAsFixed(3)} '
+        'second=${match.secondBestCandidate?.id}:${match.secondBestScore.toStringAsFixed(3)} '
+        'margin=${match.margin.toStringAsFixed(3)}',
+        tag: 'FaceMatch',
+      );
+      validMatches.add(match);
+
+      // Stop extra ONNX extracts once enough frames already verify the same member.
+      if (validMatches.length >= FaceMatchingConfig.minimumValidFrames) {
+        final early = _matchingService.evaluateMultiFrameDecision(
+          frameMatches: validMatches,
+          totalFramesCount: photosBase64.length,
+        );
+        if (early.verified) {
+          return early;
+        }
+      }
+    }
+
+    if (multipleFaceFrames > 0 && validMatches.isEmpty) {
+      return MultiFrameMatchDecision(
+        verified: false,
+        averageScore: 0.0,
+        averageMargin: 0.0,
+        consistencyRate: 0.0,
+        validFramesCount: 0,
+        totalFramesCount: photosBase64.length,
+        statusMessage:
+            'Please ensure only one person is in front of the camera.',
+        shouldRetry: true,
+      );
+    }
+
+    if (validMatches.isEmpty && noFaceFrames > 0) {
+      return MultiFrameMatchDecision(
+        verified: false,
+        averageScore: 0.0,
+        averageMargin: 0.0,
+        consistencyRate: 0.0,
+        validFramesCount: 0,
+        totalFramesCount: photosBase64.length,
+        statusMessage: lastFrameError ??
+            'No face detected. Please position your face in front of the camera.',
+        shouldRetry: true,
+      );
     }
 
     return _matchingService.evaluateMultiFrameDecision(
@@ -191,6 +275,8 @@ class CloudFaceRecognitionService implements FaceVerificationService {
     String? locationId,
     Duration timeout = const Duration(seconds: 12),
   }) async {
+    await initialize();
+
     if (candidates.isEmpty && (adminId == null || adminId.isEmpty)) {
       return const CloudFaceMatchResult(
         isMatch: false,
@@ -199,30 +285,58 @@ class CloudFaceRecognitionService implements FaceVerificationService {
     }
 
     final enrolledCandidates = candidates
-        .where((c) => c.allFaceTemplates.isNotEmpty && c.isActive)
+        .where((c) => c.hasSfaceTemplates && c.isActive)
         .toList();
 
     if (enrolledCandidates.isEmpty) {
-      return const CloudFaceMatchResult(
+      final nativeOnly = candidates.any(
+        (c) =>
+            c.isActive &&
+            c.allFaceTemplates.isNotEmpty &&
+            !c.hasSfaceTemplates,
+      );
+      return CloudFaceMatchResult(
         isMatch: false,
-        errorMessage: 'No enrolled member face profiles found for this chapter.',
+        errorMessage: nativeOnly
+            ? 'This member needs a web face enrollment. Re-enroll from User Management in the browser.'
+            : 'No enrolled member face profiles found for this chapter.',
       );
     }
 
-    // 1. Extract 128-d SFace embedding directly in browser via WebAssembly
     final frame = await _frameExtractor(photoBase64);
+    if (frame.faceCount > 1) {
+      return const CloudFaceMatchResult(
+        isMatch: false,
+        errorMessage:
+            'Please ensure only one person is in front of the camera.',
+      );
+    }
     if (!frame.isValid || frame.embedding == null || frame.embedding!.length != 128) {
       return CloudFaceMatchResult(
         isMatch: false,
         errorMessage: frame.errorMessage ??
-            'Face not clearly detected. Please position your face in the oval.',
+            'No face detected. Please position your face in front of the camera.',
       );
     }
 
-    // 2. Perform Cosine Similarity matching against all enrolled templates per employee
+    final liveness = await _livenessService.evaluateLiveCapture();
+    if (liveness.implemented && !liveness.passed) {
+      return CloudFaceMatchResult(
+        isMatch: false,
+        errorMessage: liveness.reason ?? 'Unable to verify face. Please try again.',
+      );
+    }
+
     final match = _matchingService.matchProbeAgainstCandidates(
       probeEmbedding: frame.embedding!,
       candidates: enrolledCandidates,
+      similarityThreshold: FaceRecognitionConfig.matchThreshold,
+    );
+    AppLogger.info(
+      'single frame status=${match.status} best=${match.bestCandidate?.id}:${match.bestScore.toStringAsFixed(3)} '
+      'second=${match.secondBestCandidate?.id}:${match.secondBestScore.toStringAsFixed(3)} '
+      'margin=${match.margin.toStringAsFixed(3)}',
+      tag: 'FaceMatch',
     );
 
     switch (match.status) {
@@ -231,7 +345,6 @@ class CloudFaceRecognitionService implements FaceVerificationService {
           isMatch: true,
           matchedMember: match.bestCandidate,
           confidence: (match.bestScore * 100.0).clamp(0.0, 100.0),
-          extractedEmbedding: frame.embedding,
         );
 
       case FaceMatchStatus.ambiguous:
@@ -245,8 +358,7 @@ class CloudFaceRecognitionService implements FaceVerificationService {
       case FaceMatchStatus.unknownPerson:
         return const CloudFaceMatchResult(
           isMatch: false,
-          errorMessage:
-              'Face not recognized in this chapter. Please look directly at the camera.',
+          errorMessage: 'Face not recognized. Please try again.',
         );
 
       case FaceMatchStatus.noCandidates:

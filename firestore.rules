@@ -1,54 +1,181 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Locations: Read-only for all clients, admin writable
+    function isSignedIn() {
+      return request.auth != null && request.auth.uid != '';
+    }
+
+    function adminPath() {
+      return /databases/$(database)/documents/admins/$(request.auth.uid);
+    }
+
+    function adminProfile() {
+      return get(adminPath()).data;
+    }
+
+    function isAttendiphiAdmin() {
+      return isSignedIn()
+        && exists(adminPath())
+        && adminProfile().isActive != false
+        && (adminProfile().role == 'admin' || adminProfile().role == 'superadmin');
+    }
+
+    function isSuperAdmin() {
+      return isAttendiphiAdmin() && adminProfile().role == 'superadmin';
+    }
+
+    function isRegularAdmin() {
+      return isAttendiphiAdmin() && adminProfile().role == 'admin';
+    }
+
+    function unchanged(field) {
+      return request.resource.data[field] == resource.data[field];
+    }
+
+    // Public geofence for QR check-in. Writes: Attendiphi admins only.
     match /locations/{locationId} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow create, update, delete: if isAttendiphiAdmin();
     }
-    
-    // Check-Ins: Public create allowed for attendee check-in
+
+    // Public QR create only. Reads/updates/deletes: Attendiphi admins.
+    // GPS, Thursday, face match, and phone duplicates are NOT enforceable here.
     match /checkIns/{checkInId} {
       allow create: if request.resource.data.userName is string
+                    && request.resource.data.userName.size() > 0
+                    && request.resource.data.userName.size() <= 120
                     && request.resource.data.userPhone is string
-                    && request.resource.data.locationId is string;
-      allow read, update, delete: if true;
+                    && request.resource.data.userPhone.size() > 0
+                    && request.resource.data.userPhone.size() <= 24
+                    && request.resource.data.locationId is string
+                    && request.resource.data.locationId.size() > 0
+                    && request.resource.data.locationId.size() <= 128
+                    && !('role' in request.resource.data)
+                    && !('isSuperAdmin' in request.resource.data)
+                    && !('isAdmin' in request.resource.data);
+      allow read, update, delete: if isAttendiphiAdmin();
     }
-    
-    // Admins collection: Protected at app level
+
+    // One device = one check-in per session date. Public may create-once;
+    // document id must be "{deviceId}_{yyyy-MM-dd}". Admins may read/delete.
+    match /deviceSessionLocks/{lockId} {
+      allow create: if request.resource.data.deviceId is string
+                    && request.resource.data.deviceId.size() > 0
+                    && request.resource.data.deviceId.size() <= 128
+                    && request.resource.data.sessionDate is string
+                    && request.resource.data.sessionDate.size() == 10
+                    && lockId == request.resource.data.deviceId + '_' + request.resource.data.sessionDate
+                    && !('role' in request.resource.data)
+                    && !('isSuperAdmin' in request.resource.data)
+                    && !('isAdmin' in request.resource.data);
+      allow get: if true;
+      allow list, update: if false;
+      allow delete: if isAttendiphiAdmin();
+    }
+
+    // Document ID must be the Firebase Auth UID (admins/{uid}).
     match /admins/{adminId} {
-      allow read, write: if true;
+      allow get: if isSignedIn() && (
+        adminId == request.auth.uid
+        || isSuperAdmin()
+        || (isRegularAdmin() && resource.data.createdBy == request.auth.uid)
+      );
+      allow list: if isSuperAdmin()
+        || (isRegularAdmin() && resource.data.createdBy == request.auth.uid);
+
+      allow create: if isAttendiphiAdmin()
+        && request.resource.data.role == 'admin'
+        && request.resource.data.uid == adminId
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.email is string
+        && request.resource.data.email.size() > 3
+        && request.resource.data.email.size() < 320
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 120;
+
+      allow update: if isSignedIn() && (
+        (
+          adminId == request.auth.uid
+          && unchanged('role')
+          && unchanged('isActive')
+          && unchanged('createdBy')
+          && unchanged('uid')
+        )
+        || (
+          isSuperAdmin()
+          && unchanged('role')
+          && unchanged('createdBy')
+          && unchanged('uid')
+        )
+        || (
+          isRegularAdmin()
+          && resource.data.createdBy == request.auth.uid
+          && resource.data.role == 'admin'
+          && request.resource.data.role == 'admin'
+          && unchanged('createdBy')
+          && unchanged('uid')
+        )
+      );
+
+      allow delete: if isSuperAdmin()
+        || (
+          isRegularAdmin()
+          && resource.data.createdBy == request.auth.uid
+          && resource.data.role == 'admin'
+          && adminId != request.auth.uid
+        );
     }
 
-    // Employees / Users collection: Public read for check-in dropdown, writable for management
+    // Public read is required for QR member lookup and client-side SFace
+    // matching. Face embeddings on this document remain readable by check-in
+    // clients (architectural limitation; see SECURITY_AUDIT SEC-006).
+    // Writes: Attendiphi admins only — not any Firebase Auth user.
     match /employees/{employeeId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update, delete: if isAttendiphiAdmin();
     }
 
-    // Biometric face templates: Protected biometric store accessible only via Firebase Admin SDK
     match /faceTemplates/{memberId} {
       allow read, write: if false;
     }
 
-    // Admin devices collection for push notification token registration
     match /admin_devices/{tokenId} {
-      allow read, write: if true;
+      allow read: if isAttendiphiAdmin() && (
+        isSuperAdmin() || resource.data.uid == request.auth.uid
+      );
+      allow create: if isAttendiphiAdmin()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.token is string;
+      allow update, delete: if isAttendiphiAdmin()
+        && resource.data.uid == request.auth.uid;
     }
 
-    // Admin notifications collection
     match /admin_notifications/{notificationId} {
-      allow read, write: if true;
+      allow read, create, update, delete: if isAttendiphiAdmin();
     }
 
-    // Admin mail dispatch queue
     match /admin_mail_dispatch/{mailId} {
-      allow read, write: if true;
+      allow read, update, delete: if false;
+      allow create: if isAttendiphiAdmin()
+                    && request.resource.data.status == 'manual_draft'
+                    && !('password' in request.resource.data)
+                    && !('plainPassword' in request.resource.data)
+                    && !('temporaryPassword' in request.resource.data)
+                    && !('adminPassword' in request.resource.data)
+                    && !('credentials' in request.resource.data);
     }
 
-    // Firebase Trigger Email extension mail collection
     match /mail/{mailId} {
-      allow read, write: if true;
+      allow read, write: if false;
+    }
+
+    match /admin_password_resets/{resetId} {
+      allow read, write: if false;
+    }
+
+    match /admin_password_reset_rate/{adminId} {
+      allow read, write: if false;
     }
   }
 }

@@ -82,10 +82,10 @@ def test_matching_confidence_margin_rejection():
     result = face_matching_service.match_probe(
         probe_vector=probe,
         candidates=candidates,
-        match_threshold=0.65,
-        margin_threshold=0.10,
+        match_threshold=0.72,
+        margin_threshold=0.12,
     )
-    # Both are high similarity (~0.95 vs ~0.94), margin is only ~0.01 (< 0.10)
+    # Both are high similarity (~0.95 vs ~0.94), margin is only ~0.01 (< 0.12)
     # Must reject as AMBIGUOUS_MATCH rather than blindly picking m1!
     assert result.matched is False
     assert result.reason == "AMBIGUOUS_MATCH"
@@ -99,9 +99,89 @@ def test_matching_clear_winner():
     result = face_matching_service.match_probe(
         probe_vector=probe,
         candidates=candidates,
-        match_threshold=0.65,
-        margin_threshold=0.10,
+        match_threshold=0.72,
+        margin_threshold=0.12,
     )
     assert result.matched is True
     assert result.best_member_id == "m1"
     assert result.confidence >= 90.0
+
+
+def test_matching_max_score_across_member_templates():
+    probe = [1.0, 0.0, 0.0]
+    candidates = [
+        {
+            "member_id": "m1",
+            "name": "Member 1",
+            "embeddings": [
+                [0.20, 0.80, 0.0],
+                [0.98, 0.02, 0.0],
+                [0.10, 0.90, 0.0],
+            ],
+        },
+        {"member_id": "m2", "name": "Member 2", "embedding": [0.15, 0.85, 0.0]},
+    ]
+    result = face_matching_service.match_probe(
+        probe_vector=probe,
+        candidates=candidates,
+        match_threshold=0.72,
+        margin_threshold=0.12,
+    )
+    assert result.matched is True
+    assert result.best_member_id == "m1"
+    assert result.similarity >= 0.97
+
+
+def test_matching_same_member_templates_are_not_rivals():
+    probe = [1.0, 0.0, 0.0]
+    candidates = [
+        {
+            "member_id": "m1",
+            "name": "Member 1",
+            "embeddings": [
+                [0.98, 0.02, 0.0],
+                [0.97, 0.03, 0.0],
+            ],
+        },
+    ]
+    result = face_matching_service.match_probe(
+        probe_vector=probe,
+        candidates=candidates,
+        match_threshold=0.72,
+        margin_threshold=0.12,
+    )
+    assert result.matched is True
+    assert result.best_member_id == "m1"
+    assert result.reason is None
+
+
+def test_matching_legacy_single_embedding_still_matches():
+    probe = [1.0, 0.0, 0.0]
+    candidates = [
+        {"member_id": "m1", "name": "Member 1", "embedding": [0.99, 0.01, 0.0]},
+        {"member_id": "m2", "name": "Member 2", "embedding": [0.05, 0.95, 0.0]},
+    ]
+    result = face_matching_service.match_probe(
+        probe_vector=probe,
+        candidates=candidates,
+    )
+    assert result.matched is True
+    assert result.best_member_id == "m1"
+
+
+def test_enrollment_consistency_and_centroid():
+    similar = [
+        [1.0, 0.0, 0.0],
+        [0.99, 0.01, 0.0],
+        [0.98, 0.02, 0.0],
+    ]
+    assert face_matching_service.validate_enrollment_consistency(similar) is True
+    centroid = face_matching_service.compute_centroid(similar)
+    assert len(centroid) == 3
+    assert abs((centroid[0] ** 2 + centroid[1] ** 2 + centroid[2] ** 2) ** 0.5 - 1.0) < 1e-5
+
+    divergent = [
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+    ]
+    assert face_matching_service.validate_enrollment_consistency(divergent) is False

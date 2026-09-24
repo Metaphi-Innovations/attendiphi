@@ -232,8 +232,8 @@ class _AdminShellLayoutState extends ConsumerState<AdminShellLayout> {
     final isDark = theme.brightness == Brightness.dark;
     final currentAdmin = ref.watch(currentAdminUserProvider);
 
-    final adminName = currentAdmin?.name ?? 'Super Admin';
-    final adminRoleLabel = currentAdmin?.role.label ?? 'Super Admin';
+    final adminName = currentAdmin?.name ?? 'Administrator';
+    final adminRoleLabel = currentAdmin?.role.label ?? 'Admin';
     final initials = adminName.trim().isNotEmpty
         ? (adminName.trim().split(' ').length > 1
             ? '${adminName.trim().split(' ')[0][0]}${adminName.trim().split(' ')[1][0]}'

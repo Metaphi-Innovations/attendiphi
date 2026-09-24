@@ -44,10 +44,13 @@ class AppConstants {
   // ── Firebase Paths ────────────────────────────────────────────────────
   static const String locationsCollection = 'locations';
   static const String checkInsCollection = 'checkIns';
+  /// Public create-once locks: one device may check in once per session date.
+  static const String deviceSessionLocksCollection = 'deviceSessionLocks';
   static const String adminsCollection = 'admins';
   static const String employeesCollection = 'employees';
   static const String adminDevicesCollection = 'admin_devices';
   static const String adminNotificationsCollection = 'admin_notifications';
+  static const String adminMailDispatchCollection = 'admin_mail_dispatch';
   static const String substitutePhotosPath = 'substitute_photos';
 
   // ── Push Notifications ────────────────────────────────────────────────

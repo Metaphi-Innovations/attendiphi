@@ -25,11 +25,11 @@ def calculate_cosine_similarity(vec1: np.ndarray, vec2: np.ndarray) -> float:
         return 0.0
     return float(np.clip(dot / (norm1 * norm2), -1.0, 1.0))
 
-def cosine_to_confidence_percentage(similarity: float, threshold: float = 0.65) -> float:
+def cosine_to_confidence_percentage(similarity: float, threshold: float = 0.72) -> float:
     """
     Calibrated mapping from cosine similarity to an intuitive 0% - 100% confidence scale.
     - Similarity <= 0.25: 0% confidence
-    - Similarity == threshold (0.65): 80% confidence
+    - Similarity == threshold (0.72): 80% confidence
     - Similarity >= 0.90: 98% - 100% confidence
     """
     if similarity <= 0.25:
@@ -50,16 +50,56 @@ class FaceMatchingService:
     def __init__(self):
         self.match_threshold = settings.FACE_MATCH_THRESHOLD
         self.margin_threshold = settings.FACE_MARGIN_THRESHOLD
+        self.enroll_consistency_threshold = settings.ENROLL_CONSISTENCY_THRESHOLD
+
+    def _candidate_templates(self, cand: Dict[str, Any]) -> List[np.ndarray]:
+        templates: List[np.ndarray] = []
+        raw_list = cand.get("embeddings")
+        if isinstance(raw_list, list) and raw_list:
+            for item in raw_list:
+                if item and len(item) > 0:
+                    templates.append(np.asarray(item, dtype=np.float32))
+        if not templates:
+            raw_emb = cand.get("embedding")
+            if raw_emb and len(raw_emb) > 0:
+                templates.append(np.asarray(raw_emb, dtype=np.float32))
+        return templates
+
+    def validate_enrollment_consistency(
+        self,
+        embeddings: List[List[float]],
+        threshold: Optional[float] = None,
+    ) -> bool:
+        floor = threshold if threshold is not None else self.enroll_consistency_threshold
+        if len(embeddings) < 2:
+            return False
+        vectors = [np.asarray(e, dtype=np.float32) for e in embeddings]
+        for i in range(len(vectors)):
+            for j in range(i + 1, len(vectors)):
+                if calculate_cosine_similarity(vectors[i], vectors[j]) < floor:
+                    return False
+        return True
+
+    def compute_centroid(self, embeddings: List[List[float]]) -> List[float]:
+        if not embeddings:
+            return []
+        stacked = np.asarray(embeddings, dtype=np.float32)
+        centroid = np.mean(stacked, axis=0)
+        norm = np.linalg.norm(centroid)
+        if norm > 1e-9:
+            centroid = centroid / norm
+        return centroid.astype(float).tolist()
 
     def match_probe(
         self,
         probe_vector: np.ndarray,
-        candidates: List[Dict[str, Any]],  # Each item: {"member_id": str, "name": str, "embedding": list[float]}
+        candidates: List[Dict[str, Any]],  # Each item: embedding and/or embeddings
         match_threshold: Optional[float] = None,
         margin_threshold: Optional[float] = None,
     ) -> MatchResult:
         """
         Performs robust 1:N candidate matching against chapter member templates.
+        Per member, score is the max cosine across that member's templates.
         Enforces:
         1. best_similarity >= match_threshold
         2. (best_similarity - second_best_similarity) >= margin_threshold
@@ -83,23 +123,25 @@ class FaceMatchingService:
         valid_candidate_count = 0
 
         for cand in candidates:
-            raw_emb = cand.get("embedding")
-            if not raw_emb or len(raw_emb) == 0:
-                continue
+            templates = self._candidate_templates(cand)
+            candidate_best = -1.0
+            for template in templates:
+                if template.shape != probe.shape:
+                    continue
+                sim = calculate_cosine_similarity(probe, template)
+                if sim > candidate_best:
+                    candidate_best = sim
 
-            cand_vec = np.asarray(raw_emb, dtype=np.float32)
-            if cand_vec.shape != probe.shape:
+            if candidate_best < 0:
                 continue
 
             valid_candidate_count += 1
-            sim = calculate_cosine_similarity(probe, cand_vec)
-
-            if sim > best_score:
+            if candidate_best > best_score:
                 second_score = best_score
-                best_score = sim
+                best_score = candidate_best
                 best_candidate = cand
-            elif sim > second_score:
-                second_score = sim
+            elif candidate_best > second_score:
+                second_score = candidate_best
 
         if best_candidate is None or valid_candidate_count == 0:
             return MatchResult(

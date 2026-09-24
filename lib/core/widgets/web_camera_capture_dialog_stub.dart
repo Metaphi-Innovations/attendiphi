@@ -26,7 +26,11 @@ Future<Uint8List?> captureCameraPhoto(BuildContext context) async {
 Future<List<Uint8List>?> captureBurstPhotos(
   BuildContext context, {
   int count = 5,
-  int intervalMs = 200,
+  int intervalMs = 280,
+  List<String>? poseGuides,
+  bool waitForFace = true,
+  bool allowGallery = false,
+  bool autoCapture = false,
 }) async {
   final single = await captureCameraPhoto(context);
   if (single == null) return null;

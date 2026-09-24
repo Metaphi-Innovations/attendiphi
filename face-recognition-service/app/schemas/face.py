@@ -45,7 +45,8 @@ class VerifyResponse(BaseModel):
 class EnrollRequest(BaseModel):
     member_id: str = Field(..., description="Target member document ID in employees collection")
     chapter_id: str = Field(..., description="Admin ID / Chapter ID")
-    photo_base64: str = Field(..., description="Base64 encoded photo for biometric enrollment")
+    photo_base64: Optional[str] = Field(None, description="Base64 encoded photo for biometric enrollment")
+    photos_base64: Optional[List[str]] = Field(None, description="Optional multi-frame burst for robust enrollment")
     member_name: Optional[str] = None
 
 class EnrollResponse(BaseModel):

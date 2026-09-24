@@ -3,28 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/logger/app_logger.dart';
 import '../../../../core/notifications/notification_providers.dart';
+import '../../../../services/attendiphi_email_service.dart';
 import '../../../location/presentation/providers/location_providers.dart';
 import '../../data/datasources/admin_device_service.dart';
+import '../../data/datasources/admin_password_reset_service.dart';
 import '../../data/datasources/admin_remote_data_source.dart';
 import '../../data/datasources/email_credentials_service.dart';
 import '../../data/repositories/admin_repository.dart';
+import '../../domain/admin_password_hasher.dart';
 import '../../domain/entities/admin_user.dart';
-
-/// Superadmin master credentials
-class SuperAdminConfig {
-  SuperAdminConfig._();
-  static const String email = 'superadmin@metaphi.com';
-  static const String password = 'SuperAdmin@2026';
-
-  static const AdminUser user = AdminUser(
-    id: 'super_admin_master',
-    name: 'Super Admin',
-    email: email,
-    phone: '+91 9999999999',
-    role: AdminRole.superAdmin,
-    isActive: true,
-  );
-}
 
 /// Provider for [FirebaseAuth] instance.
 final firebaseAuthProvider = Provider<FirebaseAuth?>((ref) {
@@ -48,7 +35,18 @@ final adminDeviceServiceProvider = Provider<AdminDeviceService>((ref) {
 /// Provider for [EmailCredentialsService].
 final emailCredentialsServiceProvider =
     Provider<EmailCredentialsService>((ref) {
-  return EmailCredentialsService(firestore: ref.watch(firestoreProvider));
+  return EmailCredentialsService(
+    auth: ref.watch(firebaseAuthProvider),
+    firestore: ref.watch(firestoreProvider),
+  );
+});
+
+final adminPasswordResetServiceProvider =
+    Provider<AdminPasswordResetService>((ref) {
+  return AdminPasswordResetService(
+    auth: ref.watch(firebaseAuthProvider),
+    firestore: ref.watch(firestoreProvider),
+  );
 });
 
 /// Provider for [AdminRemoteDataSource].
@@ -72,6 +70,8 @@ class AdminAuthState {
     this.isLoading = false,
     this.errorMessage,
     this.isAuthenticated = false,
+    this.sessionResolved = true,
+    this.sessionPassword,
   });
 
   final User? user;
@@ -79,6 +79,10 @@ class AdminAuthState {
   final bool isLoading;
   final String? errorMessage;
   final bool isAuthenticated;
+  final bool sessionResolved;
+
+  /// In-memory login secret used to authorize credential emails. Never persisted.
+  final String? sessionPassword;
 
   bool get isSuperAdmin => currentAdmin?.isSuperAdmin ?? false;
 
@@ -88,8 +92,11 @@ class AdminAuthState {
     bool? isLoading,
     String? errorMessage,
     bool? isAuthenticated,
+    bool? sessionResolved,
+    String? sessionPassword,
     bool clearError = false,
     bool clearAdmin = false,
+    bool clearSessionPassword = false,
   }) {
     return AdminAuthState(
       user: user ?? this.user,
@@ -97,6 +104,10 @@ class AdminAuthState {
       isLoading: isLoading ?? this.isLoading,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       isAuthenticated: isAuthenticated ?? this.isAuthenticated,
+      sessionResolved: sessionResolved ?? this.sessionResolved,
+      sessionPassword: clearSessionPassword
+          ? null
+          : (sessionPassword ?? this.sessionPassword),
     );
   }
 }
@@ -106,114 +117,183 @@ class AdminAuthNotifier extends Notifier<AdminAuthState> {
   @override
   AdminAuthState build() {
     final auth = ref.watch(firebaseAuthProvider);
-    final currentUser = auth?.currentUser;
-    return AdminAuthState(
-      user: currentUser,
-      isAuthenticated: true,
-      currentAdmin: SuperAdminConfig.user,
-    );
+    final sub = auth?.authStateChanges().listen(_onAuthChanged);
+    ref.onDispose(() => sub?.cancel());
+    final user = auth?.currentUser;
+    if (user != null) {
+      Future.microtask(() => _hydrate(user));
+      return AdminAuthState(
+        user: user,
+        isLoading: true,
+        sessionResolved: false,
+      );
+    }
+    return const AdminAuthState(sessionResolved: true);
   }
 
-  /// Signs in Admin (Superadmin master or created Admin) with credentials.
+  Future<void> _onAuthChanged(User? user) async {
+    if (user == null) {
+      state = const AdminAuthState(sessionResolved: true);
+      return;
+    }
+    if (state.isAuthenticated && state.currentAdmin?.id == user.uid) {
+      return;
+    }
+    // Ignore secondary-app provision spillover: a different UID must not
+    // replace / sign out the logged-in Super Admin mid Admin-create.
+    if (state.isAuthenticated &&
+        state.currentAdmin != null &&
+        user.uid != state.currentAdmin!.id) {
+      AppLogger.warning(
+        'Ignoring Auth spillover uid (primary Admin session preserved)',
+        tag: 'AdminAuth',
+      );
+      return;
+    }
+    await _hydrate(user);
+  }
+
+  Future<void> _hydrate(User user) async {
+    try {
+      final admin =
+          await ref.read(adminRepositoryProvider).getAdminById(user.uid);
+      if (admin == null || !admin.isActive) {
+        await ref.read(firebaseAuthProvider)?.signOut();
+        state = const AdminAuthState(sessionResolved: true);
+        return;
+      }
+      state = AdminAuthState(
+        user: user,
+        currentAdmin: admin,
+        isAuthenticated: true,
+        sessionResolved: true,
+      );
+    } catch (_) {
+      state = const AdminAuthState(sessionResolved: true);
+    }
+  }
+
+  /// Firebase Auth password check, then Firestore admin profile by UID.
   Future<bool> signIn({required String email, required String password}) async {
-    state = state.copyWith(isLoading: true, clearError: true);
+    state = state.copyWith(isLoading: true, clearError: true, sessionResolved: true);
 
     final cleanEmail = email.trim().toLowerCase();
     final cleanPassword = password.trim();
+    final auth = ref.read(firebaseAuthProvider);
 
-    // 1. Check against Superadmin Master Credentials
-    final isMasterSuperAdmin = (cleanEmail == SuperAdminConfig.email ||
-            cleanEmail == 'superadmin' ||
-            cleanEmail == 'admin@qrcheckin.com') &&
-        (cleanPassword == SuperAdminConfig.password ||
-            cleanPassword == 'Admin@1234');
-
-    if (isMasterSuperAdmin) {
-      state = const AdminAuthState(
+    if (auth == null) {
+      state = state.copyWith(
         isLoading: false,
-        isAuthenticated: true,
-        currentAdmin: SuperAdminConfig.user,
+        errorMessage: 'Authentication is unavailable. Please try again.',
       );
-
-      // Register Admin FCM device token
-      try {
-        await ref
-            .read(adminDeviceServiceProvider)
-            .registerAdminDevice(adminEmail: cleanEmail);
-      } catch (_) {}
-
-      AppLogger.info('Super Admin master logged in', tag: 'AdminAuth');
-      return true;
+      return false;
     }
 
-    // 2. Check in Firestore 'admins' Collection
     try {
-      final repo = ref.read(adminRepositoryProvider);
-      final adminUser = await repo.getAdminByEmail(cleanEmail);
-
-      if (adminUser != null) {
-        if (!adminUser.isActive) {
-          state = state.copyWith(
-            isLoading: false,
-            errorMessage:
-                'This Admin account has been deactivated by the Super Admin.',
-          );
-          return false;
-        }
-
-        final isPasswordMatch = (adminUser.plainPassword.isNotEmpty &&
-                adminUser.plainPassword == cleanPassword) ||
-            (adminUser.passwordHash.isNotEmpty &&
-                adminUser.passwordHash == cleanPassword);
-
-        if (isPasswordMatch) {
-          final updatedAdmin = adminUser.copyWith(lastLoginAt: DateTime.now());
-          try {
-            await repo.updateAdmin(updatedAdmin);
-          } catch (_) {}
-
-          state = AdminAuthState(
-            isLoading: false,
-            isAuthenticated: true,
-            currentAdmin: updatedAdmin,
-          );
-
-          try {
-            await ref
-                .read(adminDeviceServiceProvider)
-                .registerAdminDevice(adminEmail: cleanEmail);
-          } catch (_) {}
-
-          AppLogger.info(
-            'Admin "${adminUser.name}" (${adminUser.role.label}) logged in',
-            tag: 'AdminAuth',
-          );
-          return true;
-        } else {
-          state = state.copyWith(
-            isLoading: false,
-            errorMessage: 'Incorrect password for this Admin account.',
-          );
-          return false;
-        }
+      final credential = await auth.signInWithEmailAndPassword(
+        email: cleanEmail,
+        password: cleanPassword,
+      );
+      final uid = credential.user?.uid;
+      if (uid == null || uid.isEmpty) {
+        await auth.signOut();
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage: 'Invalid Admin email or password.',
+        );
+        return false;
       }
-    } catch (e) {
-      AppLogger.warning('Error checking Firestore admin: $e', tag: 'AdminAuth');
-    }
 
-    state = state.copyWith(
-      isLoading: false,
-      errorMessage: 'Invalid Admin email or password.',
-    );
-    return false;
+      final adminUser =
+          await ref.read(adminRepositoryProvider).getAdminById(uid);
+      if (adminUser == null) {
+        await auth.signOut();
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage: 'Invalid Admin email or password.',
+        );
+        return false;
+      }
+      if (!adminUser.isActive) {
+        await auth.signOut();
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage:
+              'This Admin account has been deactivated by the Super Admin.',
+        );
+        return false;
+      }
+      return await _finishAdminSignIn(adminUser, cleanPassword, cleanEmail);
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'too-many-requests') {
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage: 'Too many attempts. Please try again later.',
+        );
+        return false;
+      }
+      if (e.code == 'network-request-failed') {
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage: 'Network error. Please try again.',
+        );
+        return false;
+      }
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Invalid Admin email or password.',
+      );
+      return false;
+    } catch (_) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Invalid Admin email or password.',
+      );
+      return false;
+    }
   }
 
-  /// 1-click Quick Superadmin Login.
-  Future<bool> superAdminAutoLogin() async {
-    return signIn(
-      email: SuperAdminConfig.email,
-      password: SuperAdminConfig.password,
+  Future<bool> _finishAdminSignIn(
+    AdminUser adminUser,
+    String password,
+    String email,
+  ) async {
+    final updatedAdmin = adminUser.copyWith(lastLoginAt: DateTime.now());
+    await attachFirebaseAuthSession(email: email, password: password);
+    try {
+      await ref.read(adminRepositoryProvider).updateAdmin(updatedAdmin);
+    } catch (_) {}
+
+    state = AdminAuthState(
+      isLoading: false,
+      isAuthenticated: true,
+      sessionResolved: true,
+      currentAdmin: updatedAdmin,
+      sessionPassword: password,
+      user: ref.read(firebaseAuthProvider)?.currentUser,
     );
+
+    try {
+      await ref.read(adminDeviceServiceProvider).registerAdminDevice(
+            adminEmail: email,
+            uid: updatedAdmin.id,
+          );
+    } catch (_) {}
+
+    AppLogger.info(
+      'Admin "${adminUser.name}" (${adminUser.role.label}) logged in',
+      tag: 'AdminAuth',
+    );
+    return true;
+  }
+
+  /// Kept for API compatibility. Hardcoded Super Admin login is removed.
+  Future<bool> superAdminAutoLogin() async {
+    AppLogger.warning(
+      'superAdminAutoLogin is disabled; use Firebase Auth',
+      tag: 'AdminAuth',
+    );
+    return false;
   }
 
   /// Resets the logged-in admin's password in Firestore and updates the session.
@@ -224,19 +304,28 @@ class AdminAuthNotifier extends Notifier<AdminAuthState> {
     state = state.copyWith(isLoading: true, clearError: true);
 
     try {
+      final salt = AdminPasswordHasher.generateSalt();
+      final hashed = AdminPasswordHasher.hash(newPassword.trim(), salt);
       final updatedAdmin = current.copyWith(
-        plainPassword: newPassword.trim(),
-        passwordHash: newPassword.trim(),
+        plainPassword: '',
+        passwordHash: hashed,
+        passwordSalt: salt,
         mustResetPassword: false,
         lastLoginAt: DateTime.now(),
       );
 
       final repo = ref.read(adminRepositoryProvider);
+      try {
+        await ref.read(firebaseAuthProvider)?.currentUser?.updatePassword(
+              newPassword.trim(),
+            );
+      } catch (_) {}
       await repo.updateAdmin(updatedAdmin);
 
       state = state.copyWith(
         isLoading: false,
         currentAdmin: updatedAdmin,
+        sessionPassword: newPassword.trim(),
       );
 
       AppLogger.info(
@@ -260,7 +349,11 @@ class AdminAuthNotifier extends Notifier<AdminAuthState> {
       await ref.read(adminDeviceServiceProvider).unregisterAdminDevice();
       await ref.read(firebaseAuthProvider)?.signOut();
     } catch (_) {}
-    state = const AdminAuthState(isAuthenticated: false);
+    state = const AdminAuthState(
+      isAuthenticated: false,
+      sessionResolved: true,
+      sessionPassword: null,
+    );
   }
 }
 

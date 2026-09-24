@@ -71,6 +71,7 @@ class DeviceCheckInService {
   Future<bool> hasCheckedInForSession({
     String? sessionDateStr,
     String? locationId,
+    bool probeServer = true,
   }) async {
     // 1. Fast local check via cookie
     final key = getSessionKey(sessionDateStr: sessionDateStr, locationId: locationId);
@@ -84,6 +85,8 @@ class DeviceCheckInService {
       locationId: locationId,
     );
     if (submission != null) return true;
+
+    if (!probeServer) return false;
 
     // 3. Server-side fallback: query Firestore by deviceId (critical for iOS)
     if (_remoteDataSource != null) {
@@ -116,6 +119,13 @@ class DeviceCheckInService {
     return false;
   }
 
+  CheckInSubmission? _parseStoredSubmission(String? jsonStr) {
+    if (jsonStr == null || jsonStr.isEmpty || jsonStr == '1') return null;
+    final decoded = jsonDecode(jsonStr);
+    if (decoded is! Map) return null;
+    return CheckInSubmission.fromMap(Map<String, dynamic>.from(decoded));
+  }
+
   /// Retrieves the recorded attendance submission for this session from local storage / cookies.
   Future<CheckInSubmission?> _getLocalSubmission({
     String? sessionDateStr,
@@ -133,10 +143,8 @@ class DeviceCheckInService {
         jsonStr = CookieHelper.getCookie(key);
       }
 
-      if (jsonStr != null && jsonStr.isNotEmpty && jsonStr != '1') {
-        final map = jsonDecode(jsonStr) as Map<String, dynamic>;
-        return CheckInSubmission.fromMap(map);
-      }
+      final fromSession = _parseStoredSubmission(jsonStr);
+      if (fromSession != null) return fromSession;
 
       // 3. Fallback to last submission if available and matches session date
       jsonStr = prefs.getString(_lastSubmissionKey);
@@ -144,9 +152,8 @@ class DeviceCheckInService {
         jsonStr = CookieHelper.getCookie(_lastSubmissionKey);
       }
 
-      if (jsonStr != null && jsonStr.isNotEmpty && jsonStr != '1') {
-        final map = jsonDecode(jsonStr) as Map<String, dynamic>;
-        final sub = CheckInSubmission.fromMap(map);
+      final sub = _parseStoredSubmission(jsonStr);
+      if (sub != null) {
         if (sessionDateStr != null && sessionDateStr.trim().isNotEmpty) {
           final target = _parseSessionDate(sessionDateStr);
           if (sub.timestamp.year == target.year &&
@@ -169,6 +176,7 @@ class DeviceCheckInService {
   Future<CheckInSubmission?> getSubmissionForSession({
     String? sessionDateStr,
     String? locationId,
+    bool probeServer = true,
   }) async {
     // Try local first
     final local = await _getLocalSubmission(
@@ -176,6 +184,8 @@ class DeviceCheckInService {
       locationId: locationId,
     );
     if (local != null) return local;
+
+    if (!probeServer) return null;
 
     // Server-side fallback
     if (_remoteDataSource != null) {
@@ -254,10 +264,7 @@ class DeviceCheckInService {
       if (jsonStr == null || jsonStr.isEmpty || jsonStr == '1') {
         jsonStr = CookieHelper.getCookie(_lastSubmissionKey);
       }
-      if (jsonStr != null && jsonStr.isNotEmpty && jsonStr != '1') {
-        final map = jsonDecode(jsonStr) as Map<String, dynamic>;
-        return CheckInSubmission.fromMap(map);
-      }
+      return _parseStoredSubmission(jsonStr);
     } catch (e) {
       AppLogger.warning('Error reading last submission: $e', tag: 'DeviceCheckInService');
     }

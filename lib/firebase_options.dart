@@ -38,11 +38,11 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyCgMYy9B65RLXkN4qgDB7J_w_JIX9-BioQ',
+    apiKey: 'AIzaSyCgMYy9B65RLXkN4qgD07J_w_JIX9-BIoQ',
     appId: '1:844905977695:web:fee83a7675059cdfaec8ea',
     messagingSenderId: '844905977695',
     projectId: 'qr-checkin-dev',
-    authDomain: 'qr-checkin-dev.firebaseapp.com',
+    authDomain: 'attendiphi-by-metaphi.web.app',
     storageBucket: 'qr-checkin-dev.firebasestorage.app',
     measurementId: 'G-FV457K008X',
   );

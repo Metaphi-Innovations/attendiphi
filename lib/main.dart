@@ -8,6 +8,7 @@ import 'app/app.dart';
 import 'app/config/app_config.dart';
 import 'app/config/environment.dart';
 import 'app/config/firebase_config.dart';
+import 'app/router/configure_url_strategy.dart';
 import 'core/logger/app_logger.dart';
 import 'features/checkin/data/datasources/device_checkin_service.dart';
 import 'firebase_options.dart';
@@ -19,6 +20,7 @@ Future<void> bootstrap({
   runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
+      configureUrlStrategy();
 
       SharedPreferences? prefs;
       try {

@@ -69,7 +69,7 @@ void main() {
       expect(find.text('Allowed Perimeter:'), findsNothing);
     });
 
-    testWidgets('activates session and initiates location check for 2026-09-03 demo session',
+    testWidgets('activates session and initiates location check for today Thursday',
         (tester) async {
       await tester.pumpWidget(
         createWidgetUnderTest(sessionDateStr: '2026-09-03'),
@@ -80,6 +80,22 @@ void main() {
       expect(find.text('SESSION EXPIRED'), findsNothing);
       expect(find.text('UPCOMING SESSION'), findsNothing);
       expect(find.text('Allowed Perimeter:'), findsOneWidget);
+    });
+
+    testWidgets('shows SESSION EXPIRED for past Thursday QR when today is later',
+        (tester) async {
+      await tester.pumpWidget(
+        createWidgetUnderTest(
+          sessionDateStr: '2026-09-03',
+          nowProvider: () => DateTime(2026, 9, 24, 10, 0),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(find.text('SESSION EXPIRED'), findsOneWidget);
+      expect(find.text('QR Standee Expired'), findsOneWidget);
+      expect(find.text('Allowed Perimeter:'), findsNothing);
     });
 
     testWidgets('shows UPCOMING SESSION when scanned QR date is in the future',

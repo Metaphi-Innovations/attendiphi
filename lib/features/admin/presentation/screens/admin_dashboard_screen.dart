@@ -15,9 +15,11 @@ import '../../../../core/widgets/app_card.dart';
 import '../../../../core/widgets/app_empty_view.dart';
 import '../../../../core/widgets/app_page_header.dart';
 import '../../../../core/widgets/app_shimmer.dart';
+import '../../../../core/widgets/member_photo.dart';
 import '../../../checkin/domain/entities/check_in_submission.dart';
 import '../../../checkin/domain/entities/check_in_type.dart';
 import '../../../checkin/presentation/providers/checkin_providers.dart';
+import '../../../employee/domain/employee_lookup.dart';
 import '../../../employee/domain/entities/employee.dart';
 import '../../../employee/presentation/providers/employee_providers.dart';
 import '../providers/admin_dashboard_provider.dart';
@@ -27,10 +29,40 @@ Widget _buildAttendanceRecordAvatar({
   required List<Employee>? employees,
   required double size,
 }) {
-  final photoBytes = ImageUtils.base64ToBytes(record.photoBase64);
+  final liveMember = employees == null || employees.isEmpty
+      ? null
+      : EmployeeLookup.forCheckIn(employees, record) ??
+          EmployeeLookup.byPhone(employees, record.userPhone) ??
+          EmployeeLookup.byName(employees, record.userName);
 
-  // 1. If check-in selfie is present (and not a substitute without photo)
-  if (!record.type.isSubstitute && photoBytes != null) {
+  Widget fallback() => _buildFallbackRecordInitials(
+        liveMember?.name ?? record.userName,
+        size,
+      );
+
+  // Member identity displays use the live profile photo so admin edits
+  // appear immediately. Selfies remain for substitutes/visitors.
+  if (liveMember != null &&
+      (record.type.isMember ||
+          record.type.isAbsent ||
+          record.type.isNotCheckedIn ||
+          record.type.isSubstitute)) {
+    final photo = liveMember.photoUrl?.trim() ?? '';
+    if (photo.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: AppRadius.xsAll,
+        child: MemberPhoto(
+          member: liveMember,
+          width: size,
+          height: size,
+          errorBuilder: (ctx, err, stack) => fallback(),
+        ),
+      );
+    }
+  }
+
+  final photoBytes = ImageUtils.base64ToBytes(record.photoBase64);
+  if (photoBytes != null) {
     return ClipRRect(
       borderRadius: AppRadius.xsAll,
       child: Image.memory(
@@ -40,60 +72,12 @@ Widget _buildAttendanceRecordAvatar({
         cacheWidth: (size * 2).toInt(),
         cacheHeight: (size * 2).toInt(),
         fit: BoxFit.cover,
-        errorBuilder: (ctx, err, stack) => _buildFallbackRecordInitials(record.userName, size),
+        errorBuilder: (ctx, err, stack) => fallback(),
       ),
     );
   }
 
-  // 2. Check if registered member profile has photoUrl
-  if (employees != null && employees.isNotEmpty) {
-    Employee? member;
-    try {
-      member = employees.firstWhere(
-        (e) =>
-            (record.userPhone.isNotEmpty && (e.phone == record.userPhone || record.userPhone.endsWith(e.phone) || e.phone.endsWith(record.userPhone))) ||
-            (record.userName.isNotEmpty &&
-                e.name.trim().toLowerCase() == record.userName.trim().toLowerCase()),
-      );
-    } catch (_) {}
-
-    final photoUrl = member?.photoUrl?.trim();
-    if (photoUrl != null && photoUrl.isNotEmpty) {
-      if (photoUrl.startsWith('http://') || photoUrl.startsWith('https://')) {
-        return ClipRRect(
-          borderRadius: AppRadius.xsAll,
-          child: Image.network(
-            photoUrl,
-            width: size,
-            height: size,
-            cacheWidth: (size * 2).toInt(),
-            cacheHeight: (size * 2).toInt(),
-            fit: BoxFit.cover,
-            errorBuilder: (ctx, err, stack) => _buildFallbackRecordInitials(record.userName, size),
-          ),
-        );
-      } else {
-        final memberBytes = ImageUtils.base64ToBytes(photoUrl);
-        if (memberBytes != null) {
-          return ClipRRect(
-            borderRadius: AppRadius.xsAll,
-            child: Image.memory(
-              memberBytes,
-              width: size,
-              height: size,
-              cacheWidth: (size * 2).toInt(),
-              cacheHeight: (size * 2).toInt(),
-              fit: BoxFit.cover,
-              errorBuilder: (ctx, err, stack) => _buildFallbackRecordInitials(record.userName, size),
-            ),
-          );
-        }
-      }
-    }
-  }
-
-  // 3. Fallback: Initials
-  return _buildFallbackRecordInitials(record.userName, size);
+  return fallback();
 }
 
 Widget _buildFallbackRecordInitials(String userName, double size) {
@@ -773,15 +757,14 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                   ),
                 );
               }
-              final emps = ref.read(employeesStreamProvider).value;
-              final member = emps?.where((e) =>
-                (record.userPhone.isNotEmpty && (e.phone == record.userPhone || record.userPhone.endsWith(e.phone) || e.phone.endsWith(record.userPhone))) ||
-                (record.userName.isNotEmpty && e.name.trim().toLowerCase() == record.userName.trim().toLowerCase())
-              ).firstOrNull;
+              final emps = ref.watch(employeesStreamProvider).value;
+              final member = emps == null
+                  ? null
+                  : EmployeeLookup.forCheckIn(emps, record) ??
+                      EmployeeLookup.byPhone(emps, record.userPhone) ??
+                      EmployeeLookup.byName(emps, record.userName);
               final photoUrl = member?.photoUrl?.trim();
-              if (photoUrl != null && photoUrl.isNotEmpty) {
-                final isNet = photoUrl.startsWith('http://') || photoUrl.startsWith('https://');
-                final mBytes = isNet ? null : ImageUtils.base64ToBytes(photoUrl);
+              if (member != null && photoUrl != null && photoUrl.isNotEmpty) {
                 return Center(
                   child: Padding(
                     padding: const EdgeInsets.only(bottom: 8.0),
@@ -789,11 +772,11 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                       children: [
                         ClipRRect(
                           borderRadius: AppRadius.mdAll,
-                          child: isNet
-                              ? Image.network(photoUrl, width: 110, height: 110, fit: BoxFit.cover)
-                              : (mBytes != null
-                                  ? Image.memory(mBytes, width: 110, height: 110, fit: BoxFit.cover)
-                                  : const SizedBox.shrink()),
+                          child: MemberPhoto(
+                            member: member,
+                            width: 110,
+                            height: 110,
+                          ),
                         ),
                         const SizedBox(height: 4),
                         const Text(

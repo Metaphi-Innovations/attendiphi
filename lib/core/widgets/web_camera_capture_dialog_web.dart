@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:html' as html;
+import 'dart:js' as js;
 import 'dart:typed_data';
 import 'dart:ui_web' as ui_web;
 
@@ -28,7 +29,11 @@ Future<Uint8List?> captureCameraPhoto(BuildContext context) async {
 Future<List<Uint8List>?> captureBurstPhotos(
   BuildContext context, {
   int count = 5,
-  int intervalMs = 200,
+  int intervalMs = 280,
+  List<String>? poseGuides,
+  bool waitForFace = true,
+  bool allowGallery = false,
+  bool autoCapture = false,
 }) async {
   final dynamic result = await showDialog(
     context: context,
@@ -38,6 +43,10 @@ Future<List<Uint8List>?> captureBurstPhotos(
       isBurst: true,
       burstCount: count,
       intervalMs: intervalMs,
+      poseGuides: poseGuides,
+      waitForFace: waitForFace,
+      allowGallery: allowGallery,
+      autoCapture: autoCapture,
     ),
   );
   if (result is List<Uint8List>) return result;
@@ -49,12 +58,20 @@ class _WebCameraCaptureDialogWidget extends StatefulWidget {
   const _WebCameraCaptureDialogWidget({
     this.isBurst = false,
     this.burstCount = 5,
-    this.intervalMs = 200,
+    this.intervalMs = 280,
+    this.poseGuides,
+    this.waitForFace = false,
+    this.allowGallery = true,
+    this.autoCapture = false,
   });
 
   final bool isBurst;
   final int burstCount;
   final int intervalMs;
+  final List<String>? poseGuides;
+  final bool waitForFace;
+  final bool allowGallery;
+  final bool autoCapture;
 
   @override
   State<_WebCameraCaptureDialogWidget> createState() =>
@@ -70,7 +87,11 @@ class _WebCameraCaptureDialogWidgetState
   bool _isInitializing = true;
   String? _errorMessage;
   bool _isCapturingBurst = false;
-  int _burstProgress = 0;
+  String _liveGuidance = 'Align your face within the oval';
+  bool _faceReady = false;
+  int _poseIndex = 0;
+  Timer? _previewTimer;
+  bool _autoCaptureStarted = false;
 
   @override
   void initState() {
@@ -87,9 +108,14 @@ class _WebCameraCaptureDialogWidgetState
 
     try {
       final mediaDevices = html.window.navigator.mediaDevices;
+      if (html.window.isSecureContext == false) {
+        throw Exception(
+          'Camera access requires HTTPS. Open this app on a secure URL.',
+        );
+      }
       if (mediaDevices == null) {
         throw Exception(
-            'MediaDevices API not supported in this browser. Please use Gallery upload.');
+            'This browser does not support camera access. Please use Chrome, Edge, or Safari.');
       }
 
       final stream = await mediaDevices.getUserMedia({
@@ -125,13 +151,15 @@ class _WebCameraCaptureDialogWidgetState
         setState(() {
           _isInitializing = false;
         });
+        _startPreviewLoop();
+        _maybeAutoCapture();
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _isInitializing = false;
           _errorMessage =
-              'Camera access was denied or not available. Please allow camera permissions in your browser or choose a photo from Gallery.';
+              'Camera permission is required for face attendance. Allow camera access in your browser, or try again.';
         });
       }
     }
@@ -179,23 +207,146 @@ class _WebCameraCaptureDialogWidgetState
     return base64Decode(base64String);
   }
 
+  String get _currentPoseGuide {
+    final guides = widget.poseGuides;
+    if (guides == null || guides.isEmpty) {
+      return _liveGuidance;
+    }
+    final i = _poseIndex.clamp(0, guides.length - 1);
+    return guides[i];
+  }
+
+  bool get _currentPoseWantsFrontal {
+    final text = _currentPoseGuide.toLowerCase();
+    return text.contains('look at the camera') || text.contains('look straight');
+  }
+
+  void _maybeAutoCapture() {
+    if (!widget.autoCapture || _autoCaptureStarted) return;
+    if (_isInitializing || _errorMessage != null) return;
+    _autoCaptureStarted = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_isCapturingBurst) {
+        _capturePhoto();
+      }
+    });
+  }
+
+  void _startPreviewLoop() {
+    _previewTimer?.cancel();
+    _previewTimer = Timer.periodic(const Duration(milliseconds: 400), (_) {
+      _refreshLiveGuidance();
+    });
+  }
+
+  Future<void> _refreshLiveGuidance() async {
+    if (!mounted || _isInitializing || _errorMessage != null || _isCapturingBurst) {
+      return;
+    }
+    final bytes = _grabSingleFrame();
+    if (bytes == null) return;
+    final assessed = await _assessJpeg(bytes, requireFrontal: _currentPoseWantsFrontal);
+    if (!mounted || _isCapturingBurst) return;
+    final guidance = assessed?['guidance']?.toString() ?? _currentPoseGuide;
+    final ready = assessed?['ok'] == true;
+    if (guidance != _liveGuidance || ready != _faceReady) {
+      setState(() {
+        _liveGuidance = ready ? _currentPoseGuide : guidance;
+        _faceReady = ready;
+      });
+    }
+  }
+
+  Future<Map<String, dynamic>?> _assessJpeg(
+    Uint8List bytes, {
+    required bool requireFrontal,
+  }) async {
+    if (!js.context.hasProperty('assessLiveFaceFrame')) return null;
+    try {
+      final completer = Completer<Map<String, dynamic>?>();
+      final dataUrl = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+      final options = js.JsObject.jsify({
+        'minFaceSizeRatio': 0.12,
+        'minBrightness': 35,
+        'maxBrightness': 230,
+        'minSharpness': 18,
+        'requireFrontal': requireFrontal,
+      });
+      final dynamic promise =
+          js.context.callMethod('assessLiveFaceFrame', [dataUrl, options]);
+      if (promise == null) return null;
+      promise.callMethod('then', [
+        js.JsFunction.withThis((_, dynamic result) {
+          if (completer.isCompleted) return;
+          if (result == null) {
+            completer.complete(null);
+            return;
+          }
+          completer.complete({
+            'ok': result['ok'] == true,
+            'guidance': result['guidance']?.toString(),
+            'faceCount': result['faceCount'],
+          });
+        }),
+        js.JsFunction.withThis((_, dynamic error) {
+          if (!completer.isCompleted) completer.complete(null);
+        }),
+      ]);
+      return await completer.future.timeout(
+        const Duration(seconds: 4),
+        onTimeout: () => null,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _waitUntilReady({Duration timeout = const Duration(seconds: 10)}) async {
+    final deadline = DateTime.now().add(timeout);
+    while (mounted && DateTime.now().isBefore(deadline)) {
+      final bytes = _grabSingleFrame();
+      if (bytes != null) {
+        final assessed =
+            await _assessJpeg(bytes, requireFrontal: _currentPoseWantsFrontal);
+        final ready = assessed?['ok'] == true;
+        final guidance = assessed?['guidance']?.toString();
+        if (mounted) {
+          setState(() {
+            _faceReady = ready;
+            if (guidance != null && guidance.isNotEmpty) {
+              _liveGuidance = ready ? _currentPoseGuide : guidance;
+            }
+          });
+        }
+        if (ready) return;
+      }
+      await Future.delayed(const Duration(milliseconds: 280));
+    }
+  }
+
   Future<void> _capturePhoto() async {
     if (widget.isBurst) {
       setState(() {
         _isCapturingBurst = true;
-        _burstProgress = 1;
       });
 
       final frames = <Uint8List>[];
+      final guides = widget.poseGuides;
       for (int i = 0; i < widget.burstCount; i++) {
-        final frame = _grabSingleFrame();
-        if (frame != null) {
-          frames.add(frame);
+        if (guides != null && guides.isNotEmpty) {
+          _poseIndex = i % guides.length;
         }
         if (mounted) {
           setState(() {
-            _burstProgress = i + 1;
+            _liveGuidance = _currentPoseGuide;
           });
+        }
+        if (widget.waitForFace) {
+          await _waitUntilReady();
+        }
+        final frame = _grabSingleFrame();
+        if (frame != null) {
+          frames.add(frame);
         }
         if (i < widget.burstCount - 1) {
           await Future.delayed(Duration(milliseconds: widget.intervalMs));
@@ -207,9 +358,14 @@ class _WebCameraCaptureDialogWidgetState
         Navigator.of(context).pop(frames);
       }
     } else {
+      if (widget.waitForFace) {
+        await _waitUntilReady();
+      }
       final bytes = _grabSingleFrame();
       _stopCamera();
-      Navigator.of(context).pop(bytes);
+      if (mounted) {
+        Navigator.of(context).pop(bytes);
+      }
     }
   }
 
@@ -253,6 +409,7 @@ class _WebCameraCaptureDialogWidgetState
 
   @override
   void dispose() {
+    _previewTimer?.cancel();
     _stopCamera();
     super.dispose();
   }
@@ -289,25 +446,28 @@ class _WebCameraCaptureDialogWidgetState
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        const Text(
                           'Take Member Photo',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                        SizedBox(height: 2),
-                        Text(
-                          'Align face within frame and click Capture',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Color(0xFF64748B),
+                        const SizedBox(height: 2),
+                        if (!_isCapturingBurst)
+                          Text(
+                            _liveGuidance,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: _faceReady
+                                  ? const Color(0xFF059669)
+                                  : const Color(0xFF64748B),
+                            ),
                           ),
-                        ),
                       ],
                     ),
                   ),
@@ -371,7 +531,8 @@ class _WebCameraCaptureDialogWidgetState
                                       ),
                                     ),
                                     const SizedBox(width: 10),
-                                    ElevatedButton.icon(
+                                    if (widget.allowGallery)
+                                      ElevatedButton.icon(
                                       onPressed: _pickFromGallery,
                                       icon: const Icon(Icons.image_outlined,
                                           size: 16),
@@ -437,10 +598,12 @@ class _WebCameraCaptureDialogWidgetState
                 children: [
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: () {
-                        _stopCamera();
-                        Navigator.of(context).pop(null);
-                      },
+                      onPressed: _isCapturingBurst
+                          ? null
+                          : () {
+                              _stopCamera();
+                              Navigator.of(context).pop(null);
+                            },
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(
@@ -450,41 +613,65 @@ class _WebCameraCaptureDialogWidgetState
                       child: const Text('Cancel'),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: ElevatedButton.icon(
-                      onPressed: (_isInitializing || _errorMessage != null || _isCapturingBurst)
-                          ? null
-                          : _capturePhoto,
-                      icon: _isCapturingBurst
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : const Icon(Icons.camera_alt_rounded, size: 18),
-                      label: Text(
-                        _isCapturingBurst
-                            ? 'Hold still... ($_burstProgress/${widget.burstCount})'
-                            : widget.isBurst
-                                ? 'Verify Face (${widget.burstCount} Frames)'
-                                : 'Capture Photo',
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+                  if (!widget.autoCapture) ...[
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton(
+                        onPressed: (_isInitializing ||
+                                _errorMessage != null ||
+                                _isCapturingBurst)
+                            ? null
+                            : _capturePhoto,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: AppColors.primary,
+                          disabledForegroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          elevation: 0,
                         ),
-                        elevation: 0,
+                        child: _isCapturingBurst
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  valueColor:
+                                      AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              )
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.camera_alt_rounded, size: 18),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    widget.isBurst
+                                        ? 'Verify Face'
+                                        : 'Capture Photo',
+                                  ),
+                                ],
+                              ),
                       ),
                     ),
-                  ),
+                  ] else if (_isCapturingBurst) ...[
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      flex: 2,
+                      child: Text(
+                        'Verifying face...',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ],

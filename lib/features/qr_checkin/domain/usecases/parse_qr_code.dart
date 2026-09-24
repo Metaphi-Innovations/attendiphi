@@ -67,15 +67,22 @@ class ParseQrCode {
       }
     }
 
-    // 2. Try parsing as URI (e.g. checkin?locationId=xyz or https://domain.com/#/location-permission?date=...&locationId=...)
+    // 2. Try parsing as URI, including path URLs and legacy hash URLs.
+    //    e.g. https://attendiphi.metaphi.in/checkin-permission?date=...&locationId=...
+    //    e.g. https://domain.com/#/checkin-permission?date=...&locationId=...
     final uri = Uri.tryParse(trimmed);
     if (uri != null) {
       final Map<String, String> params = Map<String, String>.from(uri.queryParameters);
 
-      // Also check fragment query parameters (e.g. #/location-permission?date=...&locationId=...)
-      if (uri.hasFragment && uri.fragment.contains('?')) {
-        final fragUri = Uri.tryParse(uri.fragment);
-        if (fragUri != null && fragUri.queryParameters.isNotEmpty) {
+      // Path query parameters plus legacy fragment query parameters.
+      if (uri.hasFragment) {
+        final fragment = uri.fragment;
+        final fragUri = Uri.tryParse(
+          fragment.contains('?') || fragment.startsWith('/')
+              ? fragment
+              : '/$fragment',
+        );
+        if (fragUri != null) {
           params.addAll(fragUri.queryParameters);
         }
       }

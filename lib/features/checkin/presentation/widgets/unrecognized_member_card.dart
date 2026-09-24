@@ -11,10 +11,12 @@ class UnrecognizedMemberCard extends StatelessWidget {
     super.key,
     this.capturedPhotoBytes,
     required this.onRetake,
+    this.message,
   });
 
   final Uint8List? capturedPhotoBytes;
   final VoidCallback onRetake;
+  final String? message;
 
   @override
   Widget build(BuildContext context) {
@@ -120,11 +122,11 @@ class UnrecognizedMemberCard extends StatelessWidget {
               const SizedBox(width: 14),
 
               // Title and Description
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       'Face Not Recognized',
                       style: TextStyle(
                         fontSize: 16,
@@ -132,10 +134,11 @@ class UnrecognizedMemberCard extends StatelessWidget {
                         color: Color(0xFF0F172A),
                       ),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Text(
-                      'Your face does not match any registered member in this chapter.',
-                      style: TextStyle(
+                      message ??
+                          'Your face does not match any registered member in this chapter.',
+                      style: const TextStyle(
                         fontSize: 12.5,
                         color: Color(0xFF64748B),
                         height: 1.35,

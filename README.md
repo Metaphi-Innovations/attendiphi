@@ -3,7 +3,7 @@
 [![Flutter](https://img.shields.io/badge/Flutter-3.x-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
 [![Dart](https://img.shields.io/badge/Dart-3.x-0175C2?logo=dart&logoColor=white)](https://dart.dev)
 [![Firebase](https://img.shields.io/badge/Firebase-Firestore%20%7C%20Auth%20%7C%20Hosting-FFCA28?logo=firebase&logoColor=black)](https://firebase.google.com)
-[![Live App](https://img.shields.io/badge/Live-attendiphi--by--metaphi.web.app-10B981?style=flat&logo=google-chrome&logoColor=white)](https://attendiphi-by-metaphi.web.app/#/daily-attendance)
+[![Live App](https://img.shields.io/badge/Live-attendiphi.metaphi.in-10B981?style=flat&logo=google-chrome&logoColor=white)](https://attendiphi.metaphi.in/daily-attendance)
 
 > **Attendiphi by MetaPhi** is an enterprise-grade, real-time QR attendance verification, chapter meeting management, and visitor tracking platform designed for fast, tamper-resistant check-ins.
 
@@ -11,7 +11,7 @@
 
 ## 🌐 Live Application
 
-- **Production Portal**: [https://attendiphi-by-metaphi.web.app](https://attendiphi-by-metaphi.web.app/#/daily-attendance)
+- **Production Portal**: [https://attendiphi.metaphi.in](https://attendiphi.metaphi.in/daily-attendance)
 
 
 ---
@@ -129,9 +129,13 @@ lib/
 ## 📦 Build & Deployment
 
 ### Build Web Release Bundle
+Path URLs require Flutter to be served from the site root (`<base href="/">`):
+
 ```bash
-flutter build web --release
+flutter build web --release --base-href /
 ```
+
+Firebase Hosting already rewrites unknown paths to `index.html` (SPA fallback) so `/members`, `/daily-attendance`, and other routes work on refresh and direct open.
 
 ### Deploy to Firebase Hosting
 Deploy to both production and developer hosting targets:
@@ -168,7 +172,7 @@ firebase deploy --only hosting:dev
 | `/photo-capture` | Substitute Live Selfie Capture |
 | `/checkin-result` | Check-in Confirmation Screen |
 
-> Legacy URLs (such as `#/attendiphi-by-metaphi/*` and `#/admin-dashboard`) automatically redirect to the clean routes above for seamless backward compatibility.
+> Legacy URLs (such as `/attendiphi-by-metaphi/*`, `/admin-dashboard`, and old `#/members` hash links) automatically redirect to the clean path routes above.
 
 ---
 

@@ -95,4 +95,9 @@ class EmployeeRepositoryImpl implements EmployeeRepository {
   Future<void> deleteAllEmployees() {
     return _remoteDataSource.deleteAllEmployees();
   }
+
+  @override
+  Future<Employee?> getEmployee(String id) {
+    return _remoteDataSource.getEmployee(id);
+  }
 }

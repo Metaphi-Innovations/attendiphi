@@ -4,11 +4,11 @@ import '../../../../core/constants/app_constants.dart';
 import '../../../../core/logger/app_logger.dart';
 import '../../domain/entities/check_in_submission.dart';
 
-/// Service responsible for dispatching admin push notification requests
-/// upon successful attendance check-in submission.
+/// Writes a Firestore `admin_notifications` document after check-in.
 ///
-/// Dispatches requests to Firestore `admin_notifications` queue where serverless
-/// Cloud Functions / Firebase backend delivers FCM payloads to all registered Admin devices.
+/// Server-side FCM multicast requires Cloud Functions / Admin SDK and is not
+/// used on the Spark plan. Signed-in admin clients still see live check-ins
+/// via Firestore listeners and local notifications.
 class NotificationDispatchService {
   NotificationDispatchService(this._firestore);
 

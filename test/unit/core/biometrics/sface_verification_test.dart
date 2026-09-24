@@ -45,6 +45,21 @@ void main() {
   });
 
   group('Multi-Template Candidate Scoring', () {
+    test('Skips templates whose length does not match the probe', () {
+      final sface = createSFaceVector(1.0);
+      final native192 = List<double>.generate(192, (i) => i == 0 ? 1.0 : 0.0);
+      final probe = createSFaceVector(1.0, noise: 0.01);
+      final result = service.matchProbeAgainstCandidates(
+        probeEmbedding: probe,
+        candidates: [
+          Employee(id: 'native', name: 'Native Only', faceTemplates: [native192]),
+          Employee(id: 'web', name: 'Web', faceTemplates: [sface]),
+        ],
+      );
+      expect(result.bestCandidate?.id, equals('web'));
+      expect(result.status, equals(FaceMatchStatus.match));
+    });
+
     test('Candidate score is the maximum similarity across all enrolled templates', () {
       final t1 = createSFaceVector(1.0); // very different
       final t2 = createSFaceVector(2.5, noise: 0.02); // close to probe
@@ -70,7 +85,7 @@ void main() {
   });
 
   group('Runner-Up Margin & Ambiguity Rejection', () {
-    test('Accepts match when similarity >= 0.65 AND margin >= 0.10', () {
+    test('Accepts match when similarity and member-level margin clear the floor', () {
       final omkarTemplate = createSFaceVector(1.0);
       final otherTemplate = createSFaceVector(3.0); // significantly different
       final probe = createSFaceVector(1.0, noise: 0.02); // very close to Omkar
@@ -88,7 +103,7 @@ void main() {
       expect(result.margin, greaterThanOrEqualTo(FaceMatchingConfig.marginThreshold));
     });
 
-    test('Rejects match as AMBIGUOUS when runner-up margin is below 0.10', () {
+    test('Rejects match as AMBIGUOUS when runner-up margin is below the floor', () {
       // Candidate 1: Omkar
       final omkarTemplate = createSFaceVector(1.0);
       // Candidate 2: Very similar looking impostor or lighting condition
@@ -102,13 +117,13 @@ void main() {
       final result = service.matchProbeAgainstCandidates(
         probeEmbedding: probe,
         candidates: [cand1, cand2],
-        marginThreshold: 0.10,
+        marginThreshold: FaceMatchingConfig.marginThreshold,
       );
 
       expect(result.status, equals(FaceMatchStatus.ambiguous));
       expect(result.isMatch, isFalse);
       expect(result.isAmbiguous, isTrue);
-      expect(result.margin, lessThan(0.10));
+      expect(result.margin, lessThan(FaceMatchingConfig.marginThreshold));
     });
   });
 
@@ -166,7 +181,7 @@ void main() {
   });
 
   group('Multi-Frame Burst Aggregator', () {
-    test('Decision verifies candidate when consistency >= 60% and margin is sound', () {
+    test('Decision verifies candidate when consistency >= 70% and margin is sound', () {
       final omkar = Employee(
         id: 'emp_omkar',
         name: 'Omkar Anarse',
@@ -217,6 +232,75 @@ void main() {
       expect(decision.shouldRetry, isFalse);
     });
 
+    test('Unknown-person frames are not counted as wins', () {
+      final omkar = Employee(
+        id: 'emp_omkar',
+        name: 'Omkar Anarse',
+        faceTemplates: [createSFaceVector(1.0)],
+      );
+      final decision = service.evaluateMultiFrameDecision(
+        frameMatches: [
+          SingleFrameMatchResult(
+            status: FaceMatchStatus.unknownPerson,
+            bestCandidate: omkar,
+            bestScore: 0.40,
+            margin: 0.20,
+          ),
+          SingleFrameMatchResult(
+            status: FaceMatchStatus.unknownPerson,
+            bestCandidate: omkar,
+            bestScore: 0.42,
+            margin: 0.18,
+          ),
+          SingleFrameMatchResult(
+            status: FaceMatchStatus.match,
+            bestCandidate: omkar,
+            bestScore: 0.80,
+            secondBestScore: 0.50,
+            margin: 0.30,
+          ),
+        ],
+        totalFramesCount: 5,
+      );
+      expect(decision.verified, isFalse);
+      expect(decision.validFramesCount, equals(1));
+    });
+
+    test('Two genuine match frames plus unknown frames still verify', () {
+      final omkar = Employee(
+        id: 'emp_omkar',
+        name: 'Omkar Anarse',
+        faceTemplates: [createSFaceVector(1.0)],
+      );
+      final decision = service.evaluateMultiFrameDecision(
+        frameMatches: [
+          SingleFrameMatchResult(
+            status: FaceMatchStatus.match,
+            bestCandidate: omkar,
+            bestScore: 0.81,
+            secondBestScore: 0.50,
+            margin: 0.31,
+          ),
+          SingleFrameMatchResult(
+            status: FaceMatchStatus.match,
+            bestCandidate: omkar,
+            bestScore: 0.79,
+            secondBestScore: 0.48,
+            margin: 0.31,
+          ),
+          SingleFrameMatchResult(
+            status: FaceMatchStatus.unknownPerson,
+            bestCandidate: omkar,
+            bestScore: 0.41,
+            margin: 0.10,
+          ),
+        ],
+        totalFramesCount: 5,
+      );
+      expect(decision.verified, isTrue);
+      expect(decision.matchedMember?.id, equals('emp_omkar'));
+    });
+
     test('Decision requests retry when valid frames < minValidFrames', () {
       final decision = service.evaluateMultiFrameDecision(
         frameMatches: [], // 0 valid frames
@@ -228,7 +312,7 @@ void main() {
       expect(decision.statusMessage, contains('Face quality insufficient'));
     });
 
-    test('Decision requests retry when frames are inconsistent (< 60%)', () {
+    test('Decision requests retry when frames are inconsistent (< 70%)', () {
       const omkar = Employee(id: 'emp_1', name: 'Omkar');
       const personB = Employee(id: 'emp_2', name: 'Person B');
 
@@ -262,7 +346,7 @@ void main() {
       final decision = service.evaluateMultiFrameDecision(
         frameMatches: frames,
         totalFramesCount: 5,
-        consistencyThreshold: 0.60,
+        consistencyThreshold: 0.70,
       );
 
       expect(decision.verified, isFalse);
@@ -272,7 +356,14 @@ void main() {
   });
 
   group('Enrollment Consistency Validation', () {
-    test('Validates 3–5 consistent templates from the same face (similarity >= 0.75)', () {
+    test('Allows pose-diverse same-person templates', () {
+      final t1 = createSFaceVector(1.0);
+      final t2 = createSFaceVector(1.0, noise: 0.08);
+      final t3 = createSFaceVector(1.0, noise: 0.12);
+      expect(service.isEnrollmentTemplateSetValid([t1, t2, t3]), isTrue);
+    });
+
+    test('Validates 3–5 consistent templates from the same face', () {
       final t1 = createSFaceVector(1.0);
       final t2 = createSFaceVector(1.0, noise: 0.02);
       final t3 = createSFaceVector(1.0, noise: 0.03);
@@ -282,13 +373,47 @@ void main() {
       expect(isValid, isTrue);
     });
 
-    test('Rejects enrollment templates with pairwise divergence (< 0.75)', () {
+    test('Rejects enrollment templates from a totally different person', () {
       final t1 = createSFaceVector(1.0);
       final t2 = createSFaceVector(1.0, noise: 0.02);
       final tDifferent = createSFaceVector(3.5); // completely different person/pose
 
       final isValid = service.validateEnrollmentConsistency([t1, t2, tDifferent]);
       expect(isValid, isFalse);
+    });
+
+    test('Requires at least 3 templates for a valid enrollment set', () {
+      final t1 = createSFaceVector(1.0);
+      final t2 = createSFaceVector(1.0, noise: 0.02);
+      expect(service.isEnrollmentTemplateSetValid([t1, t2]), isFalse);
+
+      final t3 = createSFaceVector(1.0, noise: 0.03);
+      expect(service.isEnrollmentTemplateSetValid([t1, t2, t3]), isTrue);
+    });
+  });
+
+  group('Enrollment vs verify quality gates', () {
+    test('Enroll sharpness floor is stricter than verify', () {
+      expect(
+        FaceMatchingConfig.enrollMinimumSharpness,
+        greaterThan(FaceMatchingConfig.verifyMinimumSharpness),
+      );
+      expect(
+        FaceMatchingConfig.qualityRejectionReason(
+          forEnrollment: false,
+          sharpness: 22,
+          brightness: 80,
+        ),
+        isNull,
+      );
+      expect(
+        FaceMatchingConfig.qualityRejectionReason(
+          forEnrollment: true,
+          sharpness: 20,
+          brightness: 80,
+        ),
+        isNotNull,
+      );
     });
   });
 }

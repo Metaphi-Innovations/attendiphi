@@ -8,6 +8,8 @@ import 'package:qr_checkin/features/admin/presentation/providers/admin_managemen
 import 'package:qr_checkin/features/admin/presentation/providers/admin_scope_provider.dart';
 import 'package:qr_checkin/features/admin/presentation/widgets/admin_inspection_banner.dart';
 import 'package:qr_checkin/features/checkin/presentation/screens/checkin_result_screen.dart';
+import 'package:qr_checkin/features/employee/domain/entities/employee.dart';
+import 'package:qr_checkin/features/employee/presentation/providers/employee_providers.dart';
 import 'package:qr_checkin/features/location/domain/entities/location_config.dart';
 import 'package:qr_checkin/features/location/presentation/screens/location_permission_screen.dart';
 import 'package:qr_checkin/features/qr_checkin/presentation/widgets/qr_overlay.dart';
@@ -154,6 +156,11 @@ void main() {
 
       await tester.pumpWidget(
         ProviderScope(
+          overrides: [
+            employeesStreamProvider.overrideWith(
+              (ref) => Stream<List<Employee>>.value(const []),
+            ),
+          ],
           child: MaterialApp(
             theme: AppTheme.light,
             home: const CheckInResultScreen(),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/errors/app_exception.dart';
@@ -94,23 +96,21 @@ class CheckInFormNotifier extends Notifier<CheckInFormState> {
     final existingSubmission = await deviceService.getSubmissionForSession(
       sessionDateStr: sessionDateStr,
       locationId: location.id,
+      probeServer: false,
     );
 
-    final existingDigits = (existingSubmission?.userPhone ?? '')
-        .replaceAll(RegExp(r'\D'), '');
-    final incomingDigits =
-        Validators.formatPhoneWithCountryCode(state.phone).replaceAll(RegExp(r'\D'), '');
-    final samePersonAlreadyCheckedIn = existingDigits.isNotEmpty &&
-        incomingDigits.isNotEmpty &&
-        existingDigits == incomingDigits;
-
-    if (samePersonAlreadyCheckedIn) {
-      // Return existing submission immediately without calling repository or duplicating Firestore
+    // Production rule: one device = one check-in per session (all dates).
+    if (existingSubmission != null) {
       state = state.copyWith(
         isSubmitting: false,
+        error: DuplicateCheckInException(
+          userMessage:
+              'This device has already recorded attendance for today.',
+          existingSubmissionData: existingSubmission.toMap(),
+        ),
         submissionResult: existingSubmission,
       );
-      return true;
+      return false;
     }
 
     state = state.copyWith(isSubmitting: true, clearError: true);
@@ -133,6 +133,16 @@ class CheckInFormNotifier extends Notifier<CheckInFormState> {
         adminId: state.adminId,
         sessionDateStr: sessionDateStr,
         deviceId: deviceId,
+        recognizedMemberId: state.recognizedMemberId,
+      ).timeout(
+        const Duration(seconds: 12),
+        onTimeout: () {
+          throw const ServerException(
+            userMessage:
+                'Network is slow. Your face was verified — tap Member to try saving again.',
+            technicalMessage: 'SubmitCheckIn timed out after 12s',
+          );
+        },
       );
 
       // 2. Persist submission locally on device to prevent future duplicate submissions

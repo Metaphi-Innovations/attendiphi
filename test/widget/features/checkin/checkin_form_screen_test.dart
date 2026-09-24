@@ -104,8 +104,20 @@ void main() {
       expect(find.text('Substitute'), findsOneWidget);
       expect(find.text('Visitor'), findsOneWidget);
 
-      // By default Member face verification scanner is active
+      // After QR scan no type is selected; Member camera starts only on tap.
+      expect(find.text('Member Face Verification'), findsNothing);
+      expect(find.text('Take Live Selfie'), findsNothing);
+      expect(find.widgetWithText(AppButton, 'Check-In'), findsNothing);
+
+      await tester.tap(find.text('Member'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
       expect(find.text('Member Face Verification'), findsOneWidget);
+      expect(find.text('Take Live Selfie'), findsNothing);
+      expect(find.text('Start Camera'), findsNothing);
+      expect(find.text('Verify Face'), findsNothing);
+      expect(find.widgetWithText(AppButton, 'Check-In'), findsNothing);
     });
 
     testWidgets('switching to Substitute displays substitute form with member dropdown and photo card', (tester) async {

@@ -25,6 +25,15 @@ void main() {
       isActive: true,
     );
 
+    const superAdmin = AdminUser(
+      id: 'uid-super',
+      name: 'Super Admin',
+      email: 'super@example.com',
+      phone: '9999999999',
+      role: AdminRole.superAdmin,
+      isActive: true,
+    );
+
     test('Regular Admin starts scoped to their own account', () {
       final container = ProviderContainer(
         overrides: [
@@ -47,7 +56,7 @@ void main() {
         () async {
       final container = ProviderContainer(
         overrides: [
-          currentAdminUserProvider.overrideWithValue(SuperAdminConfig.user),
+          currentAdminUserProvider.overrideWithValue(superAdmin),
           isSuperAdminProvider.overrideWithValue(true),
           allAdminsStreamProvider.overrideWith(
             (ref) => Stream.value([regularAdmin, anotherAdmin]),
@@ -93,7 +102,7 @@ void main() {
     test('Super Admin with empty admin list starts with null scope', () async {
       final container = ProviderContainer(
         overrides: [
-          currentAdminUserProvider.overrideWithValue(SuperAdminConfig.user),
+          currentAdminUserProvider.overrideWithValue(superAdmin),
           isSuperAdminProvider.overrideWithValue(true),
           allAdminsStreamProvider.overrideWith(
             (ref) => Stream.value([]),

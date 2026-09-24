@@ -94,6 +94,9 @@ class Validators {
     if (trimmed.isEmpty) {
       return 'Email address is required.';
     }
+    if (trimmed.length > 320) {
+      return 'Please enter a valid email address.';
+    }
     final emailPattern = RegExp(
       r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
     );

@@ -178,7 +178,7 @@ def run_calibration_suite():
     print(f"{'Threshold':^11} | {'TAR (True Accept)':^18} | {'FRR (False Reject)':^18} | {'FAR (False Accept)':^18}")
     print("-" * 70)
 
-    best_threshold = 0.65
+    best_threshold = 0.72
     min_error = 999.0
 
     thresholds = np.arange(0.40, 0.86, 0.02)
@@ -201,7 +201,7 @@ def run_calibration_suite():
     print(f" • Imposter Pairs Evaluated: {len(imposter_scores)}")
     print(f"   Mean Imposter Score     : {np.mean(imposter_scores):.3f} (Std: {np.std(imposter_scores):.3f})")
     print(f" • Recommended FACE_MATCH_THRESHOLD : {best_threshold:.2f}")
-    print(f" • Recommended FACE_MARGIN_THRESHOLD: 0.10")
+    print(f" • Recommended FACE_MARGIN_THRESHOLD: 0.12")
     print("=" * 70)
 
 if __name__ == "__main__":

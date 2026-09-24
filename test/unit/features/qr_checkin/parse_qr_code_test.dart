@@ -51,6 +51,24 @@ void main() {
 
       expect(payload.locationId, 'branch_42');
     });
+
+    test('parses path URL check-in standee without a hash', () {
+      const raw =
+          'https://attendiphi.metaphi.in/checkin-permission?date=2026-09-03&locationId=location_x';
+      final payload = usecase(raw);
+
+      expect(payload.locationId, 'location_x');
+      expect(payload.sessionDateStr, '2026-09-03');
+    });
+
+    test('parses legacy hash URL check-in standee', () {
+      const raw =
+          'https://attendiphi-by-metaphi.web.app/#/checkin-permission?date=2026-09-03&locationId=location_x';
+      final payload = usecase(raw);
+
+      expect(payload.locationId, 'location_x');
+      expect(payload.sessionDateStr, '2026-09-03');
+    });
   });
 
   group('ParseQrCode - Plaintext ID fallback', () {

@@ -86,6 +86,24 @@ class ImageUtils {
     return bytesToBase64(compressedBytes);
   }
 
+  /// Appends a version query so browsers do not keep serving a stale photo.
+  static String cacheBustedUrl(String url, {DateTime? version}) {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return trimmed;
+    if (!(trimmed.startsWith('http://') || trimmed.startsWith('https://'))) {
+      return trimmed;
+    }
+    final stamp = (version ?? DateTime.now()).millisecondsSinceEpoch;
+    final uri = Uri.tryParse(trimmed);
+    if (uri == null || !uri.hasScheme) {
+      final separator = trimmed.contains('?') ? '&' : '?';
+      return '$trimmed${separator}v=$stamp';
+    }
+    final params = Map<String, String>.from(uri.queryParameters);
+    params['v'] = '$stamp';
+    return uri.replace(queryParameters: params).toString();
+  }
+
   /// Converts bytes to a Base64 string.
   static String bytesToBase64(Uint8List bytes) {
     return base64Encode(bytes);

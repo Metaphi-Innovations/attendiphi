@@ -37,4 +37,5 @@ abstract class EmployeeRepository {
   Future<void> toggleEmployeeStatus(String id, bool isActive);
   Future<void> deleteEmployee(String id);
   Future<void> deleteAllEmployees();
+  Future<Employee?> getEmployee(String id);
 }

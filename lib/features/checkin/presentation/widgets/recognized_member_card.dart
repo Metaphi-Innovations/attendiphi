@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../../../app/theme/app_colors.dart';
-import '../../../../core/utils/image_utils.dart';
+import '../../../../core/widgets/member_photo.dart';
 import '../../../employee/domain/entities/employee.dart';
 
 /// Card displayed when a member's face has been successfully recognized.
@@ -119,25 +119,14 @@ class RecognizedMemberCard extends StatelessWidget {
 
                   final photo = member.photoUrl;
                   if (photo != null && photo.trim().isNotEmpty) {
-                    if (photo.startsWith('http')) {
-                      return ClipOval(
-                        child: Image.network(
-                          photo.trim(),
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => buildFallback(),
-                        ),
-                      );
-                    }
-                    final bytes = ImageUtils.base64ToBytes(photo);
-                    if (bytes != null) {
-                      return ClipOval(
-                        child: Image.memory(
-                          bytes,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => buildFallback(),
-                        ),
-                      );
-                    }
+                    return ClipOval(
+                      child: MemberPhoto(
+                        member: member,
+                        width: 64,
+                        height: 64,
+                        errorBuilder: (_, _, _) => buildFallback(),
+                      ),
+                    );
                   }
                   return buildFallback();
                 }(),

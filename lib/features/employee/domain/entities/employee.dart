@@ -63,6 +63,12 @@ class Employee {
     return const [];
   }
 
+  /// SFace 128-d templates only. Native 192-d MobileFaceNet vectors are skipped.
+  List<List<double>> get sfaceTemplates =>
+      allFaceTemplates.where((t) => t.length == 128).toList();
+
+  bool get hasSfaceTemplates => sfaceTemplates.isNotEmpty;
+
   /// Whether member has a validated neural biometric enrollment template.
   final bool faceEnrolled;
 
@@ -130,11 +136,10 @@ class Employee {
       if (faceModel != null) 'faceModel': faceModel,
       if (faceModelVersion != null) 'faceModelVersion': faceModelVersion,
       if (photoUrl != null) 'photoUrl': photoUrl,
-      if (faceEmbedding != null) 'faceEmbedding': faceEmbedding,
+      if (faceEmbedding != null)
+        'faceEmbedding': firestoreVector(faceEmbedding!),
       if (faceTemplates != null)
-        'faceTemplates': {
-          for (int i = 0; i < faceTemplates!.length; i++) '$i': faceTemplates![i],
-        },
+        'faceTemplates': faceTemplatesToFirestore(faceTemplates!),
       'createdAt': createdAt?.toIso8601String(),
       'updatedAt': updatedAt?.toIso8601String(),
     };
@@ -148,31 +153,12 @@ class Employee {
           .toList();
     }
 
-    List<List<double>>? parsedTemplates;
-    if (map['faceTemplates'] is Map) {
-      final tMap = map['faceTemplates'] as Map;
-      final sortedKeys = tMap.keys.toList()
-        ..sort((a, b) => a.toString().compareTo(b.toString()));
-      parsedTemplates = sortedKeys
-          .map((k) => tMap[k])
-          .whereType<List>()
-          .map((t) => t.map((e) => (e as num).toDouble()).toList())
-          .toList();
-    } else if (map['faceTemplates'] is List) {
-      final tList = map['faceTemplates'] as List;
-      parsedTemplates = tList.map((item) {
-        if (item is Map && item['values'] is List) {
-          return (item['values'] as List)
-              .map((e) => (e as num).toDouble())
-              .toList();
-        } else if (item is List) {
-          return item.map((e) => (e as num).toDouble()).toList();
-        }
-        return <double>[];
-      }).where((t) => t.isNotEmpty).toList();
-    }
+    final parsedTemplates = parseFaceTemplates(
+      map['faceTemplates'] ?? map['faceDescriptors'],
+    );
 
     final bool isEnrolled = map['faceEnrolled'] as bool? ??
+        map['faceRegistered'] as bool? ??
         ((parsedTemplates != null && parsedTemplates.isNotEmpty) ||
          (parsedEmbedding != null && parsedEmbedding.isNotEmpty));
 
@@ -198,5 +184,71 @@ class Employee {
           ? DateTime.tryParse(map['updatedAt'].toString())
           : null,
     );
+  }
+
+  /// Copies a 1-D embedding into a Dart list Firestore/web can serialize.
+  static List<double> firestoreVector(List<dynamic> raw) {
+    if (raw.isNotEmpty && raw.first is List) {
+      return firestoreVector(List<dynamic>.from(raw.first as List));
+    }
+    return [for (final e in raw) if (e is num) e.toDouble()];
+  }
+
+  /// Map with non-numeric keys. Flutter web `jsify` turns `"0","1"` into a JS
+  /// array, which makes `faceTemplates` a nested array and Firestore rejects it.
+  static Map<String, List<double>> faceTemplatesToFirestore(
+    List<List<double>> templates,
+  ) {
+    return {
+      for (var i = 0; i < templates.length; i++)
+        't$i': firestoreVector(templates[i]),
+    };
+  }
+
+  static List<List<double>>? parseFaceTemplates(dynamic raw) {
+    if (raw == null) return null;
+
+    if (raw is Map) {
+      final keys = raw.keys.toList()
+        ..sort((a, b) {
+          final ai = _templateIndex(a);
+          final bi = _templateIndex(b);
+          if (ai != null && bi != null) return ai.compareTo(bi);
+          return a.toString().compareTo(b.toString());
+        });
+      final parsed = <List<double>>[];
+      for (final key in keys) {
+        final vector = _parseVector(raw[key]);
+        if (vector != null && vector.isNotEmpty) parsed.add(vector);
+      }
+      return parsed.isEmpty ? null : parsed;
+    }
+
+    if (raw is List) {
+      final parsed = <List<double>>[];
+      for (final item in raw) {
+        final vector = _parseVector(item);
+        if (vector != null && vector.isNotEmpty) parsed.add(vector);
+      }
+      return parsed.isEmpty ? null : parsed;
+    }
+
+    return null;
+  }
+
+  static int? _templateIndex(dynamic key) {
+    final match = RegExp(r'(\d+)$').firstMatch(key.toString());
+    if (match == null) return null;
+    return int.tryParse(match.group(1)!);
+  }
+
+  static List<double>? _parseVector(dynamic raw) {
+    if (raw is Map && raw['values'] is List) {
+      return _parseVector(raw['values']);
+    }
+    if (raw is! List || raw.isEmpty) return null;
+    if (raw.first is List) return _parseVector(raw.first);
+    if (raw.first is! num) return null;
+    return [for (final e in raw) if (e is num) e.toDouble()];
   }
 }

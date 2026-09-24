@@ -31,6 +31,9 @@ class CheckInSubmission {
     this.createdAt,
     this.isFlagged = false,
     this.flagReason,
+    this.memberId,
+    this.verificationMethod,
+    this.faceVerified = false,
   });
 
   /// Client-generated unique UUID for idempotency.
@@ -117,6 +120,15 @@ class CheckInSubmission {
   /// Optional reason why this record was flagged.
   final String? flagReason;
 
+  /// Recognized member document id when verificationMethod is face.
+  final String? memberId;
+
+  /// How identity was verified (e.g. `face`). Existing QR/manual records omit this.
+  final String? verificationMethod;
+
+  /// True when this check-in was produced after a successful face match.
+  final bool faceVerified;
+
   CheckInSubmission copyWith({
     String? id,
     String? locationId,
@@ -146,6 +158,9 @@ class CheckInSubmission {
     DateTime? createdAt,
     bool? isFlagged,
     String? flagReason,
+    String? memberId,
+    String? verificationMethod,
+    bool? faceVerified,
   }) {
     return CheckInSubmission(
       id: id ?? this.id,
@@ -176,6 +191,9 @@ class CheckInSubmission {
       createdAt: createdAt ?? this.createdAt,
       isFlagged: isFlagged ?? this.isFlagged,
       flagReason: flagReason ?? this.flagReason,
+      memberId: memberId ?? this.memberId,
+      verificationMethod: verificationMethod ?? this.verificationMethod,
+      faceVerified: faceVerified ?? this.faceVerified,
     );
   }
 
@@ -209,6 +227,9 @@ class CheckInSubmission {
       'createdAt': createdAt?.toUtc().toIso8601String(),
       'isFlagged': isFlagged,
       'flagReason': flagReason,
+      if (memberId != null) 'memberId': memberId,
+      if (verificationMethod != null) 'verificationMethod': verificationMethod,
+      'faceVerified': faceVerified,
     };
   }
 
@@ -252,6 +273,9 @@ class CheckInSubmission {
       createdAt: DateTime.tryParse(map['createdAt']?.toString() ?? '')?.toLocal(),
       isFlagged: map['isFlagged'] == true,
       flagReason: map['flagReason']?.toString(),
+      memberId: map['memberId']?.toString(),
+      verificationMethod: map['verificationMethod']?.toString(),
+      faceVerified: map['faceVerified'] == true,
     );
   }
 }

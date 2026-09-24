@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -5,15 +6,20 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../app/router/app_url.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_radius.dart';
 import '../../../../app/theme/app_shadows.dart';
+import '../../../../core/constants/app_constants.dart';
+import '../../../../core/logger/app_logger.dart';
 import '../../../../core/responsive/responsive_breakpoints.dart';
+import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/app_badge.dart';
 import '../../../../core/widgets/app_card.dart';
 import '../../../../core/widgets/app_empty_view.dart';
 import '../../../../core/widgets/app_page_header.dart';
 import '../../../../core/widgets/metaphi_loading_indicator.dart';
+import '../../data/datasources/admin_auth_email.dart';
 import '../../domain/entities/admin_user.dart';
 import '../providers/admin_auth_provider.dart';
 import '../providers/admin_management_provider.dart';
@@ -87,6 +93,8 @@ class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
               suffixIcon: suffixIcon,
               filled: true,
               fillColor: fieldBgColor,
+              // Hide Flutter's default "0/100" maxLength counter.
+              counterText: '',
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 14,
                 vertical: 12,
@@ -161,7 +169,7 @@ class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
                                   ),
                                 ),
                                 Text(
-                                  'Credentials will be sent to the entered email',
+                                  'You can email login credentials after the account is created',
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: isDark
@@ -201,12 +209,8 @@ class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
                             size: 18,
                           ),
                         ),
-                        validator: (val) {
-                          if (val == null || val.trim().isEmpty) {
-                            return 'Please enter the admin full name';
-                          }
-                          return null;
-                        },
+                        validator: Validators.validateName,
+                        maxLength: AppConstants.nameMaxLength,
                       ),
                       const SizedBox(height: 14),
 
@@ -229,12 +233,8 @@ class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
                             size: 18,
                           ),
                         ),
-                        validator: (val) {
-                          if (val == null || val.trim().isEmpty) {
-                            return 'Please enter phone number';
-                          }
-                          return null;
-                        },
+                        validator: Validators.validatePhone,
+                        maxLength: 15,
                       ),
                       const SizedBox(height: 14),
 
@@ -257,15 +257,8 @@ class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
                             size: 18,
                           ),
                         ),
-                        validator: (val) {
-                          if (val == null || val.trim().isEmpty) {
-                            return 'Please enter email address';
-                          }
-                          if (!val.contains('@') || !val.contains('.')) {
-                            return 'Please enter a valid email address';
-                          }
-                          return null;
-                        },
+                        validator: Validators.validateEmail,
+                        maxLength: 320,
                       ),
                       const SizedBox(height: 14),
 
@@ -354,7 +347,7 @@ class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
                             SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                'A welcome email with login link, email, and password will be automatically sent to the recipient upon clicking Create.',
+                                'After you create this Admin, Send Mail emails the login details through Attendiphi mail.',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: Color(0xFF047857),
@@ -423,10 +416,7 @@ class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
                                           );
 
                                           final createdByValue =
-                                              (currentAdmin != null &&
-                                                  !currentAdmin.isSuperAdmin)
-                                              ? currentAdmin.id
-                                              : 'super_admin_master';
+                                              currentAdmin?.id ?? '';
 
                                           final createdAdmin = await repo
                                               .createAdmin(
@@ -436,8 +426,10 @@ class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
                                                 password: password,
                                                 createdBy: createdByValue,
                                                 role: AdminRole.admin,
-                                                sendEmail: true,
                                               );
+
+                                          // Refresh list from Firestore stream.
+                                          ref.invalidate(allAdminsStreamProvider);
 
                                           if (ctx.mounted) {
                                             Navigator.pop(ctx);
@@ -454,11 +446,14 @@ class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
                                             () => isSubmitting = false,
                                           );
                                           if (mounted) {
+                                            final message =
+                                                AdminAuthEmailClient
+                                                    .publicCreateError(e);
                                             ScaffoldMessenger.of(
                                               context,
                                             ).showSnackBar(
                                               SnackBar(
-                                                content: Text('Error: $e'),
+                                                content: Text(message),
                                                 backgroundColor:
                                                     AppColors.error,
                                                 behavior:
@@ -481,7 +476,7 @@ class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
                                         ),
                                       )
                                     : const Text(
-                                        'Create & Send Email',
+                                        'Create Admin',
                                         style: TextStyle(
                                           fontSize: 14,
                                           fontWeight: FontWeight.bold,
@@ -503,156 +498,25 @@ class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
     );
   }
 
-  void _showCredentialSuccessDialog(AdminUser admin, String password) {
-    showDialog(
+  Future<void> _showCredentialSuccessDialog(
+    AdminUser admin,
+    String password,
+  ) async {
+    final sent = await showDialog<bool>(
       context: context,
-      builder: (ctx) {
-        final isDark = Theme.of(ctx).brightness == Brightness.dark;
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-          backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF10B981).withAlpha(25),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.check_circle_rounded,
-                  color: Color(0xFF10B981),
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  'Admin Created Successfully!',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF10B981).withAlpha(20),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: const Color(0xFF10B981).withAlpha(60),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.mark_email_read_rounded,
-                      color: Color(0xFF10B981),
-                      size: 20,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Credentials automatically dispatched directly to ${admin.email}',
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF059669),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? const Color(0xFF0F172A)
-                      : const Color(0xFFF1F5F9),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isDark
-                        ? const Color(0xFF334155)
-                        : const Color(0xFFCBD5E1),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildCredentialRow('Name', admin.name),
-                    const SizedBox(height: 6),
-                    _buildCredentialRow('Email (ID)', admin.email),
-                    const SizedBox(height: 6),
-                    _buildCredentialRow('Phone', admin.phone),
-                    const SizedBox(height: 6),
-                    _buildCredentialRow('Password', password, isPassword: true),
-                    const SizedBox(height: 6),
-                    _buildCredentialRow('Role', admin.role.label),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            OutlinedButton.icon(
-              icon: const Icon(
-                Icons.mail_outline_rounded,
-                size: 16,
-                color: Color(0xFFEA4335),
-              ),
-              label: const Text('Open in Gmail'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: isDark
-                    ? Colors.white
-                    : const Color(0xFF0F172A),
-                side: const BorderSide(color: Color(0xFFEA4335)),
-              ),
-              onPressed: () {
-                final emailService = ref.read(emailCredentialsServiceProvider);
-                emailService.openInGmail(admin: admin, password: password);
-              },
-            ),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.copy_rounded, size: 16),
-              label: const Text('Copy Credentials'),
-              onPressed: () {
-                final text =
-                    '''
-QR Check-in Portal — Admin Credentials:
-Portal URL: https://attendiphi-by-metaphi.web.app/
-Email: ${admin.email}
-Password: $password
-Role: ${admin.role.label}
-''';
-                Clipboard.setData(ClipboardData(text: text));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Credentials copied to clipboard!'),
-                    backgroundColor: Color(0xFF10B981),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              },
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Done'),
-            ),
-          ],
-        );
-      },
+      barrierDismissible: false,
+      builder: (ctx) => AdminCredentialsMailDialog(
+        admin: admin,
+        password: password,
+      ),
+    );
+    if (!mounted || sent != true) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Email sent successfully to ${admin.email}'),
+        backgroundColor: const Color(0xFF10B981),
+        behavior: SnackBarBehavior.floating,
+      ),
     );
   }
 
@@ -697,6 +561,8 @@ Role: ${admin.role.label}
               suffixIcon: suffixIcon,
               filled: true,
               fillColor: fieldBgColor,
+              // Hide Flutter's default "0/100" maxLength counter.
+              counterText: '',
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 14,
                 vertical: 12,
@@ -811,12 +677,8 @@ Role: ${admin.role.label}
                             size: 18,
                           ),
                         ),
-                        validator: (val) {
-                          if (val == null || val.trim().isEmpty) {
-                            return 'Please enter the admin full name';
-                          }
-                          return null;
-                        },
+                        validator: Validators.validateName,
+                        maxLength: AppConstants.nameMaxLength,
                       ),
                       const SizedBox(height: 14),
 
@@ -839,12 +701,8 @@ Role: ${admin.role.label}
                             size: 18,
                           ),
                         ),
-                        validator: (val) {
-                          if (val == null || val.trim().isEmpty) {
-                            return 'Please enter phone number';
-                          }
-                          return null;
-                        },
+                        validator: Validators.validatePhone,
+                        maxLength: 15,
                       ),
                       const SizedBox(height: 14),
 
@@ -867,15 +725,8 @@ Role: ${admin.role.label}
                             size: 18,
                           ),
                         ),
-                        validator: (val) {
-                          if (val == null || val.trim().isEmpty) {
-                            return 'Please enter email address';
-                          }
-                          if (!val.contains('@') || !val.contains('.')) {
-                            return 'Please enter a valid email address';
-                          }
-                          return null;
-                        },
+                        validator: Validators.validateEmail,
+                        maxLength: 320,
                       ),
                       const SizedBox(height: 14),
 
@@ -1056,34 +907,6 @@ Role: ${admin.role.label}
           );
         },
       ),
-    );
-  }
-
-  Widget _buildCredentialRow(
-    String label,
-    String value, {
-    bool isPassword = false,
-  }) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          '$label:',
-          style: const TextStyle(
-            fontSize: 12.5,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF64748B),
-          ),
-        ),
-        SelectableText(
-          value,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: isPassword ? FontWeight.w800 : FontWeight.w600,
-            color: isPassword ? AppColors.primary : null,
-          ),
-        ),
-      ],
     );
   }
 
@@ -2089,37 +1912,21 @@ Role: ${admin.role.label}
   }
 
   Future<void> _resendCredentials(AdminUser admin) async {
-    final password = admin.plainPassword.isNotEmpty
-        ? admin.plainPassword
-        : _generateSecurePassword();
-    try {
-      final success = await ref
-          .read(adminRepositoryProvider)
-          .resendCredentials(admin, password);
-      if (mounted) {
-        if (success) {
-          _showCredentialSuccessDialog(admin, password);
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Failed to dispatch credentials email.'),
-              backgroundColor: AppColors.error,
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: AppColors.error,
-            behavior: SnackBarBehavior.floating,
+    final password = admin.plainPassword.trim();
+    if (password.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'The original password is not stored. Ask this admin to use Forgot Password for a Firebase reset email.',
           ),
-        );
-      }
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
     }
+    if (!mounted) return;
+    _showCredentialSuccessDialog(admin, password);
   }
 
   Future<void> _confirmDeleteAdmin(AdminUser admin) async {
@@ -2172,3 +1979,377 @@ Role: ${admin.role.label}
     }
   }
 }
+
+enum _MailSendUi { idle, authorizing, sending, sent, error }
+
+/// Post-create modal: copy credentials or send them via SMTP Edge Function.
+class AdminCredentialsMailDialog extends ConsumerStatefulWidget {
+  const AdminCredentialsMailDialog({
+    super.key,
+    required this.admin,
+    required this.password,
+  });
+
+  final AdminUser admin;
+  final String password;
+
+  @override
+  ConsumerState<AdminCredentialsMailDialog> createState() =>
+      _AdminCredentialsMailDialogState();
+}
+
+class _AdminCredentialsMailDialogState
+    extends ConsumerState<AdminCredentialsMailDialog> {
+  late final String _idempotencyKey;
+  _MailSendUi _state = _MailSendUi.idle;
+  String _errorMessage = '';
+  bool _copied = false;
+  bool _sendInFlight = false;
+  Timer? _copiedResetTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _idempotencyKey =
+        'cred-${widget.admin.id}-${DateTime.now().millisecondsSinceEpoch}';
+  }
+
+  @override
+  void dispose() {
+    _copiedResetTimer?.cancel();
+    super.dispose();
+  }
+
+  String? _senderSecret(AdminAuthState auth) {
+    final fromSession = (auth.sessionPassword ?? '').trim();
+    if (fromSession.isNotEmpty) return fromSession;
+    return null;
+  }
+
+  Future<void> _sendMail() async {
+    if (_sendInFlight ||
+        _state == _MailSendUi.authorizing ||
+        _state == _MailSendUi.sending) {
+      return;
+    }
+    final auth = ref.read(adminAuthProvider);
+    final sender = auth.currentAdmin;
+    if (sender == null || !auth.isAuthenticated) {
+      setState(() {
+        _state = _MailSendUi.error;
+        _errorMessage = '⚠ Email could not be sent.\nPlease try again.';
+      });
+      return;
+    }
+
+    _sendInFlight = true;
+    setState(() {
+      _state = _MailSendUi.sending;
+      _errorMessage = '';
+    });
+    AppLogger.info(
+      'SEND MAIL START recipient: ${widget.admin.email}',
+      tag: 'AdminCredentialsMail',
+    );
+
+    final result = await ref.read(adminRepositoryProvider).sendCredentials(
+          admin: widget.admin,
+          password: widget.password,
+          senderEmail: sender.email,
+          senderPassword: _senderSecret(auth) ?? '',
+          idempotencyKey: _idempotencyKey,
+          onProgress: (phase) {
+            if (!mounted) return;
+            setState(() {
+              _state = _MailSendUi.sending;
+            });
+          },
+        );
+
+    if (!mounted) return;
+    if (result.success) {
+      AppLogger.info(
+        'SEND MAIL SUCCESS recipient: ${widget.admin.email}',
+        tag: 'AdminCredentialsMail',
+      );
+      _sendInFlight = false;
+      Navigator.of(context).pop(true);
+      return;
+    } else {
+      AppLogger.warning(
+        'SEND MAIL FAILURE recipient: ${widget.admin.email}',
+        tag: 'AdminCredentialsMail',
+      );
+      _sendInFlight = false;
+      setState(() {
+        _state = _MailSendUi.error;
+        final message = result.userMessage.trim();
+        _errorMessage = message.isEmpty
+            ? '⚠ Email could not be sent.\nPlease try again.'
+            : (message.startsWith('⚠') ? message : '⚠ $message');
+      });
+    }
+  }
+
+  void _copyCredentials() {
+    final text = '''
+QR Check-in Portal — Admin
+Portal URL: ${AppUrl.portalOrigin}/
+Name: ${widget.admin.name}
+Email: ${widget.admin.email}
+Phone: ${widget.admin.phone}
+Role: ${widget.admin.role.label}
+Password: ${widget.password}
+''';
+    Clipboard.setData(ClipboardData(text: text));
+    setState(() => _copied = true);
+    _copiedResetTimer?.cancel();
+    _copiedResetTimer = Timer(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      setState(() => _copied = false);
+    });
+  }
+
+  Widget _statusBanner() {
+    if (_state == _MailSendUi.sent) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFF10B981).withAlpha(20),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFF10B981).withAlpha(60)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Email sent successfully to ${widget.admin.email}',
+              style: const TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF059669),
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Sent from Attendiphi mail.',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF059669),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    if (_state == _MailSendUi.error) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEF4444).withAlpha(18),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFEF4444).withAlpha(50)),
+        ),
+        child: Text(
+          _errorMessage,
+          style: const TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFFB91C1C),
+          ),
+        ),
+      );
+    }
+    if (_state == _MailSendUi.authorizing) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.primary.withAlpha(18),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.primary.withAlpha(50)),
+        ),
+        child: const Text(
+          'Sending email...',
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
+            color: AppColors.primary,
+          ),
+        ),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withAlpha(18),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.primary.withAlpha(50)),
+      ),
+      child: Text(
+        'Send login credentials to:\n${widget.admin.email}',
+        style: const TextStyle(
+          fontSize: 12.5,
+          fontWeight: FontWeight.w600,
+          color: AppColors.primary,
+        ),
+      ),
+    );
+  }
+
+  Widget _copyButton() {
+    final busy =
+        _state == _MailSendUi.sending || _state == _MailSendUi.authorizing;
+    return OutlinedButton.icon(
+      onPressed: busy ? null : _copyCredentials,
+      icon: Icon(
+        _copied ? Icons.check_rounded : Icons.copy_rounded,
+        size: 16,
+      ),
+      label: Text(_copied ? 'Credentials copied' : 'Copy Credentials'),
+    );
+  }
+
+  Widget _mailButton() {
+    final busy =
+        _state == _MailSendUi.sending || _state == _MailSendUi.authorizing;
+    final label = _state == _MailSendUi.authorizing
+        ? 'Sending...'
+        : _state == _MailSendUi.sending
+            ? 'Sending...'
+            : _state == _MailSendUi.sent
+                ? 'Email Sent'
+                : 'Send Mail';
+    return FilledButton.icon(
+      onPressed: busy ? null : _sendMail,
+      icon: busy
+          ? const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : Icon(
+              _state == _MailSendUi.sent
+                  ? Icons.check_rounded
+                  : Icons.mail_outline_rounded,
+              size: 16,
+            ),
+      label: Text(label),
+      style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return PopScope(
+      canPop: _state != _MailSendUi.sending &&
+          _state != _MailSendUi.authorizing,
+      child: AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+        title: const Row(
+          children: [
+            CircleAvatar(
+              radius: 18,
+              backgroundColor: Color(0x3322C55E),
+              child: Icon(
+                Icons.check_circle_rounded,
+                color: Color(0xFF10B981),
+                size: 22,
+              ),
+            ),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Admin Created Successfully!',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _statusBanner(),
+            if (_copied && _state != _MailSendUi.authorizing && _state != _MailSendUi.sending) ...[
+              const SizedBox(height: 8),
+              const Text(
+                '✓ Credentials copied',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF059669),
+                ),
+              ),
+            ],
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color:
+                      isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _credentialLine('Name', widget.admin.name),
+                  const SizedBox(height: 6),
+                  _credentialLine('Email (ID)', widget.admin.email),
+                  const SizedBox(height: 6),
+                  _credentialLine('Phone', widget.admin.phone),
+                  const SizedBox(height: 6),
+                  _credentialLine('Role', widget.admin.role.label),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(child: _copyButton()),
+                const SizedBox(width: 8),
+                Expanded(child: _mailButton()),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _credentialLine(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          '$label:',
+          style: const TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF64748B),
+          ),
+        ),
+        Flexible(
+          child: SelectableText(
+            value,
+            textAlign: TextAlign.right,
+            style: const TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+

@@ -12,6 +12,7 @@ import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_radius.dart';
 import '../../../../app/theme/app_shadows.dart';
 import '../../../../core/biometrics/biometrics_provider.dart';
+import '../../../../core/biometrics/face_matching_config.dart';
 import '../../../../core/biometrics/web_face_embedder.dart';
 import '../../../../core/responsive/responsive_breakpoints.dart';
 import '../../../../core/utils/image_utils.dart';
@@ -20,6 +21,7 @@ import '../../../../core/widgets/app_filter_dropdown.dart';
 import '../../../../core/widgets/app_metric_card.dart';
 import '../../../../core/widgets/app_page_header.dart';
 import '../../../../core/widgets/app_shimmer.dart';
+import '../../../../core/widgets/member_photo.dart';
 import '../../../../core/widgets/web_camera_capture_dialog.dart';
 import '../../../employee/domain/entities/employee.dart';
 import '../../../employee/presentation/providers/employee_providers.dart';
@@ -116,26 +118,12 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
 
     Widget? imageWidget;
     if (photo != null && photo.trim().isNotEmpty) {
-      if (photo.startsWith('http')) {
-        imageWidget = Image.network(
-          photo.trim(),
-          fit: BoxFit.cover,
-          width: size,
-          height: size,
-          errorBuilder: (_, _, _) => buildFallback(),
-        );
-      } else {
-        final bytes = ImageUtils.base64ToBytes(photo);
-        if (bytes != null) {
-          imageWidget = Image.memory(
-            bytes,
-            fit: BoxFit.cover,
-            width: size,
-            height: size,
-            errorBuilder: (_, _, _) => buildFallback(),
-          );
-        }
-      }
+      imageWidget = MemberPhoto(
+        member: member,
+        width: size,
+        height: size,
+        errorBuilder: (_, _, _) => buildFallback(),
+      );
     }
 
     return Container(
@@ -207,7 +195,11 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
     Uint8List? enrolledImageBytes;
     File? enrolledImageFile;
     bool isProcessingFace = false;
-    String? faceStatusMessage;
+    String? faceStatusMessage = existingMember != null &&
+            existingMember.faceEnrolled &&
+            !existingMember.hasSfaceTemplates
+        ? 'This member needs a live web re-enrollment (camera) before face check-in will work in the browser.'
+        : null;
 
     showDialog(
       context: context,
@@ -234,14 +226,25 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
               List<Uint8List>? burstFrames;
 
               if (source == ImageSource.camera && kIsWeb) {
-                // Capture multi-frame burst for robust template enrollment
                 burstFrames = await WebCameraCaptureHelper.captureBurstPhotos(
                   context,
-                  count: 5,
-                  intervalMs: 220,
+                  count: 4,
+                  intervalMs: 400,
+                  waitForFace: true,
+                  allowGallery: false,
+                  poseGuides: const [
+                    'Look at the camera',
+                    'Turn slightly left',
+                    'Turn slightly right',
+                    'Look at the camera',
+                  ],
                 );
                 if (burstFrames == null || burstFrames.isEmpty) return;
                 rawBytes = burstFrames.first;
+              } else if (kIsWeb) {
+                throw Exception(
+                  'Face registration needs a live camera capture of 3–5 samples. Please use Take Photo.',
+                );
               } else {
                 final picker = ImagePicker();
                 final photo = await picker.pickImage(
@@ -271,25 +274,34 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
 
                 for (final frameBytes in candidateFrames) {
                   final base64Photo = ImageUtils.bytesToBase64(frameBytes);
-                  final frame = await validateAndExtractFaceFrameWeb(base64Photo);
-                  if (frame.isValid && frame.embedding != null && frame.embedding!.length == 128) {
-                    validTemplates.add(frame.embedding!);
+                  final frame = await validateAndExtractFaceFrameWeb(
+                    base64Photo,
+                    forEnrollment: true,
+                  );
+                  if (frame.isValid &&
+                      frame.meetsQuality(forEnrollment: true) &&
+                      frame.embedding != null &&
+                      frame.embedding!.length == 128) {
+                    validTemplates.add(
+                      List<double>.from(frame.embedding!),
+                    );
                   }
                 }
 
                 if (validTemplates.isEmpty) {
-                  throw Exception('Could not detect a clear face. Please look directly at the camera in good lighting.');
+                  throw Exception(
+                    'No face detected. Please position your face in front of the camera.',
+                  );
                 }
 
-                if (validTemplates.length > 1) {
-                  final isConsistent = ref
-                      .read(faceMatchingServiceProvider)
-                      .validateEnrollmentConsistency(validTemplates);
-                  if (!isConsistent) {
-                    throw Exception(
-                      'Face enrollment is inconsistent across frames. Please keep your face centered in good lighting and try again.',
-                    );
-                  }
+                final matchingService = ref.read(faceMatchingServiceProvider);
+                final pruned = matchingService.pruneEnrollmentOutliers(validTemplates);
+                if (!matchingService.isEnrollmentTemplateSetValid(pruned)) {
+                  throw Exception(
+                    pruned.length < FaceMatchingConfig.minimumEnrollmentTemplates
+                        ? 'Need at least ${FaceMatchingConfig.minimumEnrollmentTemplates} clear frames. Please keep your face in the oval in good lighting and try again.'
+                        : 'Could not get a consistent set of face samples. Please retry the live capture.',
+                  );
                 }
 
                 final decoded = img.decodeImage(rawBytes);
@@ -304,12 +316,12 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                 final base64Photo = ImageUtils.bytesToBase64(compressedJpg);
 
                 setDialogState(() {
-                  enrolledTemplates = validTemplates;
-                  enrolledEmbedding = validTemplates.first;
+                  enrolledTemplates = pruned;
+                  enrolledEmbedding = pruned.first;
                   enrolledPhotoUrl = base64Photo;
                   enrolledImageBytes = compressedJpg;
                   faceStatusMessage =
-                      '✓ Enrolled ${validTemplates.length} SFace biometric templates';
+                      '✓ Enrolled ${pruned.length} SFace biometric templates';
                   isProcessingFace = false;
                 });
                 return;
@@ -498,7 +510,10 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                       if (photo != null && photo.isNotEmpty) {
                                         if (photo.startsWith('http')) {
                                           return Image.network(
-                                            photo,
+                                            ImageUtils.cacheBustedUrl(
+                                              photo,
+                                              version: existingMember?.updatedAt,
+                                            ),
                                             fit: BoxFit.cover,
                                             errorBuilder: (context, error, stackTrace) =>
                                                 const Icon(
@@ -962,6 +977,19 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                               faceEmbedding: enrolledEmbedding,
                                               faceTemplates: enrolledTemplates,
                                               faceEnrolled: hasFaceBiometrics,
+                                              faceModel: enrolledTemplates !=
+                                                          null &&
+                                                      enrolledTemplates!
+                                                          .isNotEmpty
+                                                  ? FaceMatchingConfig.modelName
+                                                  : null,
+                                              faceModelVersion:
+                                                  enrolledTemplates != null &&
+                                                          enrolledTemplates!
+                                                              .isNotEmpty
+                                                      ? FaceMatchingConfig
+                                                          .modelVersion
+                                                      : null,
                                             );
                                             if (ctx.mounted) {
                                               Navigator.pop(ctx);
@@ -991,6 +1019,19 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                               faceEmbedding: enrolledEmbedding,
                                               faceTemplates: enrolledTemplates,
                                               faceEnrolled: hasFaceBiometrics,
+                                              faceModel: enrolledTemplates !=
+                                                          null &&
+                                                      enrolledTemplates!
+                                                          .isNotEmpty
+                                                  ? FaceMatchingConfig.modelName
+                                                  : null,
+                                              faceModelVersion:
+                                                  enrolledTemplates != null &&
+                                                          enrolledTemplates!
+                                                              .isNotEmpty
+                                                      ? FaceMatchingConfig
+                                                          .modelVersion
+                                                      : null,
                                             );
                                             if (ctx.mounted) {
                                               Navigator.pop(ctx);

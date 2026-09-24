@@ -50,6 +50,12 @@ void main() {
         .thenAnswer((_) async => null);
     when(() => mockRepository.hasIdentityCheckedIn(any(), any()))
         .thenAnswer((_) async => false);
+    when(
+      () => mockRepository.claimDeviceSessionLock(
+        deviceId: any(named: 'deviceId'),
+        sessionDateYmd: any(named: 'sessionDateYmd'),
+      ),
+    ).thenAnswer((_) async {});
     usecase = SubmitCheckIn(
       mockRepository,
       notificationDispatchService: mockDispatchService,
@@ -225,6 +231,163 @@ void main() {
 
       verifyNever(() => mockRepository.submitCheckIn(any()));
       verifyNever(() => mockDispatchService.dispatchAdminCheckInNotification(any()));
+    });
+
+    test('2026-09-03 rejects same device second check-in', () async {
+      final existingDevice = CheckInSubmission(
+        id: 'device-existing',
+        locationId: testLocation.id,
+        locationName: testLocation.name,
+        userName: 'Prior Guest',
+        userPhone: '+919999999999',
+        type: CheckInType.member,
+        userLatitude: 19.0829,
+        userLongitude: 72.9129,
+        gpsAccuracy: 10.0,
+        distanceMeters: 45.0,
+        timestamp: DateTime(2026, 9, 3, 9, 0),
+        deviceId: 'device-a',
+      );
+
+      when(() => mockRepository.getDeviceSubmission(any(), any()))
+          .thenAnswer((_) async => existingDevice);
+
+      await expectLater(
+        usecase(
+          name: 'Rahul Sharma',
+          phone: '9876543210',
+          type: CheckInType.member,
+          location: testLocation,
+          proximityResult: testProximity,
+          sessionDateStr: '2026-09-03',
+          deviceId: 'device-a',
+        ),
+        throwsA(isA<DuplicateCheckInException>()),
+      );
+
+      verifyNever(() => mockRepository.submitCheckIn(any()));
+    });
+
+    test('2026-09-24 rejects same device second check-in', () async {
+      final thursday24 = SubmitCheckIn(
+        mockRepository,
+        notificationDispatchService: mockDispatchService,
+        nowProvider: () => DateTime(2026, 9, 24, 10, 0),
+      );
+
+      final existingDevice = CheckInSubmission(
+        id: 'device-existing',
+        locationId: testLocation.id,
+        locationName: testLocation.name,
+        userName: 'Prior Guest',
+        userPhone: '+919999999999',
+        type: CheckInType.member,
+        userLatitude: 19.0829,
+        userLongitude: 72.9129,
+        gpsAccuracy: 10.0,
+        distanceMeters: 45.0,
+        timestamp: DateTime(2026, 9, 24, 9, 0),
+        deviceId: 'device-a',
+      );
+
+      when(() => mockRepository.getDeviceSubmission(any(), any()))
+          .thenAnswer((_) async => existingDevice);
+
+      await expectLater(
+        thursday24(
+          name: 'Rahul Sharma',
+          phone: '9876543210',
+          type: CheckInType.member,
+          location: testLocation,
+          proximityResult: testProximity,
+          sessionDateStr: '2026-09-24',
+          deviceId: 'device-a',
+        ),
+        throwsA(isA<DuplicateCheckInException>()),
+      );
+
+      verifyNever(() => mockRepository.submitCheckIn(any()));
+    });
+
+    test('2026-09-24 rejects when device session lock already claimed', () async {
+      final thursday24 = SubmitCheckIn(
+        mockRepository,
+        notificationDispatchService: mockDispatchService,
+        nowProvider: () => DateTime(2026, 9, 24, 10, 0),
+      );
+
+      when(
+        () => mockRepository.claimDeviceSessionLock(
+          deviceId: any(named: 'deviceId'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+        ),
+      ).thenThrow(
+        const DuplicateCheckInException(
+          userMessage:
+              'This device has already recorded attendance for today.',
+        ),
+      );
+
+      await expectLater(
+        thursday24(
+          name: 'Rahul Sharma',
+          phone: '9876543210',
+          type: CheckInType.member,
+          location: testLocation,
+          proximityResult: testProximity,
+          sessionDateStr: '2026-09-24',
+          deviceId: 'device-a',
+        ),
+        throwsA(isA<DuplicateCheckInException>()),
+      );
+
+      verifyNever(() => mockRepository.submitCheckIn(any()));
+    });
+
+    test('2026-09-03 rejects check-in on a non-Thursday calendar day',
+        () async {
+      final tuesdayUsecase = SubmitCheckIn(
+        mockRepository,
+        notificationDispatchService: mockDispatchService,
+        nowProvider: () => DateTime(2026, 9, 22, 15, 0), // Tuesday
+      );
+
+      await expectLater(
+        tuesdayUsecase(
+          name: 'Rahul Sharma',
+          phone: '9876543210',
+          type: CheckInType.member,
+          location: testLocation,
+          proximityResult: testProximity,
+          sessionDateStr: '2026-09-03',
+          deviceId: 'device-a',
+        ),
+        throwsA(isA<CheckInSubmissionFailedException>()),
+      );
+      verifyNever(() => mockRepository.submitCheckIn(any()));
+    });
+
+    test('2026-09-24 rejects check-in on a non-Thursday calendar day',
+        () async {
+      final tuesdayUsecase = SubmitCheckIn(
+        mockRepository,
+        notificationDispatchService: mockDispatchService,
+        nowProvider: () => DateTime(2026, 9, 22, 15, 0), // Tuesday
+      );
+
+      await expectLater(
+        tuesdayUsecase(
+          name: 'Rahul Sharma',
+          phone: '9876543210',
+          type: CheckInType.member,
+          location: testLocation,
+          proximityResult: testProximity,
+          sessionDateStr: '2026-09-24',
+          deviceId: 'device-a',
+        ),
+        throwsA(isA<CheckInSubmissionFailedException>()),
+      );
+      verifyNever(() => mockRepository.submitCheckIn(any()));
     });
   });
 }

@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image/image.dart' as img;
-import 'package:image_picker/image_picker.dart';
 
 import '../../../../app/theme/app_colors.dart';
 import '../../../../core/biometrics/biometrics_provider.dart';
@@ -14,7 +13,7 @@ import '../../../../core/biometrics/face_matching_config.dart';
 import '../../../../core/biometrics/face_matching_service.dart';
 import '../../../../core/logger/app_logger.dart';
 import '../../../../core/utils/image_utils.dart';
-import '../../../../core/widgets/web_camera_capture_dialog.dart';
+import '../../../../core/widgets/web_inline_face_camera.dart';
 import '../../../employee/domain/entities/employee.dart';
 
 /// Live selfie camera widget for real-time face detection,
@@ -34,8 +33,12 @@ class FaceScannerView extends ConsumerStatefulWidget {
   final List<Employee> candidates;
 
   /// Callback when a member face is verified with high confidence.
-  final void Function(Employee member, double confidence, Uint8List selfieBytes)
-      onFaceRecognized;
+  /// Awaited so the verifying overlay stays up until check-in navigation.
+  final Future<void> Function(
+    Employee member,
+    double confidence,
+    Uint8List selfieBytes,
+  ) onFaceRecognized;
 
   /// Callback when face analysis does not match any enrolled member.
   final void Function(Uint8List? capturedBytes, String? errorMessage)?
@@ -70,7 +73,6 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
 
   // Web selfie capture state
   Uint8List? _webCapturedBytes;
-  final ImagePicker _imagePicker = ImagePicker();
   int _retryCount = 0;
 
   String _statusMessage = 'Align your face within the frame';
@@ -93,6 +95,11 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
     );
 
     _initCamera();
+    if (kIsWeb) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(cloudFaceRecognitionServiceProvider).initialize();
+      });
+    }
   }
 
   Future<void> _initCamera() async {
@@ -101,7 +108,7 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
       setState(() {
         _isCameraReady = true;
         _cameraError = null;
-        _statusMessage = 'Take a live selfie to automatically verify your identity.';
+        _statusMessage = 'Position your face in front of the camera.';
         _statusColor = const Color(0xFF64748B);
       });
       return;
@@ -303,13 +310,12 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
           });
         }
 
-        await Future.delayed(const Duration(seconds: 1));
         if (mounted) {
           widget.onFaceRecognized(matched.candidate, matched.confidence, bytes);
         }
       } else if (mounted && !_hasMatched) {
         setState(() {
-          _statusMessage = 'Face not recognized. Please position your face clearly and try again.';
+          _statusMessage = 'Face not recognized. Please try again.';
           _statusColor = const Color(0xFFE11D48);
         });
       }
@@ -329,75 +335,31 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
     }
   }
 
-  /// Opens front camera on Web to capture a live selfie burst for biometrics verification.
-  Future<void> _takeWebSelfie() async {
-    if (_isProcessingFrame) return;
+  /// Runs existing SFace matching on frames captured from the inline webcam.
+  Future<void> _processWebFrames(List<Uint8List> frames) async {
+    if (_isProcessingFrame || frames.isEmpty) return;
     _hasMatched = false;
 
+    final primaryBytes = frames.first;
     setState(() {
       _isProcessingFrame = true;
-      _webCapturedBytes = null;
-      _statusMessage = 'Opening camera...';
+      _webCapturedBytes = primaryBytes;
+      _statusMessage = 'Verifying face...';
       _statusColor = AppColors.primary;
     });
 
     try {
-      List<Uint8List>? frames;
-      if (kIsWeb) {
-        frames = await WebCameraCaptureHelper.captureBurstPhotos(
-          context,
-          count: FaceMatchingConfig.burstFrameCount,
-        );
-      } else {
-        final photo = await _imagePicker.pickImage(
-          source: ImageSource.camera,
-          preferredCameraDevice: CameraDevice.front,
-          maxWidth: 800,
-          maxHeight: 800,
-          imageQuality: 85,
-        );
-        if (photo != null) {
-          final bytes = await photo.readAsBytes();
-          frames = [bytes];
-        }
-      }
-
-      final capturedFrames = frames;
-      if (capturedFrames == null || capturedFrames.isEmpty) {
-        if (mounted) {
-          setState(() {
-            _isProcessingFrame = false;
-            _statusMessage = _webCapturedBytes != null
-                ? 'Camera was closed. Current selfie preserved.'
-                : 'Take a live selfie to automatically verify your identity.';
-            _statusColor = const Color(0xFF64748B);
-          });
-        }
-        return;
-      }
-
-      final primaryBytes = capturedFrames.first;
-
-      if (mounted) {
-        setState(() {
-          _webCapturedBytes = primaryBytes;
-          _statusMessage = capturedFrames.length > 1
-              ? 'Analyzing biometrics across ${capturedFrames.length} frames...'
-              : 'Analyzing face and verifying identity...';
-          _statusColor = AppColors.primary;
-        });
-      }
-
       final cloudService = ref.read(cloudFaceRecognitionServiceProvider);
 
-      if (capturedFrames.length > 1) {
-        final photosBase64 =
-            capturedFrames.map(ImageUtils.bytesToBase64).toList();
-        final decision = await cloudService.matchMultiFrameBurst(
-          photosBase64: photosBase64,
-          candidates: widget.candidates,
-          adminId: widget.adminId,
-        );
+      if (frames.length > 1) {
+        final photosBase64 = frames.map(ImageUtils.bytesToBase64).toList();
+        final decision = await cloudService
+            .matchMultiFrameBurst(
+              photosBase64: photosBase64,
+              candidates: widget.candidates,
+              adminId: widget.adminId,
+            )
+            .timeout(const Duration(seconds: 15));
 
         if (!mounted) return;
 
@@ -405,19 +367,14 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
           _hasMatched = true;
           _retryCount = 0;
           setState(() {
-            _isProcessingFrame = false;
-            _statusMessage = '✓ Face Verified: ${decision.matchedMember!.name}';
+            _statusMessage = 'Recording attendance...';
             _statusColor = AppColors.success;
           });
-
-          await Future.delayed(const Duration(seconds: 1));
-          if (mounted) {
-            widget.onFaceRecognized(
-              decision.matchedMember!,
-              decision.averageScore * 100.0,
-              primaryBytes,
-            );
-          }
+          await widget.onFaceRecognized(
+            decision.matchedMember!,
+            decision.averageScore * 100.0,
+            primaryBytes,
+          );
         } else {
           final shouldAllowRetry = decision.shouldRetry &&
               _retryCount < FaceMatchingConfig.maxVerificationRetries;
@@ -439,7 +396,6 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
           }
         }
       } else {
-        // Single frame fallback
         final base64Photo = ImageUtils.bytesToBase64(primaryBytes);
         final matchResult = await cloudService.matchFace(
           photoBase64: base64Photo,
@@ -454,19 +410,14 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
           _hasMatched = true;
           _retryCount = 0;
           setState(() {
-            _isProcessingFrame = false;
-            _statusMessage = '✓ Face Verified: ${matchResult.matchedMember!.name}';
+            _statusMessage = 'Recording attendance...';
             _statusColor = AppColors.success;
           });
-
-          await Future.delayed(const Duration(seconds: 1));
-          if (mounted) {
-            widget.onFaceRecognized(
-              matchResult.matchedMember!,
-              matchResult.confidence,
-              primaryBytes,
-            );
-          }
+          await widget.onFaceRecognized(
+            matchResult.matchedMember!,
+            matchResult.confidence,
+            primaryBytes,
+          );
         } else {
           final shouldAllowRetry = matchResult.isAmbiguous &&
               _retryCount < FaceMatchingConfig.maxVerificationRetries;
@@ -478,7 +429,7 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
           setState(() {
             _isProcessingFrame = false;
             _statusMessage = matchResult.errorMessage ??
-                'Face not recognized. Please position your face clearly and try again.';
+                'Face not recognized. Please try again.';
             _statusColor = const Color(0xFFE11D48);
           });
 
@@ -489,7 +440,7 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
       }
     } catch (e, st) {
       AppLogger.error(
-        'Failed to capture web selfie: $e',
+        'Failed to verify inline web selfie: $e',
         error: e,
         stackTrace: st,
         tag: 'FaceScannerView',
@@ -497,10 +448,12 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
       if (mounted) {
         setState(() {
           _isProcessingFrame = false;
-          _statusMessage =
-              'Could not access camera. Please allow camera permissions in your browser.';
+          _statusMessage = e is TimeoutException
+              ? 'Verification took too long. Please try again.'
+              : 'Could not verify this selfie. Please try again.';
           _statusColor = AppColors.error;
         });
+        widget.onFaceNotRecognized?.call(primaryBytes, _statusMessage);
       }
     }
   }
@@ -684,7 +637,6 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Header info
           Row(
             children: [
               Container(
@@ -713,117 +665,62 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
             ],
           ),
           const SizedBox(height: 18),
-
-          // Central Viewport (Selfie Preview / Guide Silhouette)
           Center(
             child: SizedBox(
               width: 250,
               height: 300,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(22),
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
-                    ),
-                    border: Border.all(
-                      color: _statusColor.withAlpha(140),
-                      width: 2,
-                    ),
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      // Captured Photo Preview
-                      if (_webCapturedBytes != null)
-                        Image.memory(
-                          _webCapturedBytes!,
-                          fit: BoxFit.cover,
-                        )
-                      else ...[
-                        // Oval silhouette guide
-                        Center(
-                          child: ScaleTransition(
-                            scale: _pulseAnimation,
-                            child: Container(
-                              width: 170,
-                              height: 220,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.rectangle,
-                                borderRadius: const BorderRadius.all(
-                                  Radius.elliptical(170, 220),
-                                ),
-                                border: Border.all(
-                                  color: Colors.white.withAlpha(120),
-                                  width: 2,
-                                ),
-                              ),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.camera_alt_outlined,
-                                    size: 44,
-                                    color: Colors.white.withAlpha(220),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                                    child: Text(
-                                      'Position face within the frame',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.white.withAlpha(220),
-                                        fontWeight: FontWeight.w500,
+              child: _webCapturedBytes != null
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(22),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Image.memory(
+                            _webCapturedBytes!,
+                            fit: BoxFit.cover,
+                          ),
+                          if (_isProcessingFrame)
+                            Container(
+                              color: Colors.black.withAlpha(150),
+                              child: Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const SizedBox(
+                                      width: 36,
+                                      height: 36,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 3,
                                       ),
                                     ),
-                                  ),
-                                ],
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      _statusMessage,
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                        ),
-                      ],
-
-                      // Processing Spinner Overlay
-                      if (_isProcessingFrame)
-                        Container(
-                          color: Colors.black.withAlpha(150),
-                          child: const Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 3,
-                                ),
-                                SizedBox(height: 12),
-                                Text(
-                                  'Verifying face identity...',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
+                        ],
+                      ),
+                    )
+                  : WebInlineFaceCamera(
+                      burstCount: FaceMatchingConfig.minimumValidFrames + 1,
+                      intervalMs: 160,
+                      waitForFace: true,
+                      onCaptured: _processWebFrames,
+                    ),
             ),
           ),
-          const SizedBox(height: 16),
-
-          // Status message bar (only shown on active error or verified match)
-          if ((_webCapturedBytes != null && _hasMatched) || _statusColor == AppColors.error) ...[
+          if (_statusColor == AppColors.error && !_hasMatched) ...[
+            const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
@@ -834,9 +731,7 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
               child: Row(
                 children: [
                   Icon(
-                    _hasMatched
-                        ? Icons.check_circle_rounded
-                        : Icons.error_outline_rounded,
+                    Icons.error_outline_rounded,
                     size: 18,
                     color: _statusColor,
                   ),
@@ -854,30 +749,7 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
                 ],
               ),
             ),
-            const SizedBox(height: 16),
           ],
-
-          // Primary Button: Take Live Selfie
-          ElevatedButton.icon(
-            onPressed: _isProcessingFrame ? null : _takeWebSelfie,
-            icon: Icon(
-              _webCapturedBytes != null ? Icons.refresh_rounded : Icons.camera_alt_rounded,
-              size: 20,
-            ),
-            label: Text(
-              _webCapturedBytes != null ? 'Retake Selfie' : 'Take Live Selfie',
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-              elevation: 0,
-            ),
-          ),
         ],
       ),
     );
@@ -901,7 +773,8 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
           ),
           const SizedBox(height: 12),
           Text(
-            _cameraError ?? 'Camera unavailable',
+            _cameraError ??
+                'Camera permission is required for face attendance.',
             textAlign: TextAlign.center,
             style: const TextStyle(
               fontSize: 14,
@@ -911,9 +784,15 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
           ),
           const SizedBox(height: 16),
           ElevatedButton.icon(
-            onPressed: widget.onSwitchToManual,
-            icon: const Icon(Icons.arrow_forward_rounded, size: 18),
-            label: const Text('Continue to Manual Search'),
+            onPressed: () {
+              setState(() {
+                _cameraError = null;
+                _isCameraReady = false;
+              });
+              _initCamera();
+            },
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Try Again'),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,

@@ -4,7 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/widgets/metaphi_loading_indicator.dart';
+import '../../features/admin/presentation/providers/admin_auth_provider.dart';
 import '../../features/admin/presentation/screens/admin_dashboard_screen.dart';
+import '../../features/admin/presentation/screens/admin_forgot_password_reset_screen.dart';
+import '../../features/admin/presentation/screens/admin_forgot_password_screen.dart';
 import '../../features/admin/presentation/screens/admin_login_screen.dart';
 import '../../features/admin/presentation/screens/admin_management_screen.dart';
 import '../../features/admin/presentation/screens/admin_reset_password_screen.dart';
@@ -21,9 +24,13 @@ import '../../features/location/presentation/screens/location_permission_screen.
 import '../../features/qr_checkin/presentation/screens/qr_scanner_screen.dart';
 import '../../features/qr_checkin/presentation/screens/venue_qr_display_screen.dart';
 import '../../features/substitute/presentation/screens/photo_capture_screen.dart';
+import 'auth_redirect.dart';
 import 'route_names.dart';
 
-/// Robust helper to extract query parameters on both Native and Flutter Web (with hash routing).
+/// Robust helper to extract query parameters on Native and Flutter Web.
+///
+/// Path URLs (`/checkin-permission?date=`) are the source of truth. Legacy
+/// hash URLs (`#/checkin-permission?date=`) are still parsed for old QR codes.
 String? _extractQueryParam(GoRouterState state, String key) {
   final val = state.uri.queryParameters[key];
   if (val != null && val.trim().isNotEmpty) return val.trim();
@@ -45,15 +52,64 @@ String? _extractQueryParam(GoRouterState state, String key) {
   return null;
 }
 
+/// Sends Firebase password-reset action links to [RouteNames.adminResetPassword].
+///
+/// Keeps [oobCode] in the query. Does not redirect when the app is already on
+/// that screen (or the legacy `/reset-password` alias).
+String? _firebasePasswordResetLocation(GoRouterState state) {
+  final mode = _extractQueryParam(state, 'mode');
+  final oobCode = _extractQueryParam(state, 'oobCode');
+  if (mode != 'resetPassword' || oobCode == null || oobCode.isEmpty) {
+    return null;
+  }
+  if (state.uri.path == RouteNames.adminResetPassword ||
+      state.uri.path == RouteNames.adminForgotPasswordReset) {
+    return null;
+  }
+  final apiKey = _extractQueryParam(state, 'apiKey');
+  return Uri(
+    path: RouteNames.adminResetPassword,
+    queryParameters: {
+      'mode': mode,
+      'oobCode': oobCode,
+      if (apiKey != null && apiKey.isNotEmpty) 'apiKey': apiKey,
+    },
+  ).toString();
+}
+
 /// Key for the root navigator.
 final rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 
 /// Provider for the application's [GoRouter] configuration.
 final appRouterProvider = Provider<GoRouter>((ref) {
+  final refresh = ValueNotifier<int>(0);
+  ref.listen(adminAuthProvider, (_, _) {
+    refresh.value++;
+  });
+  ref.onDispose(refresh.dispose);
+
   return GoRouter(
     navigatorKey: rootNavigatorKey,
     initialLocation: RouteNames.adminLogin,
     debugLogDiagnostics: kDebugMode,
+    refreshListenable: refresh,
+    redirect: (context, state) {
+      final resetLocation = _firebasePasswordResetLocation(state);
+      if (resetLocation != null) return resetLocation;
+      final auth = ref.read(adminAuthProvider);
+      final oobCode = _extractQueryParam(state, 'oobCode');
+      final token = _extractQueryParam(state, 'token');
+      final hasPasswordResetCode =
+          (oobCode != null && oobCode.isNotEmpty) ||
+          (token != null && token.isNotEmpty);
+      return AuthRedirect.location(
+        path: state.uri.path,
+        sessionResolved: auth.sessionResolved,
+        isAuthenticated: auth.isAuthenticated,
+        mustResetPassword: auth.currentAdmin?.mustResetPassword ?? false,
+        hasPasswordResetCode: hasPasswordResetCode,
+      );
+    },
     routes: [
       // ── 1. Superadmin & Sub-admin Entry Point ──────────────────────────────
       GoRoute(
@@ -66,9 +122,53 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: RouteNames.adminResetPassword,
         name: 'admin_reset_password',
+        builder: (context, state) {
+          final token = _extractQueryParam(state, 'token');
+          final oobCode = _extractQueryParam(state, 'oobCode');
+          final mode = _extractQueryParam(state, 'mode');
+          final hasEmailReset = (oobCode != null && oobCode.isNotEmpty) ||
+              (token != null && token.isNotEmpty);
+          if (hasEmailReset) {
+            return PageLoadingTransitionWrapper(
+              child: AdminForgotPasswordResetScreen(
+                token: token,
+                oobCode: oobCode,
+                mode: mode,
+              ),
+            );
+          }
+          return const PageLoadingTransitionWrapper(
+            child: AdminResetPasswordScreen(),
+          );
+        },
+      ),
+      GoRoute(
+        path: RouteNames.adminForgotPassword,
+        name: 'admin_forgot_password',
         builder: (context, state) => const PageLoadingTransitionWrapper(
-          child: AdminResetPasswordScreen(),
+          child: AdminForgotPasswordScreen(),
         ),
+      ),
+      GoRoute(
+        path: RouteNames.adminForgotPasswordReset,
+        name: 'admin_forgot_password_reset',
+        redirect: (context, state) {
+          final params = state.uri.queryParameters;
+          if (params.isEmpty) {
+            return RouteNames.adminResetPassword;
+          }
+          return Uri(
+            path: RouteNames.adminResetPassword,
+            queryParameters: params,
+          ).toString();
+        },
+      ),
+      GoRoute(
+        path: '/__/auth/action',
+        redirect: (context, state) {
+          return _firebasePasswordResetLocation(state) ??
+              RouteNames.adminLogin;
+        },
       ),
 
       // ── Redirects: attendiphi namespace root & legacy routes ───────────────
@@ -228,8 +328,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: RouteNames.checkinResult,
         name: 'checkin_result',
         builder: (context, state) {
-          final submission = state.extra as CheckInSubmission?;
-          return CheckInResultScreen(submission: submission);
+          final submission = state.extra is CheckInSubmission
+              ? state.extra as CheckInSubmission
+              : null;
+          final memberId =
+              _extractQueryParam(state, 'memberId') ?? submission?.memberId;
+          final checkInId =
+              _extractQueryParam(state, 'checkInId') ?? submission?.id;
+          return CheckInResultScreen(
+            submission: submission,
+            memberId: memberId,
+            checkInId: checkInId,
+          );
         },
       ),
       GoRoute(

@@ -33,7 +33,7 @@ void main() {
       isActive: true,
     );
 
-    testWidgets('renders reset password screen with info card and form fields',
+    testWidgets('renders Attendiphi reset form with confirm password',
         (tester) async {
       tester.view.physicalSize = const Size(1200, 1000);
       tester.view.devicePixelRatio = 1.0;
@@ -52,13 +52,14 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      expect(find.text('Set Your Permanent Password'), findsOneWidget);
-      expect(find.text('Rohan Deshmukh'), findsOneWidget);
+      expect(find.text('Reset Password'), findsWidgets);
       expect(find.text('rohan@example.com'), findsOneWidget);
-      expect(find.text('Enter new permanent password'), findsOneWidget);
-      expect(find.text('Re-enter your new password'), findsOneWidget);
-      expect(find.text('Password Requirements:'), findsOneWidget);
-      expect(find.text('Save Password & Enter Portal'), findsOneWidget);
+      expect(find.text('New Password'), findsWidgets);
+      expect(find.text('Confirm Password'), findsWidgets);
+      expect(find.text('Password requirements:'), findsOneWidget);
+      expect(find.text('Passwords must match'), findsOneWidget);
+      expect(find.widgetWithText(AppButton, 'Reset Password'), findsOneWidget);
+      expect(find.text('Back to Login'), findsOneWidget);
     });
 
     testWidgets('validates password minimum length and mismatch',
@@ -80,15 +81,14 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      // Tap submit with empty fields
-      final submitBtn = find.widgetWithText(AppButton, 'Save Password & Enter Portal');
+      final submitBtn = find.widgetWithText(AppButton, 'Reset Password');
       await tester.ensureVisible(submitBtn);
       await tester.tap(submitBtn);
       await tester.pumpAndSettle();
 
       expect(find.text('Please enter a new password'), findsOneWidget);
+      expect(find.text('Please confirm your new password'), findsOneWidget);
 
-      // Enter short password
       final textFields = find.byType(AppTextField);
       await tester.enterText(textFields.at(0), 'short');
       await tester.enterText(textFields.at(1), 'mismatch');

@@ -133,7 +133,10 @@ void main() {
       expect(find.text('Full Name *'), findsOneWidget);
       expect(find.text('Phone Number *'), findsOneWidget);
       expect(find.textContaining('Email Address *'), findsOneWidget);
-      expect(find.text('Create & Send Email'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Create Admin'), findsWidgets);
+      expect(find.text('Open in Gmail'), findsNothing);
+      expect(find.text('Create & Send Email'), findsNothing);
+      expect(find.textContaining('Gmail will not open'), findsNothing);
     });
 
     testWidgets('renders action menus and info for each listed admin',
@@ -174,23 +177,53 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      // Stat cards and badge removed
       expect(find.text('Total Admins'), findsNothing);
       expect(find.text('Active Admins'), findsNothing);
       expect(find.text('Inactive Admins'), findsNothing);
       expect(find.text('SUPER ADMIN ONLY'), findsNothing);
 
-      // Search input always present
       expect(find.byIcon(Icons.search), findsOneWidget);
       expect(find.text('Search admin by name, email...'), findsOneWidget);
 
-      // Table headers
       expect(find.text('ADMIN (2)'), findsOneWidget);
       expect(find.text('EMAIL'), findsOneWidget);
       expect(find.text('PHONE'), findsOneWidget);
       expect(find.text('STATUS'), findsOneWidget);
       expect(find.text('CREATED ON'), findsOneWidget);
       expect(find.text('ACTIONS'), findsOneWidget);
+    });
+
+    testWidgets('does not list Super Admin profiles in the admin table',
+        (tester) async {
+      const superAdmin = AdminUser(
+        id: 'uid-super',
+        name: 'Super Admin',
+        email: 'super@example.com',
+        phone: '9999999999',
+        role: AdminRole.superAdmin,
+        isActive: true,
+      );
+      final listWithSuper = [...mockAdmins, superAdmin];
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            isSuperAdminProvider.overrideWithValue(true),
+            currentAdminUserProvider.overrideWithValue(superAdmin),
+            allAdminsStreamProvider
+                .overrideWith((ref) => Stream.value(listWithSuper)),
+          ],
+          child: const MaterialApp(
+            home: AdminManagementScreen(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.text('Rahul Sharma'), findsOneWidget);
+      expect(find.text('super@example.com'), findsNothing);
+      expect(find.text('ADMIN (2)'), findsOneWidget);
     });
   });
 }

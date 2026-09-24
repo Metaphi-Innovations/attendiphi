@@ -53,30 +53,42 @@ final adminFilterProvider =
   return AdminFilterNotifier();
 });
 
-/// Streams all Admin accounts from Firestore.
+/// Streams Admin accounts the current user is allowed to list.
 final allAdminsStreamProvider = StreamProvider<List<AdminUser>>((ref) {
+  final auth = ref.watch(adminAuthProvider);
+  if (!auth.isAuthenticated || auth.currentAdmin == null) {
+    return const Stream.empty();
+  }
   final repo = ref.watch(adminRepositoryProvider);
-  return repo.watchAdmins();
+  if (auth.currentAdmin!.isSuperAdmin) {
+    return repo.watchAdmins();
+  }
+  return repo.watchAdmins(createdBy: auth.currentAdmin!.id);
 });
 
 /// Provider for admins visible to the current authenticated administrator.
-/// - Super Admin can see all administrators in the system.
-/// - Regular Admin can ONLY see administrators created by himself (cannot see admins created by Super Admin).
+/// - Super Admin accounts are never listed (only managed via Firebase Console).
+/// - Super Admin can see all regular administrators.
+/// - Regular Admin can ONLY see administrators created by himself.
 final visibleAdminsProvider = Provider<AsyncValue<List<AdminUser>>>((ref) {
   final asyncAdmins = ref.watch(allAdminsStreamProvider);
   final isSuperAdmin = ref.watch(isSuperAdminProvider);
   final currentAdmin = ref.watch(currentAdminUserProvider);
 
   return asyncAdmins.whenData((admins) {
+    // Never expose Super Admin profiles in Admin Management.
+    final withoutSuperAdmins =
+        admins.where((admin) => !admin.isSuperAdmin).toList();
+
     if (isSuperAdmin) {
-      return admins;
+      return withoutSuperAdmins;
     }
 
     final currentId = (currentAdmin?.id ?? '').trim().toLowerCase();
     final currentEmail = (currentAdmin?.email ?? '').trim().toLowerCase();
     final currentName = (currentAdmin?.name ?? '').trim().toLowerCase();
 
-    return admins.where((admin) {
+    return withoutSuperAdmins.where((admin) {
       final creator = (admin.createdBy ?? '').trim().toLowerCase();
       // Cannot see admins created by Super Admin or system master
       if (creator.isEmpty ||

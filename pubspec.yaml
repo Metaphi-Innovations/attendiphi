@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
 
   # Firebase
   firebase_core: ^4.13.0
@@ -45,7 +47,6 @@ dependencies:
   google_fonts: ^8.2.1
   firebase_messaging: ^16.6.0
   flutter_local_notifications: ^22.3.0
-  url_launcher: ^6.3.1
   shared_preferences: ^2.5.5
   pdf: ^3.13.0
   google_mlkit_face_detection: ^0.15.1

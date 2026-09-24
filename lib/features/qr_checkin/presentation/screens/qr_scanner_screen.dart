@@ -136,7 +136,13 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
     );
     if (!mounted) return;
     if (existingSubmission != null) {
-      context.push(RouteNames.checkinResult, extra: existingSubmission);
+      context.push(
+        RouteNames.checkinResultPath(
+          checkInId: existingSubmission.id,
+          memberId: existingSubmission.memberId,
+        ),
+        extra: existingSubmission,
+      );
       return;
     }
 

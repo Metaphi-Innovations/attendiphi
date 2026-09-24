@@ -31,15 +31,20 @@ void main() {
       expect(map['email'], 'test@admin.com');
       expect(map['phone'], '9876543210');
       expect(map['role'], 'admin');
-      expect(map['plainPassword'], 'Pass@123');
+      expect(map.containsKey('plainPassword'), isFalse);
       expect(map['isActive'], true);
 
-      final deserialized = AdminUser.fromMap(map, id: 'admin_123');
+      final deserialized = AdminUser.fromMap({
+        ...map,
+        'plainPassword': '',
+        'passwordHash': 'Pass@123',
+      }, id: 'admin_123');
       expect(deserialized.id, 'admin_123');
       expect(deserialized.name, 'Test Admin');
       expect(deserialized.email, 'test@admin.com');
       expect(deserialized.role, AdminRole.admin);
       expect(deserialized.isActive, true);
+      expect(deserialized.matchesPassword('Pass@123'), isTrue);
     });
   });
 }

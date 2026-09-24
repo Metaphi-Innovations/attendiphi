@@ -25,7 +25,10 @@ class AdminDeviceService {
 
   /// Registers the current mobile device as an active Admin device in Firestore
   /// and starts listening for real-time attendance notifications.
-  Future<void> registerAdminDevice({required String adminEmail}) async {
+  Future<void> registerAdminDevice({
+    required String adminEmail,
+    String? uid,
+  }) async {
     if (kIsWeb) return;
 
     try {
@@ -41,14 +44,14 @@ class AdminDeviceService {
       // 2. Fetch current token and save to Firestore
       final token = await notificationService.getDeviceToken();
       if (token != null && token.isNotEmpty) {
-        await _saveDeviceToken(token: token, adminEmail: adminEmail);
+        await _saveDeviceToken(token: token, adminEmail: adminEmail, uid: uid);
       }
 
       // 3. Listen for token refreshes
       _tokenRefreshSubscription?.cancel();
       _tokenRefreshSubscription =
           notificationService.onTokenRefresh.listen((newToken) async {
-        await _saveDeviceToken(token: newToken, adminEmail: adminEmail);
+        await _saveDeviceToken(token: newToken, adminEmail: adminEmail, uid: uid);
       });
 
       // 4. Start real-time Firestore listener for new attendance submissions
@@ -141,6 +144,7 @@ class AdminDeviceService {
   Future<void> _saveDeviceToken({
     required String token,
     required String adminEmail,
+    String? uid,
   }) async {
     try {
       _registeredToken = token;
@@ -157,6 +161,7 @@ class AdminDeviceService {
           .doc(token)
           .set({
         'token': token,
+        'uid': uid ?? '',
         'adminEmail': adminEmail,
         'platform': platform,
         'updatedAt': FieldValue.serverTimestamp(),

@@ -7,6 +7,8 @@ class RouteNames {
   // ── Entry / Admin Flow ────────────────────────────────────────────────
   static const adminLogin = '/';
   static const adminResetPassword = '/admin-reset-password';
+  static const adminForgotPassword = '/forgot-password';
+  static const adminForgotPasswordReset = '/reset-password';
 
   // ── Admin Portal Tabs ─────────────────────────────────────────────────
   static const adminDashboard = '/daily-attendance';
@@ -43,6 +45,17 @@ class RouteNames {
   static const checkinForm = '/checkin/:locationId';
 
   // ── Helpers ──────────────────────────────────────────────────────────
+
+  /// Builds the Successful screen path with stable identity query params.
+  static String checkinResultPath({String? checkInId, String? memberId}) {
+    final params = <String, String>{};
+    final id = checkInId?.trim() ?? '';
+    final mid = memberId?.trim() ?? '';
+    if (id.isNotEmpty) params['checkInId'] = id;
+    if (mid.isNotEmpty) params['memberId'] = mid;
+    if (params.isEmpty) return checkinResult;
+    return Uri(path: checkinResult, queryParameters: params).toString();
+  }
 
   /// Builds the check-in form path for a specific location.
   static String checkinFormPath(String locationId) =>

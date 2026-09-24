@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../admin_password_hasher.dart';
+
 /// Role identifier for administrator accounts.
 enum AdminRole {
   superAdmin('superadmin', 'Super Admin'),
@@ -30,13 +32,16 @@ class AdminUser {
     required this.phone,
     this.role = AdminRole.admin,
     this.passwordHash = '',
+    this.passwordSalt = '',
     this.plainPassword = '',
     this.mustResetPassword = false,
     this.isActive = true,
     this.createdAt,
     this.createdBy,
     this.lastLoginAt,
+    this.passwordUpdatedAt,
     this.assignedLocationIds = const [],
+    this.uid = '',
   });
 
   final String id;
@@ -45,15 +50,31 @@ class AdminUser {
   final String phone;
   final AdminRole role;
   final String passwordHash;
+  final String passwordSalt;
   final String plainPassword;
   final bool mustResetPassword;
   final bool isActive;
   final DateTime? createdAt;
   final String? createdBy;
   final DateTime? lastLoginAt;
+  final DateTime? passwordUpdatedAt;
   final List<String> assignedLocationIds;
 
+  /// Firebase Auth UID. Same as [id] when the admin doc is keyed by UID.
+  final String uid;
+
   bool get isSuperAdmin => role.isSuperAdmin;
+
+  bool matchesPassword(String candidate) {
+    final password = candidate.trim();
+    if (password.isEmpty) return false;
+    if (passwordSalt.isNotEmpty && passwordHash.isNotEmpty) {
+      return AdminPasswordHasher.hash(password, passwordSalt) == passwordHash;
+    }
+    if (plainPassword.isNotEmpty && plainPassword == password) return true;
+    if (passwordHash.isNotEmpty && passwordHash == password) return true;
+    return false;
+  }
 
   factory AdminUser.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? {};
@@ -75,13 +96,16 @@ class AdminUser {
       phone: data['phone'] as String? ?? '',
       role: AdminRole.fromString(data['role'] as String?),
       passwordHash: data['passwordHash'] as String? ?? '',
+      passwordSalt: data['passwordSalt'] as String? ?? '',
       plainPassword: data['plainPassword'] as String? ?? '',
       mustResetPassword: data['mustResetPassword'] as bool? ?? false,
       isActive: data['isActive'] as bool? ?? true,
       createdAt: parseDate(data['createdAt']),
       createdBy: data['createdBy'] as String?,
       lastLoginAt: parseDate(data['lastLoginAt']),
+      passwordUpdatedAt: parseDate(data['passwordUpdatedAt']),
       assignedLocationIds: List<String>.from(data['assignedLocationIds'] ?? []),
+      uid: (data['uid'] as String? ?? id).trim(),
     );
   }
 
@@ -92,13 +116,14 @@ class AdminUser {
       'phone': phone,
       'role': role.value,
       'passwordHash': passwordHash,
-      'plainPassword': plainPassword,
+      'passwordSalt': passwordSalt,
       'mustResetPassword': mustResetPassword,
       'isActive': isActive,
       'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : FieldValue.serverTimestamp(),
       'createdBy': createdBy,
       'lastLoginAt': lastLoginAt != null ? Timestamp.fromDate(lastLoginAt!) : null,
       'assignedLocationIds': assignedLocationIds,
+      'uid': (uid.isNotEmpty ? uid : id),
     };
   }
 
@@ -109,13 +134,16 @@ class AdminUser {
     String? phone,
     AdminRole? role,
     String? passwordHash,
+    String? passwordSalt,
     String? plainPassword,
     bool? mustResetPassword,
     bool? isActive,
     DateTime? createdAt,
     String? createdBy,
     DateTime? lastLoginAt,
+    DateTime? passwordUpdatedAt,
     List<String>? assignedLocationIds,
+    String? uid,
   }) {
     return AdminUser(
       id: id ?? this.id,
@@ -124,13 +152,16 @@ class AdminUser {
       phone: phone ?? this.phone,
       role: role ?? this.role,
       passwordHash: passwordHash ?? this.passwordHash,
+      passwordSalt: passwordSalt ?? this.passwordSalt,
       plainPassword: plainPassword ?? this.plainPassword,
       mustResetPassword: mustResetPassword ?? this.mustResetPassword,
       isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
       createdBy: createdBy ?? this.createdBy,
       lastLoginAt: lastLoginAt ?? this.lastLoginAt,
+      passwordUpdatedAt: passwordUpdatedAt ?? this.passwordUpdatedAt,
       assignedLocationIds: assignedLocationIds ?? this.assignedLocationIds,
+      uid: uid ?? this.uid,
     );
   }
 }

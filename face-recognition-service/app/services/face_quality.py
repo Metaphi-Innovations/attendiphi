@@ -57,12 +57,17 @@ class FaceQualityService:
         self.min_face_size = settings.MIN_FACE_SIZE_PX
         self.max_yaw = settings.MAX_HEAD_YAW_DEG
         self.max_roll = settings.MAX_HEAD_ROLL_DEG
+        self.enroll_min_sharpness = settings.ENROLL_MIN_SHARPNESS_SCORE
+        self.enroll_min_face_size = settings.ENROLL_MIN_FACE_SIZE_PX
+        self.enroll_max_yaw = settings.ENROLL_MAX_HEAD_YAW_DEG
+        self.enroll_max_roll = settings.ENROLL_MAX_HEAD_ROLL_DEG
 
     def validate_quality(
         self,
         image: np.ndarray,
         bbox: Tuple[int, int, int, int],  # x, y, w, h
-        landmarks: Optional[np.ndarray] = None  # 5 landmarks: [left_eye, right_eye, nose, left_mouth, right_mouth]
+        landmarks: Optional[np.ndarray] = None,  # 5 landmarks: [left_eye, right_eye, nose, left_mouth, right_mouth]
+        for_enroll: bool = False,
     ) -> Tuple[bool, Optional[str], dict]:
         """
         Validates whether a detected face image satisfies quality standards:
@@ -71,13 +76,18 @@ class FaceQualityService:
         - Proper illumination (neither dark nor overexposed)
         - Front-facing angle
         """
+        min_sharpness = self.enroll_min_sharpness if for_enroll else self.min_sharpness
+        min_face_size = self.enroll_min_face_size if for_enroll else self.min_face_size
+        max_yaw = self.enroll_max_yaw if for_enroll else self.max_yaw
+        max_roll = self.enroll_max_roll if for_enroll else self.max_roll
+
         x, y, w, h = bbox
         img_h, img_w = image.shape[:2]
 
         # 1. Face size check
-        if w < self.min_face_size or h < self.min_face_size:
+        if w < min_face_size or h < min_face_size:
             return False, "Face is too far away. Please move closer to the camera.", {
-                "size": min(w, h), "min_required": self.min_face_size
+                "size": min(w, h), "min_required": min_face_size
             }
 
         # Crop face region with 10% safety margin for localized checks
@@ -96,9 +106,9 @@ class FaceQualityService:
 
         # 2. Sharpness check
         sharpness = compute_sharpness(gray_face)
-        if sharpness < self.min_sharpness:
+        if sharpness < min_sharpness:
             return False, "Image is blurry. Please hold steady and try again.", {
-                "sharpness": round(sharpness, 1), "min_required": self.min_sharpness
+                "sharpness": round(sharpness, 1), "min_required": min_sharpness
             }
 
         # 3. Brightness check
@@ -123,14 +133,14 @@ class FaceQualityService:
             roll = estimate_eye_roll_angle(left_eye, right_eye)
             yaw = estimate_yaw_symmetry(left_eye, right_eye, nose)
 
-            if abs(roll) > self.max_roll:
+            if abs(roll) > max_roll:
                 return False, "Please hold your head straight.", {
-                    "roll": round(roll, 1), "max_allowed": self.max_roll
+                    "roll": round(roll, 1), "max_allowed": max_roll
                 }
 
-            if abs(yaw) > self.max_yaw:
+            if abs(yaw) > max_yaw:
                 return False, "Please look directly at the camera.", {
-                    "yaw": round(yaw, 1), "max_allowed": self.max_yaw
+                    "yaw": round(yaw, 1), "max_allowed": max_yaw
                 }
 
         metrics = {
