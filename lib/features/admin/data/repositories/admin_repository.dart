@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../../../../core/logger/app_logger.dart';
 import '../../domain/entities/admin_user.dart';
 import '../datasources/admin_auth_email.dart';
 import '../datasources/admin_remote_data_source.dart';
@@ -20,7 +21,7 @@ abstract class AdminRepository {
   });
   Future<void> updateAdmin(AdminUser admin);
   Future<void> toggleAdminActive(String adminId, bool isActive);
-  Future<void> deleteAdmin(String adminId);
+  Future<void> deleteAdmin(String adminId, {String? email});
   Future<SendCredentialsResult> sendCredentials({
     required AdminUser admin,
     required String password,
@@ -147,8 +148,45 @@ class AdminRepositoryImpl implements AdminRepository {
       remoteDataSource.toggleAdminActive(adminId, isActive);
 
   @override
-  Future<void> deleteAdmin(String adminId) =>
-      remoteDataSource.deleteAdmin(adminId);
+  Future<void> deleteAdmin(String adminId, {String? email}) async {
+    final cleanUid = adminId.trim();
+    if (cleanUid.isEmpty) {
+      throw Exception('Admin ID cannot be empty.');
+    }
+
+    // 1. Delete from Firebase Authentication via the Edge Function
+    try {
+      final authResult = await emailService.deleteAuthAdmin(
+        uid: cleanUid,
+        email: email,
+      );
+      if (!authResult.success) {
+        AppLogger.warning(
+          'Firebase Auth deletion returned error for $cleanUid: ${authResult.userMessage}',
+          tag: 'AdminRepository',
+        );
+        throw Exception(
+          'Could not delete admin from Firebase Authentication: ${authResult.userMessage}. '
+          'Firestore admin profile was not deleted to prevent orphaned accounts.',
+        );
+      }
+    } catch (e) {
+      if (e.toString().contains('Firebase Authentication:')) {
+        rethrow;
+      }
+      AppLogger.warning(
+        'Unexpected error calling Auth deletion for $cleanUid: $e',
+        tag: 'AdminRepository',
+      );
+      throw Exception(
+        'Could not delete admin from Firebase Authentication: $e. '
+        'Firestore admin profile was not deleted to prevent orphaned accounts.',
+      );
+    }
+
+    // 2. Delete from Firestore
+    await remoteDataSource.deleteAdmin(cleanUid);
+  }
 
   @override
   Future<SendCredentialsResult> sendCredentials({

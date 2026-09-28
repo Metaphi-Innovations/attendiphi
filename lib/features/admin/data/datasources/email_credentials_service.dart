@@ -51,6 +51,15 @@ class EmailCredentialsService {
   static const String credentialsSubject =
       'Your QR Check-in Admin Login Credentials';
 
+  /// Deletes the admin user from Firebase Authentication.
+  Future<({bool success, String userMessage})> deleteAuthAdmin({
+    required String uid,
+    String? email,
+  }) async {
+    final service = emailService ?? AttendiphiEmailService.instance;
+    return service.deleteAuthAdmin(uid: uid, email: email);
+  }
+
   static String generatePlainEmailBody({
     required String name,
     required String email,

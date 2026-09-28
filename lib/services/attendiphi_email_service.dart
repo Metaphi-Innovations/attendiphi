@@ -191,6 +191,108 @@ class AttendiphiEmailService {
     );
   }
 
+  /// Deletes an admin user from Firebase Authentication via the Edge Function.
+  ///
+  /// Only administrators can delete admin accounts. Requires a valid Firebase ID token.
+  Future<({bool success, String userMessage})> deleteAuthAdmin({
+    required String uid,
+    String? email,
+  }) async {
+    final cleanUid = uid.trim();
+    final cleanEmail = (email ?? '').trim().toLowerCase();
+    if (cleanUid.isEmpty && cleanEmail.isEmpty) {
+      return (
+        success: false,
+        userMessage: 'A user UID or email is required to delete the Auth account.',
+      );
+    }
+
+    late final Uri endpoint;
+    late final String anonKey;
+    try {
+      final resolved = await _resolveEndpoint();
+      endpoint = resolved.endpoint;
+      anonKey = resolved.anonKey;
+    } on AttendiphiEmailException catch (e) {
+      return (success: false, userMessage: e.userMessage);
+    }
+
+    final token = await _firebaseIdToken();
+    if (token == null || token.isEmpty) {
+      AppLogger.warning(
+        'DELETE AUTH USER FAILURE uid: $cleanUid code: missing_firebase_token',
+        tag: 'AttendiphiEmail',
+      );
+      return (
+        success: false,
+        userMessage:
+            'Sign in again, then retry. A Firebase session is required to delete admins.',
+      );
+    }
+
+    AppLogger.info(
+      'DELETE AUTH USER START uid: $cleanUid email: $cleanEmail',
+      tag: 'AttendiphiEmail',
+    );
+
+    try {
+      final response = await _http
+          .post(
+            endpoint,
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': anonKey,
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({
+              'action': 'delete_admin',
+              'targetUid': cleanUid,
+              if (cleanEmail.isNotEmpty) 'email': cleanEmail,
+            }),
+          )
+          .timeout(const Duration(seconds: 25));
+
+      Map<String, dynamic> decoded = {};
+      try {
+        final body = jsonDecode(response.body);
+        if (body is Map<String, dynamic>) decoded = body;
+      } catch (_) {}
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        AppLogger.info(
+          'DELETE AUTH USER SUCCESS uid: $cleanUid',
+          tag: 'AttendiphiEmail',
+        );
+        return (
+          success: true,
+          userMessage: decoded['message'] as String? ??
+              'Admin deleted from Authentication successfully.',
+        );
+      }
+
+      final errorMsg = (decoded['error'] as String?)?.trim() ?? '';
+      AppLogger.warning(
+        'DELETE AUTH USER FAILURE uid: $cleanUid status: ${response.statusCode} error: $errorMsg',
+        tag: 'AttendiphiEmail',
+      );
+      return (
+        success: false,
+        userMessage: errorMsg.isNotEmpty
+            ? errorMsg
+            : 'Could not delete user from Authentication (${response.statusCode}).',
+      );
+    } catch (e) {
+      AppLogger.warning(
+        'DELETE AUTH USER FAILURE uid: $cleanUid error: $e',
+        tag: 'AttendiphiEmail',
+      );
+      return (
+        success: false,
+        userMessage: 'Network error communicating with authentication service ($e).',
+      );
+    }
+  }
+
   Future<AttendiphiEmailResult> send({
     required String emailType,
     required String recipientEmail,

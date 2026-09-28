@@ -128,6 +128,66 @@ void main() {
     expect(result.userMessage.toLowerCase().contains('not found'), isFalse);
   });
 
+  test('deleteAuthAdmin posts delete_admin action with Bearer token', () async {
+    late http.Request captured;
+    final client = MockClient((request) async {
+      captured = request;
+      return http.Response(
+        jsonEncode({'ok': true, 'deleted': true, 'message': 'Deleted successfully'}),
+        200,
+      );
+    });
+
+    final service = AttendiphiEmailService(
+      httpClient: client,
+      idTokenFn: () async => 'firebase-id-token',
+      readBrowserConfigFn: () async => const BrowserSupabaseConfig(
+        url: 'https://example.supabase.co',
+        anonKey: 'public-anon-key',
+      ),
+    );
+
+    final result = await service.deleteAuthAdmin(
+      uid: 'uid-to-delete',
+      email: 'delete-me@example.com',
+    );
+
+    expect(result.success, isTrue);
+    expect(result.userMessage, 'Deleted successfully');
+    expect(captured.headers['Authorization'], 'Bearer firebase-id-token');
+    expect(captured.headers['apikey'], 'public-anon-key');
+    expect(captured.url.path, endsWith('/functions/v1/send-attendiphi-email'));
+    final body = jsonDecode(captured.body) as Map<String, dynamic>;
+    expect(body['action'], 'delete_admin');
+    expect(body['targetUid'], 'uid-to-delete');
+    expect(body['email'], 'delete-me@example.com');
+  });
+
+  test('deleteAuthAdmin returns failure when server returns non-2xx', () async {
+    final client = MockClient((request) async {
+      return http.Response(
+        jsonEncode({'ok': false, 'error': 'Permission denied'}),
+        403,
+      );
+    });
+
+    final service = AttendiphiEmailService(
+      httpClient: client,
+      idTokenFn: () async => 'firebase-id-token',
+      readBrowserConfigFn: () async => const BrowserSupabaseConfig(
+        url: 'https://example.supabase.co',
+        anonKey: 'public-anon-key',
+      ),
+    );
+
+    final result = await service.deleteAuthAdmin(
+      uid: 'uid-to-delete',
+    );
+
+    expect(result.success, isFalse);
+    expect(result.userMessage, 'Permission denied');
+  });
+
   test('Firebase project used for tokens is qr-checkin-dev', () {
     expect(DefaultFirebaseOptions.web.projectId, 'qr-checkin-dev');
     expect(SupabaseEmailConfig.firebaseProjectId, 'qr-checkin-dev');
@@ -138,3 +198,4 @@ void main() {
     );
   });
 }
+

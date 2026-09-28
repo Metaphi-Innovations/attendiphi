@@ -21,9 +21,11 @@ Super Admin (Flutter)
       → Recipient inbox
 ```
 
-Admin create stays in Flutter. The Edge Function only sends email (welcome or
-password reset). Create success + email failure are reported separately
-(`adminCreated: true`, `emailSent: false`).
+Admin create stays in Flutter. The Edge Function handles operations requiring
+elevated Firebase credentials or private transport:
+- Sends email (welcome or password reset) via Gmail SMTP
+- Deletes administrators from Firebase Authentication via Google Identity Toolkit
+  when a Super Admin deletes an admin profile, preventing orphaned Auth accounts.
 
 ## Gmail sender
 

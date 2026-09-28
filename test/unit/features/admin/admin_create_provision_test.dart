@@ -48,7 +48,8 @@ class _RecordingRemote implements AdminRemoteDataSource {
   }
 
   @override
-  Future<void> deleteAdmin(String adminId) => throw UnimplementedError();
+  Future<void> deleteAdmin(String adminId, {String? email}) =>
+      throw UnimplementedError();
 
   @override
   Future<AdminUser?> getAdminByEmail(String email) async =>

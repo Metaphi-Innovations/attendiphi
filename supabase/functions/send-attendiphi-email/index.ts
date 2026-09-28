@@ -43,6 +43,7 @@ type EmailType = "admin_welcome" | "password_reset";
 
 interface WelcomeBody {
   type?: string;
+  action?: string;
   emailType?: string;
   email?: string;
   recipientEmail?: string;
@@ -52,6 +53,8 @@ interface WelcomeBody {
   password?: string;
   roleLabel?: string;
   portalUrl?: string;
+  targetUid?: string;
+  uid?: string;
 }
 
 interface ServiceAccount {
@@ -94,6 +97,11 @@ Deno.serve(async (req) => {
       return json(400, { ok: false, error: "Invalid JSON body" }, cors);
     }
 
+    const action = String(body.action ?? body.type ?? body.emailType ?? "").trim().toLowerCase();
+    if (action === "delete_admin" || action === "delete_user") {
+      return await handleDeleteAdmin(req, body, cors);
+    }
+
     const emailType = ((body.emailType ?? body.type ?? "").trim()) as EmailType;
     if (emailType === "password_reset") {
       return await handlePasswordReset(req, body, cors);
@@ -102,9 +110,152 @@ Deno.serve(async (req) => {
     return await handleAdminWelcome(req, body, cors);
   } catch (error) {
     console.log(`email_failed reason=unhandled status=500 detail=${errorName(error)}`);
-    return json(500, { ok: false, error: "Could not send email" }, cors);
+    return json(500, { ok: false, error: "Could not process request" }, cors);
   }
 });
+
+async function handleDeleteAdmin(
+  req: Request,
+  body: WelcomeBody,
+  cors: HeadersInit,
+): Promise<Response> {
+  const firebaseToken = bearerToken(req.headers.get("authorization"));
+  if (!firebaseToken) {
+    console.log("delete_admin_denied reason=missing_bearer status=401");
+    return json(401, { ok: false, error: "Missing Firebase ID token" }, cors);
+  }
+
+  let claims: JWTPayload;
+  try {
+    claims = await verifyFirebaseIdToken(firebaseToken);
+  } catch (error) {
+    console.log(
+      `delete_admin_denied reason=invalid_firebase_token status=401 detail=${errorName(error)}`,
+    );
+    return json(401, { ok: false, error: "Invalid or expired Firebase ID token" }, cors);
+  }
+
+  const actorUid = String(claims.sub ?? claims.user_id ?? "").trim();
+  if (!actorUid) {
+    return json(401, { ok: false, error: "Firebase token is missing user identity" }, cors);
+  }
+
+  const isAdmin = await assertAttendiphiAdmin(firebaseToken, actorUid);
+  if (!isAdmin) {
+    console.log(`delete_admin_denied reason=not_admin status=403 uid=${actorUid}`);
+    return json(403, { ok: false, error: "Only Attendiphi administrators can delete accounts" }, cors);
+  }
+
+  let targetUid = String(body.targetUid ?? body.uid ?? "").trim();
+  const targetEmail = String(body.email ?? body.recipientEmail ?? "").trim().toLowerCase();
+
+  if (!targetUid && !targetEmail) {
+    return json(400, { ok: false, error: "targetUid or email is required to delete admin" }, cors);
+  }
+
+  if (targetUid && targetUid === actorUid) {
+    return json(400, { ok: false, error: "You cannot delete your own admin account" }, cors);
+  }
+
+  let accessToken: string;
+  try {
+    accessToken = await googleAccessToken();
+  } catch (error) {
+    console.log(`delete_admin_failed reason=google_token detail=${errorName(error)}`);
+    return json(500, {
+      ok: false,
+      error: "Authentication service configuration error (missing service account credentials).",
+    }, cors);
+  }
+
+  // If targetUid is missing or if we need to resolve it by email:
+  if (!targetUid && targetEmail) {
+    try {
+      const lookupRes = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/accounts:lookup`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email: [targetEmail] }),
+        },
+      );
+      if (lookupRes.ok) {
+        const lookupData = await lookupRes.json();
+        const users = lookupData?.users;
+        if (Array.isArray(users) && users.length > 0 && users[0].localId) {
+          targetUid = users[0].localId;
+        }
+      }
+    } catch (e) {
+      console.log(`delete_admin_lookup_failed detail=${errorName(e)}`);
+    }
+  }
+
+  if (!targetUid) {
+    // If not found in Auth by email, it is already deleted or never existed.
+    console.log(`delete_admin_success reason=not_found_by_email email=${targetEmail}`);
+    return json(200, {
+      ok: true,
+      deleted: true,
+      note: "Account was not found in Firebase Authentication",
+    }, cors);
+  }
+
+  if (targetUid === actorUid) {
+    return json(400, { ok: false, error: "You cannot delete your own admin account" }, cors);
+  }
+
+  try {
+    const deleteRes = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/accounts:delete`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ localId: targetUid }),
+      },
+    );
+
+    if (deleteRes.ok) {
+      console.log(`delete_admin_success targetUid=${targetUid} actorUid=${actorUid}`);
+      return json(200, {
+        ok: true,
+        deleted: true,
+        targetUid,
+        message: "Admin deleted from Firebase Authentication successfully.",
+      }, cors);
+    }
+
+    const errData = await deleteRes.json().catch(() => ({}));
+    const errCode = (errData?.error?.message as string) || "";
+    if (errCode === "USER_NOT_FOUND") {
+      console.log(`delete_admin_success reason=user_not_found targetUid=${targetUid}`);
+      return json(200, {
+        ok: true,
+        deleted: true,
+        targetUid,
+        note: "User was already not in Firebase Authentication.",
+      }, cors);
+    }
+
+    console.log(`delete_admin_failed status=${deleteRes.status} detail=${errCode}`);
+    return json(deleteRes.status, {
+      ok: false,
+      error: `Firebase Auth error: ${errCode || deleteRes.statusText}`,
+    }, cors);
+  } catch (error) {
+    console.log(`delete_admin_failed reason=unhandled detail=${errorName(error)}`);
+    return json(500, {
+      ok: false,
+      error: "Could not delete user from Firebase Authentication.",
+    }, cors);
+  }
+}
 
 async function handlePasswordReset(
   req: Request,

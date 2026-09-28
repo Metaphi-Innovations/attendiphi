@@ -1955,11 +1955,16 @@ class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
 
     if (confirm == true) {
       try {
-        await ref.read(adminRepositoryProvider).deleteAdmin(admin.id);
+        await ref.read(adminRepositoryProvider).deleteAdmin(
+          admin.id,
+          email: admin.email,
+        );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Deleted admin "${admin.name}" successfully.'),
+              content: Text(
+                'Deleted admin "${admin.name}" from database and Firebase Authentication.',
+              ),
               backgroundColor: const Color(0xFF10B981),
               behavior: SnackBarBehavior.floating,
             ),
