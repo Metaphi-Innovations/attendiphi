@@ -78,7 +78,7 @@ service cloud.firestore {
       allow get: if isSignedIn() && (
         adminId == request.auth.uid
         || isSuperAdmin()
-        || (isRegularAdmin() && resource.data.createdBy == request.auth.uid)
+        || (isRegularAdmin() && (resource == null || resource.data.createdBy == request.auth.uid))
       );
       allow list: if isSuperAdmin()
         || (isRegularAdmin() && resource.data.createdBy == request.auth.uid);

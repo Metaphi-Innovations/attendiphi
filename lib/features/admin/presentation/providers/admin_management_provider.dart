@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/entities/admin_user.dart';
 import 'admin_auth_provider.dart';
@@ -63,7 +64,13 @@ final allAdminsStreamProvider = StreamProvider<List<AdminUser>>((ref) {
   if (auth.currentAdmin!.isSuperAdmin) {
     return repo.watchAdmins();
   }
-  return repo.watchAdmins(createdBy: auth.currentAdmin!.id);
+  final currentUid = (FirebaseAuth.instance.currentUser?.uid ?? '').trim();
+  final creatorId = currentUid.isNotEmpty
+      ? currentUid
+      : (auth.currentAdmin!.uid.isNotEmpty
+          ? auth.currentAdmin!.uid
+          : auth.currentAdmin!.id);
+  return repo.watchAdmins(createdBy: creatorId);
 });
 
 /// Provider for admins visible to the current authenticated administrator.
@@ -85,6 +92,9 @@ final visibleAdminsProvider = Provider<AsyncValue<List<AdminUser>>>((ref) {
     }
 
     final currentId = (currentAdmin?.id ?? '').trim().toLowerCase();
+    final currentUid = (currentAdmin?.uid ?? '').trim().toLowerCase();
+    final currentAuthUid =
+        (FirebaseAuth.instance.currentUser?.uid ?? '').trim().toLowerCase();
     final currentEmail = (currentAdmin?.email ?? '').trim().toLowerCase();
     final currentName = (currentAdmin?.name ?? '').trim().toLowerCase();
 
@@ -100,6 +110,8 @@ final visibleAdminsProvider = Provider<AsyncValue<List<AdminUser>>>((ref) {
 
       // Can only see admins created by himself
       return (currentId.isNotEmpty && creator == currentId) ||
+          (currentUid.isNotEmpty && creator == currentUid) ||
+          (currentAuthUid.isNotEmpty && creator == currentAuthUid) ||
           (currentEmail.isNotEmpty && creator == currentEmail) ||
           (currentName.isNotEmpty && creator == currentName);
     }).toList();

@@ -31,10 +31,13 @@
   ];
 
   function initOrt() {
-    if (typeof ort !== 'undefined' && ort.env && ort.env.wasm) {
-      ort.env.wasm.numThreads = 1;
-      ort.env.wasm.simd = true;
-      ort.env.wasm.wasmPaths = './';
+    if (typeof ort !== 'undefined' && ort.env) {
+      ort.env.logLevel = 'error';
+      if (ort.env.wasm) {
+        ort.env.wasm.numThreads = 1;
+        ort.env.wasm.simd = true;
+        ort.env.wasm.wasmPaths = './';
+      }
     }
   }
 
@@ -51,7 +54,7 @@
         initOrt();
         session = await ort.InferenceSession.create(
           'models/face_recognition_sface_2021dec.onnx',
-          { executionProviders: ['wasm'], graphOptimizationLevel: 'all' }
+          { executionProviders: ['wasm'], graphOptimizationLevel: 'all', logSeverityLevel: 3 }
         );
         return session;
       } catch (err) {

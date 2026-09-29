@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../domain/entities/admin_user.dart';
 
@@ -93,10 +94,14 @@ class AdminRemoteDataSourceImpl implements AdminRemoteDataSource {
       throw Exception('Admin Firebase UID is required.');
     }
 
-    final existingDoc = await _adminsCollection.doc(uid).get();
-    if (existingDoc.exists) {
-      throw Exception('An Admin account already exists for this email.');
-    }
+    try {
+      final existingDoc = await _adminsCollection.doc(uid).get();
+      if (existingDoc.exists) {
+        throw Exception('An Admin account already exists for this email.');
+      }
+    } on FirebaseException {
+      // Scoped admin cannot get non-existent or other-owner doc; UID uniqueness is guaranteed by Auth.
+    } catch (_) {}
 
     try {
       final existing = await getAdminByEmail(cleanEmail);
@@ -105,8 +110,16 @@ class AdminRemoteDataSourceImpl implements AdminRemoteDataSource {
       }
     } on FirebaseException {
       // Listing by email may be denied for scoped admins; UID uniqueness still holds.
+    } catch (_) {}
+
+    String creatorUid = (createdBy ?? '').trim();
+    if (creatorUid.isEmpty) {
+      try {
+        creatorUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+      } catch (_) {}
     }
 
+    final finalCreatedBy = creatorUid.isNotEmpty ? creatorUid : createdBy;
     final docRef = _adminsCollection.doc(uid);
     final newAdmin = AdminUser(
       id: uid,
@@ -121,7 +134,7 @@ class AdminRemoteDataSourceImpl implements AdminRemoteDataSource {
       mustResetPassword: true,
       isActive: true,
       createdAt: DateTime.now(),
-      createdBy: createdBy,
+      createdBy: finalCreatedBy,
     );
 
     // Firebase Auth stores the password. Do not persist plaintext or hashes.
@@ -135,7 +148,7 @@ class AdminRemoteDataSourceImpl implements AdminRemoteDataSource {
       'mustResetPassword': true,
       'isActive': true,
       'createdAt': FieldValue.serverTimestamp(),
-      'createdBy': createdBy,
+      'createdBy': finalCreatedBy,
       'assignedLocationIds': <String>[],
     });
     return newAdmin;

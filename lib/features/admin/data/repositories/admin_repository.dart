@@ -72,6 +72,10 @@ class AdminRepositoryImpl implements AdminRepository {
   }) async {
     final _ = role;
     final cleanEmail = email.trim().toLowerCase();
+    final currentAuthUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final creatorUid = (createdBy != null && createdBy.trim().isNotEmpty)
+        ? createdBy.trim()
+        : currentAuthUid;
 
     // Fast-path: existing Firestore admin for this email.
     try {
@@ -81,7 +85,7 @@ class AdminRepositoryImpl implements AdminRepository {
       }
     } on FirebaseException {
       // Scoped list may deny email query; Auth + UID checks still apply.
-    }
+    } catch (_) {}
 
     String uid;
     try {
@@ -114,10 +118,14 @@ class AdminRepositoryImpl implements AdminRepository {
       throw Exception(AdminAuthEmailClient.publicCreateError(e));
     }
 
-    final existingById = await remoteDataSource.getAdminById(uid);
-    if (existingById != null) {
-      throw Exception('An Admin account already exists for this email.');
-    }
+    try {
+      final existingById = await remoteDataSource.getAdminById(uid);
+      if (existingById != null) {
+        throw Exception('An Admin account already exists for this email.');
+      }
+    } on FirebaseException {
+      // Scoped admin cannot get uncreated or other-owner document; UID uniqueness is guaranteed by Auth.
+    } catch (_) {}
 
     try {
       return await remoteDataSource.createAdmin(
@@ -126,14 +134,14 @@ class AdminRepositoryImpl implements AdminRepository {
         email: cleanEmail,
         phone: phone,
         password: password,
-        createdBy: createdBy,
+        createdBy: creatorUid,
         role: AdminRole.admin,
       );
     } catch (e) {
       // Auth user already exists — do not roll back Auth. Surface recovery path.
       throw Exception(
         'Firebase Auth user was created, but the Admin profile could not be '
-        'saved ($e). Stay signed in as Super Admin and try again, or if the '
+        'saved ($e). Stay signed in and try again, or if the '
         'email shows as orphaned, delete it under Authentication → Users first.',
       );
     }

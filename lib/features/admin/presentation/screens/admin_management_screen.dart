@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -415,8 +416,16 @@ class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
                                             adminRepositoryProvider,
                                           );
 
-                                          final createdByValue =
-                                              currentAdmin?.id ?? '';
+                                          final currentAuthUid =
+                                              FirebaseAuth.instance.currentUser?.uid ??
+                                                  '';
+                                          final createdByValue = currentAuthUid
+                                                  .isNotEmpty
+                                              ? currentAuthUid
+                                              : (currentAdmin?.uid.isNotEmpty ==
+                                                      true
+                                                  ? currentAdmin!.uid
+                                                  : (currentAdmin?.id ?? ''));
 
                                           final createdAdmin = await repo
                                               .createAdmin(

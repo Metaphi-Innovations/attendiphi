@@ -76,6 +76,9 @@ await assertFails(
   }),
 );
 
+// Regular admin can check if a new doc exists (resource == null)
+await assertSucceeds(adminAuth.doc('admins/uncreated-uid').get());
+
 await assertSucceeds(
   adminAuth.doc('admins/child-uid').set({
     uid: 'child-uid',
@@ -86,6 +89,19 @@ await assertSucceeds(
     createdBy: 'admin-uid',
   }),
 );
+
+// Regular admin can get the admin they created
+await assertSucceeds(adminAuth.doc('admins/child-uid').get());
+// Other admin cannot get admin created by admin-uid
+await assertFails(otherAuth.doc('admins/child-uid').get());
+// Regular admin can list admins created by them
+await assertSucceeds(
+  adminAuth.collection('admins').where('createdBy', '==', 'admin-uid').get(),
+);
+// Regular admin cannot list all admins without createdBy filter
+await assertFails(adminAuth.collection('admins').get());
+// Super admin can list all admins
+await assertSucceeds(superAuth.collection('admins').get());
 
 await assertFails(
   adminAuth.doc('admins/admin-uid').update({ role: 'superadmin' }),
