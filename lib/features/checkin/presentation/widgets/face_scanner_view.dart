@@ -311,7 +311,7 @@ class _FaceScannerViewState extends ConsumerState<FaceScannerView>
         }
 
         if (mounted) {
-          widget.onFaceRecognized(matched.candidate, matched.confidence, bytes);
+          await widget.onFaceRecognized(matched.candidate, matched.confidence, bytes);
         }
       } else if (mounted && !_hasMatched) {
         setState(() {

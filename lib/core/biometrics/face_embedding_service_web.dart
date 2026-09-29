@@ -25,7 +25,8 @@ class FaceEmbeddingService {
     final int w = min(image.width - x, (boundingBox.width + (marginX * 2)).toInt());
     final int h = min(image.height - y, (boundingBox.height + (marginY * 2)).toInt());
 
-    return img.copyCrop(image, x: x, y: y, width: max(1, w), height: max(1, h));
+    final cropped = img.copyCrop(image, x: x, y: y, width: max(1, w), height: max(1, h));
+    return img.copyResize(cropped, width: 112, height: 112);
   }
 
   /// Horizontally aligns the face using 2D eye landmarks, normalizes lighting,

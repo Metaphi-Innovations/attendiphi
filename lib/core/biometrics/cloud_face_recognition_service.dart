@@ -103,7 +103,7 @@ class CloudFaceRecognitionService implements FaceVerificationService {
     Duration timeout = const Duration(seconds: 8),
   }) async {
     try {
-      final frameResult = await validateAndExtractFaceFrameWeb(photoBase64);
+      final frameResult = await _frameExtractor(photoBase64);
       return FaceQualityResult(
         isValid: frameResult.isValid,
         facesDetected: frameResult.isValid ? 1 : 0,

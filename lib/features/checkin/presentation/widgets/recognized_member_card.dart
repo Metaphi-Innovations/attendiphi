@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../../../app/theme/app_colors.dart';
+import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/member_photo.dart';
 import '../../../employee/domain/entities/employee.dart';
 
@@ -155,13 +156,21 @@ class RecognizedMemberCard extends StatelessWidget {
                           color: Color(0xFF64748B),
                         ),
                         const SizedBox(width: 4),
-                        Text(
-                          member.phone.isNotEmpty ? '+91 ${member.phone}' : 'No phone',
-                          style: const TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF475569),
-                          ),
+                        Builder(
+                          builder: (context) {
+                            final normalized = Validators.normalizePhone(member.phone);
+                            final displayPhone = normalized.isNotEmpty
+                                ? '+91 $normalized'
+                                : (member.phone.isNotEmpty ? member.phone : 'No phone');
+                            return Text(
+                              displayPhone,
+                              style: const TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w500,
+                                color: Color(0xFF475569),
+                              ),
+                            );
+                          },
                         ),
                       ],
                     ),
