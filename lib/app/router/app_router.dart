@@ -36,10 +36,6 @@ String? _extractQueryParam(GoRouterState state, String key) {
   if (val != null && val.trim().isNotEmpty) return val.trim();
 
   if (kIsWeb) {
-    if (Uri.base.queryParameters.containsKey(key)) {
-      final baseVal = Uri.base.queryParameters[key];
-      if (baseVal != null && baseVal.trim().isNotEmpty) return baseVal.trim();
-    }
     if (Uri.base.hasFragment && Uri.base.fragment.contains('?')) {
       final fragIndex = Uri.base.fragment.indexOf('?');
       final queryStr = Uri.base.fragment.substring(fragIndex + 1);

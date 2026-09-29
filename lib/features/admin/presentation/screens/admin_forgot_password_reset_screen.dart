@@ -127,6 +127,15 @@ class _AdminForgotPasswordResetScreenState
     });
   }
 
+  Future<void> _navigateToLogin() async {
+    try {
+      await ref.read(adminAuthProvider.notifier).signOut();
+    } catch (_) {}
+    if (mounted) {
+      context.go(RouteNames.adminLogin);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -337,9 +346,7 @@ class _AdminForgotPasswordResetScreenState
           const SizedBox(height: 20),
           Center(
             child: TextButton(
-              onPressed: _isSubmitting
-                  ? null
-                  : () => context.go(RouteNames.adminLogin),
+              onPressed: _isSubmitting ? null : _navigateToLogin,
               style: TextButton.styleFrom(
                 foregroundColor: AppColors.primary,
                 textStyle: const TextStyle(
@@ -434,7 +441,7 @@ class _AdminForgotPasswordResetScreenState
               AppButton.primary(
                 label: 'Sign In to Portal',
                 icon: Icons.login_rounded,
-                onPressed: () => context.go(RouteNames.adminLogin),
+                onPressed: _navigateToLogin,
               ),
             ],
           ),
@@ -494,7 +501,7 @@ class _AdminForgotPasswordResetScreenState
         const SizedBox(height: 20),
         Center(
           child: TextButton(
-            onPressed: () => context.go(RouteNames.adminLogin),
+            onPressed: _navigateToLogin,
             style: TextButton.styleFrom(
               foregroundColor: AppColors.primary,
               textStyle: const TextStyle(

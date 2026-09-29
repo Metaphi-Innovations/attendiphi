@@ -300,6 +300,12 @@ void main() {
     expect(confirmed, isTrue);
     expect(find.textContaining('Password Reset Successfully'), findsOneWidget);
     expect(find.text('Sign In to Portal'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(AppButton, 'Sign In to Portal'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AdminLoginScreen), findsOneWidget);
+    expect(find.text('Administrator Login'), findsOneWidget);
   });
 
   test('hashed passwords match the Cloud Function scheme and login helper', () {
