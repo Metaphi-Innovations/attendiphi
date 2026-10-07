@@ -120,7 +120,7 @@ class CheckInSubmission {
   /// Optional reason why this record was flagged.
   final String? flagReason;
 
-  /// Recognized member document id when verificationMethod is face.
+  /// Selected member document id (manual dropdown selection).
   final String? memberId;
 
   /// How identity was verified (e.g. `face`). Existing QR/manual records omit this.

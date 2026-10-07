@@ -15,6 +15,7 @@ import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_card.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/metaphi_loading_indicator.dart';
+import '../../../app_config/presentation/providers/check_in_restrictions_provider.dart';
 import '../../../checkin/data/datasources/device_checkin_service.dart';
 import '../../../checkin/domain/entities/check_in_submission.dart';
 import '../../../checkin/presentation/screens/checkin_result_screen.dart';
@@ -105,6 +106,9 @@ class _LocationPermissionScreenState
     return sessionDay.isAfter(today);
   }
 
+  bool _locationStarted = false;
+  bool _gateApplied = false;
+
   @override
   void initState() {
     super.initState();
@@ -112,11 +116,43 @@ class _LocationPermissionScreenState
       vsync: this,
       duration: const Duration(seconds: 2),
     );
-
-    _checkDeviceSubmission();
   }
 
-  Future<void> _checkDeviceSubmission() async {
+  void _startLocationIfNeeded() {
+    if (_locationStarted || !mounted) return;
+    _locationStarted = true;
+    _pulseController.repeat();
+    ref
+        .read(locationValidationFamilyProvider(widget.location).notifier)
+        .validateLocation();
+  }
+
+  Future<void> _applyRestrictionsGate({required bool restrictionsEnabled}) async {
+    if (!restrictionsEnabled) {
+      // Test mode: any QR date, multi check-in per device.
+      if (_hasCheckedIn || _existingSubmission != null) {
+        setState(() {
+          _hasCheckedIn = false;
+          _existingSubmission = null;
+          _isCheckingDevice = false;
+          _gateApplied = true;
+        });
+      } else if (_isCheckingDevice || !_gateApplied) {
+        setState(() {
+          _isCheckingDevice = false;
+          _gateApplied = true;
+        });
+      }
+      _startLocationIfNeeded();
+      return;
+    }
+
+    if (_gateApplied && !_isCheckingDevice) {
+      // Already applied production gates for this visit.
+      return;
+    }
+
+    // Production restrictions ON.
     final deviceService = ref.read(deviceCheckInServiceProvider);
     final hasCheckedIn = await deviceService.hasCheckedInForSession(
       sessionDateStr: _effectiveSessionDateStr,
@@ -135,6 +171,7 @@ class _LocationPermissionScreenState
         _hasCheckedIn = true;
         _existingSubmission = existingSubmission;
         _isCheckingDevice = false;
+        _gateApplied = true;
       });
       context.go(
         RouteNames.checkinResultPath(
@@ -148,14 +185,13 @@ class _LocationPermissionScreenState
 
     setState(() {
       _isCheckingDevice = false;
+      _gateApplied = true;
     });
 
-    // Automatically initiate location check on screen entrance only if session is active on Thursday or testing session
-    if (_isTodayThursday && !_isSessionExpired && !_isSessionFuture) {
-      _pulseController.repeat();
-      ref
-          .read(locationValidationFamilyProvider(widget.location).notifier)
-          .validateLocation();
+    final canStartLocation =
+        _isTodayThursday && !_isSessionExpired && !_isSessionFuture;
+    if (canStartLocation) {
+      _startLocationIfNeeded();
     }
   }
 
@@ -167,6 +203,39 @@ class _LocationPermissionScreenState
 
   @override
   Widget build(BuildContext context) {
+    final configAsync = ref.watch(checkInRestrictionsConfigProvider);
+
+    // Wait for live Super Admin toggle before enforcing date/device gates.
+    ref.listen(checkInRestrictionsConfigProvider, (prev, next) {
+      next.whenData((config) {
+        // Always re-apply when OFF so multi-check-in / any-date unlocks.
+        if (!config.restrictionsEnabled || !_gateApplied) {
+          _applyRestrictionsGate(
+            restrictionsEnabled: config.restrictionsEnabled,
+          );
+        }
+      });
+    });
+
+    if (configAsync.isLoading && !configAsync.hasValue) {
+      return const Scaffold(
+        body: Center(child: MetaPhiLoadingIndicator()),
+      );
+    }
+
+    final restrictionsEnabled = configAsync.maybeWhen(
+      data: (config) => config.restrictionsEnabled,
+      orElse: () => true,
+    );
+
+    // First emission after build: apply gates once config is known.
+    if (!_gateApplied && configAsync.hasValue) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _gateApplied) return;
+        _applyRestrictionsGate(restrictionsEnabled: restrictionsEnabled);
+      });
+    }
+
     if (_hasCheckedIn || _existingSubmission != null) {
       return CheckInResultScreen(
         submission: _existingSubmission,
@@ -222,6 +291,14 @@ class _LocationPermissionScreenState
     final isBusy = validationState is LocationValidationRequestingPermission ||
         validationState is LocationValidationFetchingPosition;
 
+    // When restrictions OFF: PAST / UPCOMING / any weekday QR is allowed.
+    final showNotThursday =
+        restrictionsEnabled && !_isTodayThursday;
+    final showExpired =
+        restrictionsEnabled && _isSessionExpired;
+    final showFuture =
+        restrictionsEnabled && _isSessionFuture;
+
     return AppScaffold(
       title: AppStrings.locationPermissionTitle,
       body: Center(
@@ -234,12 +311,12 @@ class _LocationPermissionScreenState
             constraints: const BoxConstraints(
               maxWidth: ResponsiveBreakpoints.maxFormWidth,
             ),
-            child: !_isTodayThursday
+            child: showNotThursday
                 ? _buildNotThursdayView(context)
-                : _isSessionExpired
+                : showExpired
                     ? _buildExpiredSessionView(
                         context, _parsedSessionDate ?? DateTime.now())
-                    : _isSessionFuture
+                    : showFuture
                         ? _buildFutureSessionView(
                             context, _parsedSessionDate ?? DateTime.now())
                         : Column(

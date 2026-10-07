@@ -13,8 +13,14 @@ class CheckInRepositoryImpl implements CheckInRepository {
   final CheckInRemoteDataSource _remoteDataSource;
 
   @override
-  Future<void> submitCheckIn(CheckInSubmission submission) {
-    return _remoteDataSource.createCheckIn(submission);
+  Future<void> submitCheckIn(
+    CheckInSubmission submission, {
+    bool enforceThursday = true,
+  }) {
+    return _remoteDataSource.createCheckIn(
+      submission,
+      enforceThursday: enforceThursday,
+    );
   }
 
   @override

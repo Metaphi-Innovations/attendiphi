@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:qr_checkin/core/errors/app_exception.dart';
+import 'package:qr_checkin/features/app_config/presentation/providers/check_in_restrictions_provider.dart';
 import 'package:qr_checkin/features/checkin/data/datasources/device_checkin_service.dart';
 import 'package:qr_checkin/features/checkin/domain/entities/check_in_submission.dart';
 import 'package:qr_checkin/features/checkin/domain/entities/check_in_type.dart';
@@ -60,6 +61,7 @@ void main() {
     container = ProviderContainer(
       overrides: [
         checkInRepositoryProvider.overrideWithValue(mockRepository),
+        restrictionsEnabledProvider.overrideWithValue(true),
         submitCheckInUseCaseProvider.overrideWithValue(
           SubmitCheckIn(
             mockRepository,
@@ -98,7 +100,7 @@ void main() {
     });
 
     test('submits successfully for Member and updates state', () async {
-      when(() => mockRepository.submitCheckIn(any()))
+      when(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday')))
           .thenAnswer((_) async {});
 
       final notifier = container.read(checkInFormProvider.notifier);
@@ -119,7 +121,7 @@ void main() {
     });
 
     test('defaults type to Member when submitted without explicitly setting type', () async {
-      when(() => mockRepository.submitCheckIn(any()))
+      when(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday')))
           .thenAnswer((_) async {});
 
       final notifier = container.read(checkInFormProvider.notifier);
@@ -175,7 +177,7 @@ void main() {
       final state = container.read(checkInFormProvider);
       expect(state.error, isA<DuplicateCheckInException>());
       expect(state.submissionResult?.id, 'sub-existing-01');
-      verifyNever(() => mockRepository.submitCheckIn(any()));
+      verifyNever(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday')));
     });
 
     test('2026-09-03 rejects second face check-in on the same device', () async {
@@ -217,7 +219,7 @@ void main() {
       final state = container.read(checkInFormProvider);
       expect(state.error, isA<DuplicateCheckInException>());
       expect(state.submissionResult?.id, 'sub-omkaarr');
-      verifyNever(() => mockRepository.submitCheckIn(any()));
+      verifyNever(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday')));
     });
 
     test('2026-09-24 rejects second face check-in on the same device', () async {
@@ -259,7 +261,7 @@ void main() {
       final state = container.read(checkInFormProvider);
       expect(state.error, isA<DuplicateCheckInException>());
       expect(state.submissionResult?.id, 'sub-first');
-      verifyNever(() => mockRepository.submitCheckIn(any()));
+      verifyNever(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday')));
     });
   });
 }

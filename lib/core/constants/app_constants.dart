@@ -51,6 +51,9 @@ class AppConstants {
   static const String adminDevicesCollection = 'admin_devices';
   static const String adminNotificationsCollection = 'admin_notifications';
   static const String adminMailDispatchCollection = 'admin_mail_dispatch';
+  /// Live app settings (e.g. check-in restriction master toggle).
+  static const String appConfigCollection = 'appConfig';
+  static const String checkInRestrictionsDocId = 'checkInRestrictions';
   static const String substitutePhotosPath = 'substitute_photos';
 
   // ── Push Notifications ────────────────────────────────────────────────

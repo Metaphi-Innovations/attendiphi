@@ -7,6 +7,8 @@ import 'package:qr_checkin/features/admin/presentation/providers/admin_auth_prov
 import 'package:qr_checkin/features/admin/presentation/providers/admin_management_provider.dart';
 import 'package:qr_checkin/features/admin/presentation/providers/admin_scope_provider.dart';
 import 'package:qr_checkin/features/admin/presentation/widgets/admin_inspection_banner.dart';
+import 'package:qr_checkin/features/app_config/domain/entities/check_in_restrictions_config.dart';
+import 'package:qr_checkin/features/app_config/presentation/providers/check_in_restrictions_provider.dart';
 import 'package:qr_checkin/features/checkin/presentation/screens/checkin_result_screen.dart';
 import 'package:qr_checkin/features/employee/domain/entities/employee.dart';
 import 'package:qr_checkin/features/employee/presentation/providers/employee_providers.dart';
@@ -130,6 +132,14 @@ void main() {
 
       await tester.pumpWidget(
         ProviderScope(
+          overrides: [
+            restrictionsEnabledProvider.overrideWithValue(true),
+            checkInRestrictionsConfigProvider.overrideWith(
+              (ref) => Stream.value(
+                const CheckInRestrictionsConfig(restrictionsEnabled: true),
+              ),
+            ),
+          ],
           child: MaterialApp(
             theme: AppTheme.light,
             home: LocationPermissionScreen(

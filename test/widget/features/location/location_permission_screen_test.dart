@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qr_checkin/features/app_config/domain/entities/check_in_restrictions_config.dart';
+import 'package:qr_checkin/features/app_config/presentation/providers/check_in_restrictions_provider.dart';
 import 'package:qr_checkin/features/location/domain/entities/location_config.dart';
 import 'package:qr_checkin/features/location/presentation/screens/location_permission_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -23,8 +25,18 @@ void main() {
   Widget createWidgetUnderTest({
     String? sessionDateStr,
     DateTime Function()? nowProvider,
+    bool restrictionsEnabled = true,
   }) {
     return ProviderScope(
+      overrides: [
+        checkInRestrictionsConfigProvider.overrideWith(
+          (ref) => Stream.value(
+            CheckInRestrictionsConfig(
+              restrictionsEnabled: restrictionsEnabled,
+            ),
+          ),
+        ),
+      ],
       child: MaterialApp(
         home: Scaffold(
           body: LocationPermissionScreen(
@@ -110,6 +122,40 @@ void main() {
       expect(find.text('Session Not Active Yet'), findsOneWidget);
       expect(find.text('Scan Another QR'), findsNothing);
       expect(find.text('Allowed Perimeter:'), findsNothing);
+    });
+
+    testWidgets('skips Thursday/expired gates when restrictions are OFF',
+        (tester) async {
+      await tester.pumpWidget(
+        createWidgetUnderTest(
+          sessionDateStr: '2026-08-27',
+          nowProvider: () => DateTime(2026, 9, 9, 10, 0), // Wednesday + past QR
+          restrictionsEnabled: false,
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(find.text('THURSDAY ONLY'), findsNothing);
+      expect(find.text('SESSION EXPIRED'), findsNothing);
+      expect(find.text('Allowed Perimeter:'), findsOneWidget);
+    });
+
+    testWidgets('allows upcoming QR date when restrictions are OFF',
+        (tester) async {
+      await tester.pumpWidget(
+        createWidgetUnderTest(
+          sessionDateStr: '2026-10-15',
+          nowProvider: () => DateTime(2026, 10, 5, 10, 0), // Monday
+          restrictionsEnabled: false,
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(find.text('UPCOMING SESSION'), findsNothing);
+      expect(find.text('THURSDAY ONLY'), findsNothing);
+      expect(find.text('Allowed Perimeter:'), findsOneWidget);
     });
   });
 }

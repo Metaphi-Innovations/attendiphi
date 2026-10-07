@@ -11,7 +11,10 @@ import '../../domain/entities/paginated_check_ins_result.dart';
 
 /// Remote data source writing check-ins to Cloud Firestore.
 abstract class CheckInRemoteDataSource {
-  Future<void> createCheckIn(CheckInSubmission submission);
+  Future<void> createCheckIn(
+    CheckInSubmission submission, {
+    bool enforceThursday = true,
+  });
   Future<void> updateCheckIn(CheckInSubmission submission);
   Future<void> deleteCheckIn(String checkInId);
   Future<void> deleteAllCheckIns({String? locationId});
@@ -45,9 +48,13 @@ class CheckInRemoteDataSourceImpl implements CheckInRemoteDataSource {
   final FirebaseFirestore _firestore;
 
   @override
-  Future<void> createCheckIn(CheckInSubmission submission) async {
+  Future<void> createCheckIn(
+    CheckInSubmission submission, {
+    bool enforceThursday = true,
+  }) async {
     try {
-      if (submission.timestamp.weekday != DateTime.thursday) {
+      if (enforceThursday &&
+          submission.timestamp.weekday != DateTime.thursday) {
         throw const CheckInSubmissionFailedException(
           userMessage: 'Check-in is available on Thursday only.',
           technicalMessage:

@@ -20,6 +20,7 @@ import '../../../../core/widgets/app_card.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/app_text_field.dart';
 import '../../../../core/widgets/metaphi_loading_indicator.dart';
+import '../../../app_config/presentation/providers/check_in_restrictions_provider.dart';
 import '../../../employee/domain/employee_lookup.dart';
 import '../../../employee/domain/entities/employee.dart';
 import '../../../employee/presentation/providers/employee_providers.dart';
@@ -31,12 +32,10 @@ import '../../domain/entities/check_in_submission.dart';
 import '../../domain/entities/check_in_type.dart';
 import '../providers/checkin_form_provider.dart';
 import '../providers/checkin_form_state.dart';
-import '../widgets/face_scanner_view.dart';
-import '../widgets/recognized_member_card.dart';
-import '../widgets/unrecognized_member_card.dart';
 import 'checkin_result_screen.dart';
 
 /// Clean, light-themed attendance check-in form supporting Member, Substitute, and Visitor workflows.
+/// Member identity is manual (dropdown + autofill). Substitute still captures a face photo.
 class CheckInFormScreen extends ConsumerStatefulWidget {
   const CheckInFormScreen({
     super.key,
@@ -143,28 +142,10 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   bool _hasCheckedIn = false;
   CheckInSubmission? _existingSubmission;
 
-  // Face Recognition Check-In State
-  Employee? _recognizedMember;
-  double? _faceConfidence;
-  bool _isUnrecognized = false;
-  Uint8List? _unrecognizedPhotoBytes;
-  Uint8List? _liveSelfieBytes;
-  String? _unrecognizedMessage;
-  int _faceScanGeneration = 0;
-  int _punchGeneration = 0;
-  bool _memberAutoSubmitFailed = false;
-  bool _isMemberSubmitting = false;
-  bool _showManualMemberPicker = false;
+  /// Member selected from the searchable dropdown (manual check-in only).
   Employee? _manuallySelectedMember;
 
   void _clearLocalIdentity() {
-    _recognizedMember = null;
-    _faceConfidence = null;
-    _isUnrecognized = false;
-    _unrecognizedPhotoBytes = null;
-    _unrecognizedMessage = null;
-    _liveSelfieBytes = null;
-    _showManualMemberPicker = false;
     _manuallySelectedMember = null;
     _isMemberDropdownOpen = false;
     _memberSearchQuery = '';
@@ -180,7 +161,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     ref.read(employeesStreamProvider);
 
     // Always start this QR scan with empty identity fields so the previous
-    // member on a shared device cannot leak into the next selfie.
+    // member on a shared device cannot leak into the next check-in.
     _nameController = TextEditingController();
     _phoneController = TextEditingController();
     _emailController = TextEditingController();
@@ -198,15 +179,22 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       if (widget.adminId != null && widget.adminId!.isNotEmpty) {
         ref.read(checkInFormProvider.notifier).setAdminId(widget.adminId);
       }
-      setState(() {
-        _clearLocalIdentity();
-        _faceScanGeneration++;
-      });
-      _checkDeviceSubmission();
+      setState(_clearLocalIdentity);
+      // Device gate runs from build once restrictions config is ready.
     });
   }
 
-  Future<void> _checkDeviceSubmission() async {
+  Future<void> _applyDeviceGate({required bool restrictionsEnabled}) async {
+    if (!restrictionsEnabled) {
+      if (!mounted) return;
+      setState(() {
+        _hasCheckedIn = false;
+        _existingSubmission = null;
+        _isCheckingDevice = false;
+      });
+      return;
+    }
+
     final deviceService = ref.read(deviceCheckInServiceProvider);
     final hasCheckedIn = await deviceService.hasCheckedInForSession(
       sessionDateStr: _effectiveSessionDateStr,
@@ -269,17 +257,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       _isMemberDropdownOpen = false;
       _isSubstituteForDropdownOpen = false;
       _isInvitedByDropdownOpen = false;
-      _recognizedMember = null;
-      _faceConfidence = null;
-      _isUnrecognized = false;
-      _unrecognizedPhotoBytes = null;
-      _liveSelfieBytes = null;
-      _memberAutoSubmitFailed = false;
-      _isMemberSubmitting = false;
-      _showManualMemberPicker = false;
       _manuallySelectedMember = null;
-      _punchGeneration++;
-      _faceScanGeneration++;
     });
 
     // 3. Reset form notifier state
@@ -316,156 +294,49 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     return EmployeeLookup.byId(employees, selected.id) ?? selected;
   }
 
-  void _markMemberAutoSubmitFailed() {
-    if (_memberAutoSubmitFailed && !_isMemberSubmitting) return;
-    setState(() {
-      _memberAutoSubmitFailed = true;
-      _isMemberSubmitting = false;
-    });
-  }
-
   void _openCamera() {
     context.push(RouteNames.photoCapturePath(widget.locationId));
   }
 
-  LocationConfig get _effectiveLocation {
-    const defaultLocation = LocationConfig(
-      id: 'location_x',
-      name: 'Excel Plaza, Ghatkopar',
-      latitude: 19.083462,
-      longitude: 72.914026,
-      radiusMeters: 500.0,
-      isActive: true,
-      address:
-          'EXCEL PLAZA, Pant Nagar, Ghatkopar East, Mumbai, Maharashtra 400075',
-    );
-    if (widget.initialLocation != null) return widget.initialLocation!;
-    final loaded =
-        ref.read(locationConfigFamilyProvider(widget.locationId)).asData?.value;
-    return loaded ?? defaultLocation;
-  }
-
-  ProximityResult get _effectiveProximity {
-    if (widget.proximityResult != null) return widget.proximityResult!;
-    final location = _effectiveLocation;
-    return ProximityResult(
-      distanceMeters: 10.0,
-      isWithinRadius: true,
-      allowedRadiusMeters: location.radiusMeters,
-      userLatitude: location.latitude,
-      userLongitude: location.longitude,
-      gpsAccuracy: 5.0,
-    );
-  }
-
-  Future<void> _applyRecognizedMember(
-    Employee member,
-    double confidence,
-    Uint8List selfieBytes,
-  ) async {
-    final live = await _authoritativeMember(member);
-    if (!mounted) return;
-    setState(() {
-      _isUnrecognized = false;
-      _unrecognizedPhotoBytes = null;
-      _liveSelfieBytes = selfieBytes;
-      _recognizedMember = live;
-      _faceConfidence = confidence;
-      _nameController.text = live.name;
-      _phoneController.text = live.phone;
-      _emailController.text = live.email;
-    });
-    final notifier = ref.read(checkInFormProvider.notifier);
-    notifier.clearIdentity();
-    notifier.setName(live.name);
-    notifier.setPhone(live.phone);
-    notifier.setEmail(live.email);
-    notifier.setRecognizedMember(live.id);
-    notifier.setAdminId(live.adminId ?? widget.adminId);
-    notifier.setPhotoBase64(ImageUtils.bytesToBase64(selfieBytes));
-  }
-
-  Future<void> _onMemberFaceVerified(
-    Employee member,
-    double confidence,
-    Uint8List selfieBytes,
-  ) async {
-    await _applyRecognizedMember(member, confidence, selfieBytes);
-    final generation = ++_punchGeneration;
-    setState(() {
-      _memberAutoSubmitFailed = false;
-      _isMemberSubmitting = true;
-    });
-    await _onSubmit(_effectiveLocation, _effectiveProximity);
-    if (!mounted || generation != _punchGeneration) return;
-    final submitted = ref.read(checkInFormProvider).submissionResult != null;
-    if (!submitted) {
-      _markMemberAutoSubmitFailed();
-    }
-  }
-
-
   Future<void> _onSubmit(LocationConfig location, ProximityResult proximity) async {
-    final deviceService = ref.read(deviceCheckInServiceProvider);
-    final hasCheckedIn = await deviceService.hasCheckedInForSession(
-      sessionDateStr: _effectiveSessionDateStr,
-      locationId: widget.locationId,
-      probeServer: true,
-    );
-    if (!mounted) return;
-    if (hasCheckedIn) {
-      final existingSubmission = await deviceService.getSubmissionForSession(
+    final restrictionsEnabled = ref.read(restrictionsEnabledProvider);
+    if (restrictionsEnabled) {
+      final deviceService = ref.read(deviceCheckInServiceProvider);
+      final hasCheckedIn = await deviceService.hasCheckedInForSession(
         sessionDateStr: _effectiveSessionDateStr,
         locationId: widget.locationId,
-        probeServer: false,
+        probeServer: true,
       );
       if (!mounted) return;
-      _goToCheckInResult(existingSubmission);
-      return;
+      if (hasCheckedIn) {
+        final existingSubmission = await deviceService.getSubmissionForSession(
+          sessionDateStr: _effectiveSessionDateStr,
+          locationId: widget.locationId,
+          probeServer: false,
+        );
+        if (!mounted) return;
+        _goToCheckInResult(existingSubmission);
+        return;
+      }
     }
 
     final formState = ref.read(checkInFormProvider);
-    var currentType = formState.type;
-    if (currentType == null && _recognizedMember != null) {
-      currentType = CheckInType.member;
-      ref.read(checkInFormProvider.notifier).setType(CheckInType.member);
-    }
+    final currentType = formState.type;
     if (currentType == null) {
-      _markMemberAutoSubmitFailed();
       return;
     }
 
-    // Face auto-submit has no registered FormFields; skip validate there.
-    final skipFormValidate =
-        currentType == CheckInType.member && _recognizedMember != null;
-    if (!skipFormValidate && !(_formKey.currentState?.validate() ?? false)) {
-      _markMemberAutoSubmitFailed();
+    if (!(_formKey.currentState?.validate() ?? false)) {
       return;
     }
 
     // Type-specific validations
     if (currentType == CheckInType.member) {
-      final hasManualMember = _manuallySelectedMember != null;
-      if (_isUnrecognized && !hasManualMember) {
-        _markMemberAutoSubmitFailed();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _unrecognizedMessage ??
-                  'Face not recognized. Please try again.',
-            ),
-            backgroundColor: AppColors.error,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-        return;
-      }
-      if (_recognizedMember == null && !hasManualMember) {
-        _markMemberAutoSubmitFailed();
+      if (_manuallySelectedMember == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Please look into the camera to verify your face before checking in.',
+              'Please select your name from the member list before checking in.',
             ),
             backgroundColor: AppColors.error,
             behavior: SnackBarBehavior.floating,
@@ -511,12 +382,11 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     }
 
     // Sync controllers and type to provider state. Member identity is taken
-    // from the selected/recognized memberId, not from typed or cached names.
+    // from the selected member dropdown, not from typed or cached names.
     final notifier = ref.read(checkInFormProvider.notifier);
     notifier.setType(currentType);
-    final selectedMember = currentType == CheckInType.member
-        ? (_manuallySelectedMember ?? _recognizedMember)
-        : null;
+    final selectedMember =
+        currentType == CheckInType.member ? _manuallySelectedMember : null;
     if (selectedMember != null &&
         (formState.recognizedMemberId ?? '') != selectedMember.id) {
       final live = await _authoritativeMember(selectedMember);
@@ -554,7 +424,6 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       notifier.reset();
       _goToCheckInResult(submission);
     } else if (!success && mounted) {
-      _markMemberAutoSubmitFailed();
       final formState = ref.read(checkInFormProvider);
       final error = formState.error;
       if (error != null) {
@@ -613,6 +482,36 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final configAsync = ref.watch(checkInRestrictionsConfigProvider);
+
+    ref.listen(checkInRestrictionsConfigProvider, (prev, next) {
+      next.whenData((config) {
+        if (!config.restrictionsEnabled) {
+          _applyDeviceGate(restrictionsEnabled: false);
+        } else if (_isCheckingDevice) {
+          _applyDeviceGate(restrictionsEnabled: true);
+        }
+      });
+    });
+
+    if (configAsync.isLoading && !configAsync.hasValue) {
+      return const Scaffold(
+        body: Center(child: MetaPhiLoadingIndicator()),
+      );
+    }
+
+    final restrictionsEnabled = configAsync.maybeWhen(
+      data: (config) => config.restrictionsEnabled,
+      orElse: () => true,
+    );
+
+    if (_isCheckingDevice && configAsync.hasValue) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_isCheckingDevice) return;
+        _applyDeviceGate(restrictionsEnabled: restrictionsEnabled);
+      });
+    }
+
     if (_hasCheckedIn || _existingSubmission != null) {
       return CheckInResultScreen(
         submission: _existingSubmission,
@@ -629,7 +528,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       );
     }
 
-    if (!_isTodayThursday) {
+    if (restrictionsEnabled && !_isTodayThursday) {
       return AppScaffold(
         title: AppStrings.checkInFormTitle,
         backgroundColor: const Color(0xFFF8FAFC),
@@ -679,7 +578,8 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       );
     }
 
-    if (_isSessionExpired) {
+    // When restrictions OFF: past / future QR dates are accepted.
+    if (restrictionsEnabled && _isSessionExpired) {
       final formattedSessionDate =
           DateFormat('EEEE, dd MMMM yyyy').format(_parsedSessionDate!);
       return AppScaffold(
@@ -730,7 +630,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       );
     }
 
-    if (_isSessionFuture) {
+    if (restrictionsEnabled && _isSessionFuture) {
       final formattedSessionDate =
           DateFormat('EEEE, dd MMMM yyyy').format(_parsedSessionDate!);
       return AppScaffold(
@@ -782,16 +682,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     }
 
     // Keep employee list stream hot and cached in memory
-    final allEmployees = ref.watch(employeesStreamProvider).value ?? [];
-    final scopedEmployees = EmployeeLookup.scoped(
-      employees: allEmployees,
-      adminId: widget.adminId,
-      activeOnly: true,
-    );
-    final liveRecognized = _recognizedMember == null
-        ? null
-        : EmployeeLookup.byId(scopedEmployees, _recognizedMember!.id) ??
-            EmployeeLookup.byId(allEmployees, _recognizedMember!.id);
+    ref.watch(employeesStreamProvider);
     final formState = ref.watch(checkInFormProvider);
     final locationAsync = ref.watch(locationConfigFamilyProvider(widget.locationId));
     final isCompact = context.isCompactMobile;
@@ -882,99 +773,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
 
                             // 3. Dynamic Form Fields based on Type
                             if (currentType == CheckInType.member) ...[
-                              if (liveRecognized != null &&
-                                  _memberAutoSubmitFailed) ...[
-                                RecognizedMemberCard(
-                                  member: liveRecognized,
-                                  confidence: _faceConfidence ?? 98.0,
-                                  capturedPhotoBytes: _liveSelfieBytes,
-                                  onRescan: () {
-                                    setState(() {
-                                      _clearLocalIdentity();
-                                      _faceScanGeneration++;
-                                    });
-                                    final notifier = ref.read(checkInFormProvider.notifier);
-                                    notifier.clearIdentity();
-                                    if (widget.adminId != null && widget.adminId!.isNotEmpty) {
-                                      notifier.setAdminId(widget.adminId);
-                                    }
-                                  },
-                                ),
-                              ] else if (_isUnrecognized) ...[
-                                UnrecognizedMemberCard(
-                                  capturedPhotoBytes: _unrecognizedPhotoBytes,
-                                  message: _unrecognizedMessage,
-                                  onRetake: () {
-                                    setState(() {
-                                      _isUnrecognized = false;
-                                      _unrecognizedPhotoBytes = null;
-                                      _unrecognizedMessage = null;
-                                      _showManualMemberPicker = false;
-                                      _manuallySelectedMember = null;
-                                      _faceScanGeneration++;
-                                    });
-                                  },
-                                ),
-                                const SizedBox(height: 12),
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: ElevatedButton.icon(
-                                    onPressed: () {
-                                      setState(() {
-                                        _showManualMemberPicker = true;
-                                        _isMemberDropdownOpen = true;
-                                      });
-                                    },
-                                    icon: const Icon(Icons.search_rounded, size: 18),
-                                    label: const Text(
-                                      'Choose Member Manually',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppColors.primary,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(vertical: 13),
-                                      elevation: 0,
-                                      shape: const RoundedRectangleBorder(
-                                        borderRadius: AppRadius.smAll,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                if (_showManualMemberPicker) ...[
-                                  const SizedBox(height: 16),
-                                  _buildMemberFormFields(),
-                                ],
-                              ] else ...[
-                                FaceScannerView(
-                                  key: ValueKey('face-scan-$_faceScanGeneration'),
-                                  candidates: scopedEmployees,
-                                  adminId: widget.adminId,
-                                  locationId: widget.locationId,
-                                  onFaceRecognized: _onMemberFaceVerified,
-                                  onFaceNotRecognized: (bytes, error) {
-                                    setState(() {
-                                      _recognizedMember = null;
-                                      _faceConfidence = null;
-                                      _isUnrecognized = true;
-                                      _unrecognizedPhotoBytes = bytes;
-                                      _unrecognizedMessage = error ??
-                                          'Face not recognized. Please try again.';
-                                      _liveSelfieBytes = bytes;
-                                      _nameController.clear();
-                                      _phoneController.clear();
-                                      _emailController.clear();
-                                    });
-                                    ref.read(checkInFormProvider.notifier).clearIdentity();
-                                    if (widget.adminId != null && widget.adminId!.isNotEmpty) {
-                                      ref.read(checkInFormProvider.notifier).setAdminId(widget.adminId);
-                                    }
-                                  },
-                                ),
-                              ],
+                              _buildMemberFormFields(),
                             ] else if (currentType == CheckInType.substitute) ...[
                               _buildSubstituteFormFields(formState),
                             ] else if (currentType == CheckInType.visitor) ...[
@@ -1022,12 +821,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
               ),
 
               // 4. Sticky Submit Button at the bottom of the viewport
-              // Sticky Check-In is only needed for Substitute/Visitor, or if
-              // member auto-submit failed after a verified face.
-              if (currentType != null &&
-                  (currentType != CheckInType.member ||
-                      _memberAutoSubmitFailed ||
-                      _manuallySelectedMember != null)) ...[
+              if (currentType != null) ...[
               Container(
                 width: double.infinity,
                 padding: EdgeInsets.symmetric(
@@ -1142,7 +936,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
 
 
   // ==========================================
-  // 1. MEMBER FORM FIELDS (Manual fallback after failed face scan)
+  // 1. MEMBER FORM FIELDS (dropdown + autofill)
   // ==========================================
   Widget _buildMemberFormFields() {
     return Column(
@@ -1175,11 +969,13 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
               });
             },
           ),
-          textCapitalization: TextCapitalization.words,
-          validator: Validators.validateName,
-          onChanged: (val) {
-            setState(() {});
-            ref.read(checkInFormProvider.notifier).setName(val);
+          // Selection-only: ignore free typing; identity comes from dropdown.
+          onChanged: (_) {},
+          validator: (_) {
+            if (_manuallySelectedMember == null) {
+              return 'Please select your name from the member list';
+            }
+            return null;
           },
         ),
         if (_isMemberDropdownOpen) ...[
@@ -1205,10 +1001,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
               notifier.setEmail(emp.email);
               notifier.setAdminId(emp.adminId ?? widget.adminId);
               notifier.setRecognizedMember(emp.id);
-              final selfie = _unrecognizedPhotoBytes ?? _liveSelfieBytes;
-              if (selfie != null) {
-                notifier.setPhotoBase64(ImageUtils.bytesToBase64(selfie));
-              }
+              notifier.clearPhoto();
 
               setState(() {
                 _manuallySelectedMember = emp;
@@ -1225,6 +1018,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
           hint: '10-digit mobile number',
           showFloatingLabel: false,
           controller: _phoneController,
+          enabled: false,
           keyboardType: TextInputType.phone,
           prefixIcon: _buildPhonePrefix(),
           inputFormatters: [
@@ -1232,10 +1026,6 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
             LengthLimitingTextInputFormatter(10),
           ],
           validator: Validators.validatePhone,
-          onChanged: (val) {
-            setState(() {});
-            ref.read(checkInFormProvider.notifier).setPhone(val);
-          },
         ),
       ],
     );

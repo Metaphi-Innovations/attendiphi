@@ -16,6 +16,7 @@ import '../../../../core/widgets/app_empty_view.dart';
 import '../../../../core/widgets/app_page_header.dart';
 import '../../../../core/widgets/app_shimmer.dart';
 import '../../../../core/widgets/member_photo.dart';
+import '../../../app_config/presentation/widgets/check_in_restrictions_toggle.dart';
 import '../../../checkin/domain/entities/check_in_submission.dart';
 import '../../../checkin/domain/entities/check_in_type.dart';
 import '../../../checkin/presentation/providers/checkin_providers.dart';
@@ -989,6 +990,12 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // Mobile shell already shows the page title; keep toggle top-right.
+              const Align(
+                alignment: Alignment.centerRight,
+                child: CheckInRestrictionsToggle(),
+              ),
+              const SizedBox(height: 8),
               _buildThursdayNotice(now),
 
               // 1. Metric Cards
@@ -1038,7 +1045,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 1. Header
+          // 1. Header (restrictions toggle top-right)
           _buildHeader(context, theme, isWide, totalCount, now, filterState),
           const SizedBox(height: 14),
 
@@ -1244,6 +1251,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       subtitle: dateSubtitle,
       isCompact: !isWide,
       badge: const AppLiveSyncBadge(),
+      actions: const [
+        CheckInRestrictionsToggle(),
+      ],
     );
   }
 

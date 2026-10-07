@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qr_checkin/core/widgets/app_button.dart';
+import 'package:qr_checkin/features/app_config/domain/entities/check_in_restrictions_config.dart';
+import 'package:qr_checkin/features/app_config/presentation/providers/check_in_restrictions_provider.dart';
 import 'package:qr_checkin/features/checkin/presentation/screens/checkin_form_screen.dart';
 import 'package:qr_checkin/features/employee/domain/entities/employee.dart';
 import 'package:qr_checkin/features/employee/presentation/providers/employee_providers.dart';
@@ -47,16 +50,25 @@ void main() {
     ),
   ];
 
-  Widget createWidgetUnderTest() {
-    return ProviderScope(
-      overrides: [
+  List<Override> baseOverrides({bool restrictionsEnabled = true}) => [
+        checkInRestrictionsConfigProvider.overrideWith(
+          (ref) => Stream.value(
+            CheckInRestrictionsConfig(
+              restrictionsEnabled: restrictionsEnabled,
+            ),
+          ),
+        ),
         locationConfigFamilyProvider('test_venue').overrideWith(
           (ref) => Future.value(testLocation),
         ),
         employeesStreamProvider.overrideWith(
           (ref) => Stream.value(testEmployees),
         ),
-      ],
+      ];
+
+  Widget createWidgetUnderTest() {
+    return ProviderScope(
+      overrides: baseOverrides(),
       child: MaterialApp(
         home: CheckInFormScreen(
           locationId: 'test_venue',
@@ -71,14 +83,7 @@ void main() {
     testWidgets('shows Thursday-only block notice when today is not Thursday', (tester) async {
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [
-            locationConfigFamilyProvider('test_venue').overrideWith(
-              (ref) => Future.value(testLocation),
-            ),
-            employeesStreamProvider.overrideWith(
-              (ref) => Stream.value(testEmployees),
-            ),
-          ],
+          overrides: baseOverrides(),
           child: MaterialApp(
             home: CheckInFormScreen(
               locationId: 'test_venue',
@@ -104,20 +109,51 @@ void main() {
       expect(find.text('Substitute'), findsOneWidget);
       expect(find.text('Visitor'), findsOneWidget);
 
-      // After QR scan no type is selected; Member camera starts only on tap.
+      // After QR scan no type is selected.
       expect(find.text('Member Face Verification'), findsNothing);
-      expect(find.text('Take Live Selfie'), findsNothing);
+      expect(find.text('Select Member Name *'), findsNothing);
       expect(find.widgetWithText(AppButton, 'Check-In'), findsNothing);
 
       await tester.tap(find.text('Member'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      expect(find.text('Member Face Verification'), findsOneWidget);
+      // Member uses manual dropdown only — no face camera UI.
+      expect(find.text('Member Face Verification'), findsNothing);
       expect(find.text('Take Live Selfie'), findsNothing);
       expect(find.text('Start Camera'), findsNothing);
       expect(find.text('Verify Face'), findsNothing);
-      expect(find.widgetWithText(AppButton, 'Check-In'), findsNothing);
+      expect(find.text('Select Member Name *'), findsOneWidget);
+      expect(find.text('Phone Number * (Auto-filled)'), findsOneWidget);
+      expect(find.widgetWithText(AppButton, 'Check-In'), findsOneWidget);
+    });
+
+    testWidgets('selecting a member from dropdown auto-fills name and phone', (tester) async {
+      tester.view.physicalSize = const Size(1000, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      await tester.pumpWidget(createWidgetUnderTest());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      await tester.tap(find.text('Member'));
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // Open searchable member dropdown via the arrow button.
+      await tester.tap(find.byIcon(Icons.arrow_drop_down_rounded));
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(find.text('Rohan Mehta'), findsOneWidget);
+      await tester.tap(find.text('Rohan Mehta'));
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(find.text('Rohan Mehta'), findsOneWidget);
+      expect(find.text('9876543210'), findsOneWidget);
+      expect(find.widgetWithText(AppButton, 'Check-In'), findsOneWidget);
     });
 
     testWidgets('switching to Substitute displays substitute form with member dropdown and photo card', (tester) async {

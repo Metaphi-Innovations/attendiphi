@@ -7,7 +7,11 @@ import '../entities/paginated_check_ins_result.dart';
 /// Contract for recording, streaming, and paginating check-in submissions.
 abstract class CheckInRepository {
   /// Submits an attendance check-in record to Firestore.
-  Future<void> submitCheckIn(CheckInSubmission submission);
+  /// When [enforceThursday] is false, skips the Thursday weekday guard.
+  Future<void> submitCheckIn(
+    CheckInSubmission submission, {
+    bool enforceThursday = true,
+  });
 
   /// Updates an existing check-in record in Firestore.
   Future<void> updateCheckIn(CheckInSubmission submission);

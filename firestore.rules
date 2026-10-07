@@ -38,6 +38,18 @@ service cloud.firestore {
       allow create, update, delete: if isAttendiphiAdmin();
     }
 
+    // Master toggle for check-in restrictions (Thursday / QR date / one-device).
+    // Public get so unauthenticated QR clients can stream the flag live.
+    // Writes: Super Admin only. Missing doc = clients default to restrictions ON.
+    match /appConfig/{configId} {
+      allow get: if true;
+      allow list: if false;
+      allow create, update: if isSuperAdmin()
+        && configId == 'checkInRestrictions'
+        && request.resource.data.restrictionsEnabled is bool;
+      allow delete: if isSuperAdmin() && configId == 'checkInRestrictions';
+    }
+
     // Public QR create only. Reads/updates/deletes: Attendiphi admins.
     // GPS, Thursday, face match, and phone duplicates are NOT enforceable here.
     match /checkIns/{checkInId} {

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/logger/app_logger.dart';
+import '../../../app_config/presentation/providers/check_in_restrictions_provider.dart';
 import '../../../location/domain/entities/location_config.dart';
 import '../../../location/domain/usecases/validate_user_proximity.dart';
 import '../../data/datasources/device_checkin_service.dart';
@@ -90,32 +91,34 @@ class CheckInFormNotifier extends Notifier<CheckInFormState> {
     }
 
     final deviceService = ref.read(deviceCheckInServiceProvider);
-    
-    // Check if device already submitted for this session/date (both local and server)
-    final hasCheckedIn = await deviceService.hasCheckedInForSession(
-      sessionDateStr: sessionDateStr,
-      locationId: location.id,
-      probeServer: true,
-    );
+    final restrictionsEnabled = ref.read(restrictionsEnabledProvider);
 
-    // Production rule: one device = one check-in per session (all dates).
-    if (hasCheckedIn) {
-      final existingSubmission = await deviceService.getSubmissionForSession(
+    // One device = one check-in only while production restrictions are ON.
+    if (restrictionsEnabled) {
+      final hasCheckedIn = await deviceService.hasCheckedInForSession(
         sessionDateStr: sessionDateStr,
         locationId: location.id,
-        probeServer: false,
+        probeServer: true,
       );
 
-      state = state.copyWith(
-        isSubmitting: false,
-        error: DuplicateCheckInException(
-          userMessage:
-              'This device has already recorded attendance for today.',
-          existingSubmissionData: existingSubmission?.toMap(),
-        ),
-        submissionResult: existingSubmission,
-      );
-      return false;
+      if (hasCheckedIn) {
+        final existingSubmission = await deviceService.getSubmissionForSession(
+          sessionDateStr: sessionDateStr,
+          locationId: location.id,
+          probeServer: false,
+        );
+
+        state = state.copyWith(
+          isSubmitting: false,
+          error: DuplicateCheckInException(
+            userMessage:
+                'This device has already recorded attendance for today.',
+            existingSubmissionData: existingSubmission?.toMap(),
+          ),
+          submissionResult: existingSubmission,
+        );
+        return false;
+      }
     }
 
     state = state.copyWith(isSubmitting: true, clearError: true);
@@ -139,6 +142,7 @@ class CheckInFormNotifier extends Notifier<CheckInFormState> {
         sessionDateStr: sessionDateStr,
         deviceId: deviceId,
         recognizedMemberId: state.recognizedMemberId,
+        restrictionsEnabled: restrictionsEnabled,
       ).timeout(
         const Duration(seconds: 12),
         onTimeout: () {
