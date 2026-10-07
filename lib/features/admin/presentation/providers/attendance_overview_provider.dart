@@ -186,10 +186,19 @@ final attendanceMatrixProvider =
   final employees = employeesAsync.value ?? [];
   final checkIns = checkInsAsync.value ?? [];
   final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
 
   // Helper to format date keys
   String dateKey(DateTime dt) =>
       '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+
+  // Index check-ins once by session day, then O(1) member lookups (Phase 4).
+  final byDate = <String, List<CheckInSubmission>>{};
+  for (final sub in checkIns) {
+    if (sub.type.isVisitor) continue;
+    final key = dateKey(sub.timestamp);
+    (byDate[key] ??= <CheckInSubmission>[]).add(sub);
+  }
 
   // Filter members matching search query
   final filteredEmployees = employees.where((emp) {
@@ -210,21 +219,13 @@ final attendanceMatrixProvider =
 
     for (final thursday in allThursdays) {
       final key = dateKey(thursday);
-      final isFutureDate = thursday.isAfter(now);
+      final isTodayOrFuture = !thursday.isBefore(today);
       final isThursInSelectedMonth = filters.selectedMonth == null ||
           (thursday.year == filters.selectedMonth!.year &&
               thursday.month == filters.selectedMonth!.month);
 
-      // Find matching check-in for this member on this Thursday
-      final matchingSubmissions = checkIns.where((sub) {
-        final subDate = sub.timestamp;
-        final isSameDay = subDate.year == thursday.year &&
-            subDate.month == thursday.month &&
-            subDate.day == thursday.day;
-        if (!isSameDay) return false;
-
-        if (sub.type.isVisitor) return false;
-
+      final daySubs = byDate[key] ?? const <CheckInSubmission>[];
+      final matchingSubmissions = daySubs.where((sub) {
         if (sub.type.isSubstitute) {
           return EmployeeLookup.forNamedMember(
                 [member],
@@ -232,7 +233,6 @@ final attendanceMatrixProvider =
               ) !=
               null;
         }
-
         return EmployeeLookup.forCheckIn([member], sub) != null;
       }).toList();
 
@@ -275,13 +275,14 @@ final attendanceMatrixProvider =
           }
         }
       } else {
-        if (isFutureDate) {
+        if (isTodayOrFuture) {
+          // Today / future: open session (aligns with Daily "Not Checked In").
+          // Past Thursdays with no record remain Absent.
           attendanceMap[key] = MemberDayAttendance(
             date: thursday,
             status: MemberAttendanceStatus.upcoming,
           );
         } else {
-          // Past meeting date with no check-in is Absent
           attendanceMap[key] = MemberDayAttendance(
             date: thursday,
             status: MemberAttendanceStatus.absent,

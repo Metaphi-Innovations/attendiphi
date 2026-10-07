@@ -11,6 +11,7 @@ class CheckInFormState {
     this.email = '',
     this.type = CheckInType.member,
     this.substituteForMember,
+    this.substituteForMemberId,
     this.companyName = '',
     this.category = '',
     this.invitedByMember,
@@ -27,6 +28,8 @@ class CheckInFormState {
   final String email;
   final CheckInType? type;
   final String? substituteForMember;
+  /// Employee id for [substituteForMember] (session member lock + typeahead).
+  final String? substituteForMemberId;
   final String companyName;
   final String category;
   final String? invitedByMember;
@@ -51,6 +54,7 @@ class CheckInFormState {
     String? email,
     CheckInType? type,
     String? substituteForMember,
+    String? substituteForMemberId,
     String? companyName,
     String? category,
     String? invitedByMember,
@@ -63,6 +67,8 @@ class CheckInFormState {
     bool clearError = false,
     bool clearPhoto = false,
     bool clearRecognizedMember = false,
+    bool clearSubstituteFor = false,
+    bool clearSubstituteForMemberId = false,
     bool clearIdentity = false,
   }) {
     return CheckInFormState(
@@ -70,7 +76,14 @@ class CheckInFormState {
       phone: clearIdentity ? '' : (phone ?? this.phone),
       email: clearIdentity ? '' : (email ?? this.email),
       type: type ?? this.type,
-      substituteForMember: substituteForMember ?? this.substituteForMember,
+      substituteForMember: (clearSubstituteFor || clearIdentity)
+          ? null
+          : (substituteForMember ?? this.substituteForMember),
+      substituteForMemberId: (clearSubstituteForMemberId ||
+              clearSubstituteFor ||
+              clearIdentity)
+          ? null
+          : (substituteForMemberId ?? this.substituteForMemberId),
       companyName: companyName ?? this.companyName,
       category: category ?? this.category,
       invitedByMember: invitedByMember ?? this.invitedByMember,

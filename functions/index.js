@@ -171,7 +171,7 @@ Your Login Credentials:
 
 ────────────────────────────────────
 • Portal URL: ${portalUrl}
-• Login Email (ID): ${email}
+• Login Email id: ${email}
 • Password: ${password}
 • Access Role: ${roleLabel}
 ────────────────────────────────────
@@ -201,7 +201,7 @@ Super Admin
       <p style="font-size:14px;font-weight:600;margin-bottom:8px;">Your Login Credentials:</p>
       <div style="background:#f1f5f9;border-radius:12px;padding:18px;border:1px solid #cbd5e1;margin-bottom:24px;font-size:13.5px;">
         <p><strong>Portal URL:</strong> <a href="${escapeHtml(portalUrl)}">${escapeHtml(portalUrl)}</a></p>
-        <p><strong>Login Email (ID):</strong> ${escapeHtml(email)}</p>
+        <p><strong>Login Email id:</strong> ${escapeHtml(email)}</p>
         <p><strong>Password:</strong> ${escapeHtml(password)}</p>
         <p><strong>Access Role:</strong> ${escapeHtml(roleLabel)}</p>
       </div>

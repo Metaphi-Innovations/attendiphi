@@ -106,7 +106,7 @@ void main() {
       body,
       contains('Portal URL: https://attendiphi-by-metaphi.web.app/'),
     );
-    expect(body, contains('Login Email (ID): omkaranarse1906@gmail.com'));
+    expect(body, contains('Login Email id: omkaranarse1906@gmail.com'));
     expect(body, contains('Access Role: Admin'));
     expect(body, contains('Super Admin'));
     expect(body, isNot(contains('Super Admin Team')));

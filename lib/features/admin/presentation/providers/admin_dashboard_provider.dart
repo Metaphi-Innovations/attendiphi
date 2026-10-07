@@ -145,6 +145,7 @@ class PaginatedCheckInsState {
     String? error,
     DocumentSnapshot<Map<String, dynamic>>? lastDocument,
     bool clearError = false,
+    bool clearLastDocument = false,
   }) {
     return PaginatedCheckInsState(
       items: items ?? this.items,
@@ -152,65 +153,51 @@ class PaginatedCheckInsState {
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
       hasReachedEnd: hasReachedEnd ?? this.hasReachedEnd,
       error: clearError ? null : (error ?? this.error),
-      lastDocument: lastDocument ?? this.lastDocument,
+      lastDocument: clearLastDocument
+          ? null
+          : (lastDocument ?? this.lastDocument),
     );
   }
 }
 
 /// Notifier managing incremental cursor-based page loading from Firestore.
+/// Uses real `getPaginatedCheckIns` pages (not a full-collection stream dump).
 class PaginatedCheckInsNotifier extends Notifier<PaginatedCheckInsState> {
   @override
   PaginatedCheckInsState build() {
-    // Listen to real-time Firestore stream
-    ref.listen<AsyncValue<List<CheckInSubmission>>>(
-      checkInsStreamProvider,
-      (previous, next) {
-        next.when(
-          data: (streamItems) {
-            state = state.copyWith(
-              items: streamItems,
-              isLoadingFirstPage: false,
-              hasReachedEnd: true,
-              clearError: true,
-            );
-          },
-          loading: () {
-            if (state.items.isEmpty) {
-              state = state.copyWith(isLoadingFirstPage: true);
-            }
-          },
-          error: (err, stack) {
-            if (state.items.isEmpty) {
-              state = state.copyWith(
-                isLoadingFirstPage: false,
-                error: err.toString(),
-              );
-            }
-          },
-        );
-      },
-    );
-
-    final currentStream = ref.read(checkInsStreamProvider);
-    if (currentStream.hasValue && currentStream.value != null) {
-      return PaginatedCheckInsState(
-        items: currentStream.value!,
-        isLoadingFirstPage: false,
-        hasReachedEnd: true,
-      );
-    }
-
-    return PaginatedCheckInsState(
-      isLoadingFirstPage: currentStream.isLoading,
-      error: currentStream.hasError ? currentStream.error.toString() : null,
-    );
+    Future.microtask(loadFirstPage);
+    return const PaginatedCheckInsState(isLoadingFirstPage: true);
   }
 
   CheckInRepository get _repository => ref.read(checkInRepositoryProvider);
 
-  /// Reloads the real-time stream.
+  /// Loads the first cursor page from Firestore.
   Future<void> loadFirstPage() async {
-    ref.invalidate(checkInsStreamProvider);
+    state = state.copyWith(
+      isLoadingFirstPage: true,
+      items: const [],
+      hasReachedEnd: false,
+      clearError: true,
+      clearLastDocument: true,
+    );
+
+    try {
+      final result = await _repository.getPaginatedCheckIns(
+        limit: AppConstants.dashboardPageSize,
+      );
+      state = state.copyWith(
+        items: result.items,
+        lastDocument: result.lastDocument,
+        hasReachedEnd: !result.hasMore,
+        isLoadingFirstPage: false,
+        clearError: true,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        isLoadingFirstPage: false,
+        error: e.toString(),
+      );
+    }
   }
 
   /// Loads the next page using startAfterDocument cursor.
@@ -242,9 +229,9 @@ class PaginatedCheckInsNotifier extends Notifier<PaginatedCheckInsState> {
     }
   }
 
-  /// Refreshes the list from stream.
+  /// Reloads from the first page.
   Future<void> refresh() async {
-    ref.invalidate(checkInsStreamProvider);
+    await loadFirstPage();
   }
 
   /// Optimistically removes a deleted item.

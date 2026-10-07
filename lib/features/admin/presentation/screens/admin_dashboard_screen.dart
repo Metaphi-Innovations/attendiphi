@@ -1214,11 +1214,17 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
         filterState.selectedDate ?? _defaultSessionDate(now);
     final viewingDateStr =
         DateFormat('EEEE, d MMM yyyy').format(viewingDate);
+    final restrictionsEnabled = ref.watch(restrictionsEnabledProvider);
+    final isDefaultNextSession = !restrictionsEnabled &&
+        filterState.selectedDate == null &&
+        now.weekday != DateTime.thursday;
     final isLiveToday = now.weekday == DateTime.thursday &&
         filterState.selectedDate == null;
-    final dateSubtitle = isLiveToday
-        ? 'Live attendance for today, $viewingDateStr.'
-        : 'Attendance records for $viewingDateStr.';
+    final dateSubtitle = isDefaultNextSession
+        ? 'Showing next session: $viewingDateStr. Use the date picker for stamped QR days.'
+        : isLiveToday
+            ? 'Live attendance for today, $viewingDateStr.'
+            : 'Attendance records for $viewingDateStr.';
 
     return AppPageHeader(
       title: 'Daily Attendance',

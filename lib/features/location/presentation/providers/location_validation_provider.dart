@@ -53,11 +53,14 @@ class LocationValidationNotifier
   /// Initiates location permission check and proximity validation against the target venue.
   /// When Super Admin restrictions are OFF, GPS/radius never blocks check-in.
   Future<void> validateLocation() async {
-    final enforceProximity = ref.read(restrictionsEnabledProvider);
+    // Match QR form: wait for config. While loading, do not treat as ON (M5).
+    final configReady = ref.read(restrictionsConfigReadyProvider);
+    final enforceProximity =
+        configReady && ref.read(restrictionsEnabledProvider);
 
     AppLogger.info(
       'Validating location for venue: ${location.name} (${location.id}) '
-      '(enforceProximity=$enforceProximity)',
+      '(enforceProximity=$enforceProximity, configReady=$configReady)',
       tag: 'LocationValidationNotifier',
     );
 

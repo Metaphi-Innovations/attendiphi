@@ -56,6 +56,15 @@ void main() {
         sessionDateYmd: any(named: 'sessionDateYmd'),
       ),
     ).thenAnswer((_) async {});
+    when(
+      () => mockRepository.submitCheckIn(
+        any(),
+        enforceThursday: any(named: 'enforceThursday'),
+        sessionDateYmd: any(named: 'sessionDateYmd'),
+        claimDeviceId: any(named: 'claimDeviceId'),
+        claimMemberId: any(named: 'claimMemberId'),
+      ),
+    ).thenAnswer((_) async {});
     usecase = SubmitCheckIn(
       mockRepository,
       notificationDispatchService: mockDispatchService,
@@ -82,10 +91,22 @@ void main() {
         throwsA(isA<CheckInSubmissionFailedException>()),
       );
 
-      verifyNever(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday')));
+      verifyNever(() => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: any(named: 'enforceThursday'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+          claimDeviceId: any(named: 'claimDeviceId'),
+          claimMemberId: any(named: 'claimMemberId'),
+        ));
     });
     test('submits valid Member check-in and dispatches admin notification', () async {
-      when(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday')))
+      when(() => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: any(named: 'enforceThursday'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+          claimDeviceId: any(named: 'claimDeviceId'),
+          claimMemberId: any(named: 'claimMemberId'),
+        ))
           .thenAnswer((_) async {});
       when(() => mockDispatchService.dispatchAdminCheckInNotification(any()))
           .thenAnswer((_) async {});
@@ -102,13 +123,25 @@ void main() {
       expect(submission.userPhone, '+919876543210');
       expect(submission.type, CheckInType.member);
       expect(submission.locationId, 'location_x');
-      verify(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday'))).called(1);
+      verify(() => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: any(named: 'enforceThursday'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+          claimDeviceId: any(named: 'claimDeviceId'),
+          claimMemberId: any(named: 'claimMemberId'),
+        )).called(1);
       verify(() => mockDispatchService.dispatchAdminCheckInNotification(any()))
           .called(1);
     });
 
     test('manual member selection stores memberId without faceVerified', () async {
-      when(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday')))
+      when(() => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: any(named: 'enforceThursday'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+          claimDeviceId: any(named: 'claimDeviceId'),
+          claimMemberId: any(named: 'claimMemberId'),
+        ))
           .thenAnswer((_) async {});
       when(() => mockDispatchService.dispatchAdminCheckInNotification(any()))
           .thenAnswer((_) async {});
@@ -125,11 +158,23 @@ void main() {
       expect(submission.memberId, 'emp_rahul');
       expect(submission.verificationMethod, 'manual');
       expect(submission.faceVerified, isFalse);
-      verify(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday'))).called(1);
+      verify(() => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: any(named: 'enforceThursday'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+          claimDeviceId: any(named: 'claimDeviceId'),
+          claimMemberId: any(named: 'claimMemberId'),
+        )).called(1);
     });
 
     test('does NOT dispatch admin notification if submission fails', () async {
-      when(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday')))
+      when(() => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: any(named: 'enforceThursday'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+          claimDeviceId: any(named: 'claimDeviceId'),
+          claimMemberId: any(named: 'claimMemberId'),
+        ))
           .thenThrow(const ServerException(technicalMessage: 'DB write failed'));
 
       await expectLater(
@@ -143,12 +188,24 @@ void main() {
         throwsA(isA<ServerException>()),
       );
 
-      verify(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday'))).called(1);
+      verify(() => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: any(named: 'enforceThursday'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+          claimDeviceId: any(named: 'claimDeviceId'),
+          claimMemberId: any(named: 'claimMemberId'),
+        )).called(1);
       verifyNever(() => mockDispatchService.dispatchAdminCheckInNotification(any()));
     });
 
     test('submits valid Substitute check-in with required face photo', () async {
-      when(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday')))
+      when(() => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: any(named: 'enforceThursday'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+          claimDeviceId: any(named: 'claimDeviceId'),
+          claimMemberId: any(named: 'claimMemberId'),
+        ))
           .thenAnswer((_) async {});
       when(() => mockDispatchService.dispatchAdminCheckInNotification(any()))
           .thenAnswer((_) async {});
@@ -164,7 +221,13 @@ void main() {
 
       expect(submission.type, CheckInType.substitute);
       expect(submission.photoBase64, 'fake_base64_photo_string');
-      verify(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday'))).called(1);
+      verify(() => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: any(named: 'enforceThursday'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+          claimDeviceId: any(named: 'claimDeviceId'),
+          claimMemberId: any(named: 'claimMemberId'),
+        )).called(1);
       verify(() => mockDispatchService.dispatchAdminCheckInNotification(any()))
           .called(1);
     });
@@ -181,7 +244,13 @@ void main() {
         ),
         throwsA(isA<MissingSubstitutePhotoException>()),
       );
-      verifyNever(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday')));
+      verifyNever(() => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: any(named: 'enforceThursday'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+          claimDeviceId: any(named: 'claimDeviceId'),
+          claimMemberId: any(named: 'claimMemberId'),
+        ));
       verifyNever(() => mockDispatchService.dispatchAdminCheckInNotification(any()));
     });
 
@@ -196,12 +265,24 @@ void main() {
         ),
         throwsA(isA<AppException>()),
       );
-      verifyNever(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday')));
+      verifyNever(() => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: any(named: 'enforceThursday'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+          claimDeviceId: any(named: 'claimDeviceId'),
+          claimMemberId: any(named: 'claimMemberId'),
+        ));
       verifyNever(() => mockDispatchService.dispatchAdminCheckInNotification(any()));
     });
 
     test('records submission timestamp matching sessionDateStr (e.g. 2026-09-03)', () async {
-      when(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday')))
+      when(() => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: any(named: 'enforceThursday'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+          claimDeviceId: any(named: 'claimDeviceId'),
+          claimMemberId: any(named: 'claimMemberId'),
+        ))
           .thenAnswer((_) async {});
       when(() => mockDispatchService.dispatchAdminCheckInNotification(any()))
           .thenAnswer((_) async {});
@@ -218,7 +299,13 @@ void main() {
       expect(submission.timestamp.year, 2026);
       expect(submission.timestamp.month, 9);
       expect(submission.timestamp.day, 3);
-      verify(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday'))).called(1);
+      verify(() => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: any(named: 'enforceThursday'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+          claimDeviceId: any(named: 'claimDeviceId'),
+          claimMemberId: any(named: 'claimMemberId'),
+        )).called(1);
     });
 
     test('throws DuplicateCheckInException when phone has already checked in on session date', () async {
@@ -250,7 +337,13 @@ void main() {
         throwsA(isA<DuplicateCheckInException>()),
       );
 
-      verifyNever(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday')));
+      verifyNever(() => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: any(named: 'enforceThursday'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+          claimDeviceId: any(named: 'claimDeviceId'),
+          claimMemberId: any(named: 'claimMemberId'),
+        ));
       verifyNever(() => mockDispatchService.dispatchAdminCheckInNotification(any()));
     });
 
@@ -286,7 +379,13 @@ void main() {
         throwsA(isA<DuplicateCheckInException>()),
       );
 
-      verifyNever(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday')));
+      verifyNever(() => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: any(named: 'enforceThursday'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+          claimDeviceId: any(named: 'claimDeviceId'),
+          claimMemberId: any(named: 'claimMemberId'),
+        ));
     });
 
     test('2026-09-24 rejects same device second check-in', () async {
@@ -327,10 +426,16 @@ void main() {
         throwsA(isA<DuplicateCheckInException>()),
       );
 
-      verifyNever(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday')));
+      verifyNever(() => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: any(named: 'enforceThursday'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+          claimDeviceId: any(named: 'claimDeviceId'),
+          claimMemberId: any(named: 'claimMemberId'),
+        ));
     });
 
-    test('2026-09-24 rejects when device session lock already claimed', () async {
+    test('2026-09-24 rejects when atomic device lock already claimed', () async {
       final thursday24 = SubmitCheckIn(
         mockRepository,
         notificationDispatchService: mockDispatchService,
@@ -338,14 +443,18 @@ void main() {
       );
 
       when(
-        () => mockRepository.claimDeviceSessionLock(
-          deviceId: any(named: 'deviceId'),
+        () => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: any(named: 'enforceThursday'),
           sessionDateYmd: any(named: 'sessionDateYmd'),
+          claimDeviceId: any(named: 'claimDeviceId'),
+          claimMemberId: any(named: 'claimMemberId'),
         ),
       ).thenThrow(
         const DuplicateCheckInException(
           userMessage:
               'This device has already recorded attendance for today.',
+          technicalMessage: 'deviceSessionLocks already-exists',
         ),
       );
 
@@ -362,7 +471,13 @@ void main() {
         throwsA(isA<DuplicateCheckInException>()),
       );
 
-      verifyNever(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday')));
+      verifyNever(
+        () => mockRepository.claimDeviceSessionLock(
+          deviceId: any(named: 'deviceId'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+        ),
+      );
+      verifyNever(() => mockDispatchService.dispatchAdminCheckInNotification(any()));
     });
 
     test('2026-09-03 rejects check-in on a non-Thursday calendar day',
@@ -385,7 +500,13 @@ void main() {
         ),
         throwsA(isA<CheckInSubmissionFailedException>()),
       );
-      verifyNever(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday')));
+      verifyNever(() => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: any(named: 'enforceThursday'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+          claimDeviceId: any(named: 'claimDeviceId'),
+          claimMemberId: any(named: 'claimMemberId'),
+        ));
     });
 
     test('2026-09-24 rejects check-in on a non-Thursday calendar day',
@@ -408,7 +529,13 @@ void main() {
         ),
         throwsA(isA<CheckInSubmissionFailedException>()),
       );
-      verifyNever(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday')));
+      verifyNever(() => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: any(named: 'enforceThursday'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+          claimDeviceId: any(named: 'claimDeviceId'),
+          claimMemberId: any(named: 'claimMemberId'),
+        ));
     });
   });
 }

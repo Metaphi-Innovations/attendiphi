@@ -1,53 +1,15 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:qr_checkin/features/checkin/domain/entities/check_in_submission.dart';
-import 'package:qr_checkin/features/checkin/domain/entities/check_in_type.dart';
-import 'package:qr_checkin/features/employee/domain/employee_lookup.dart';
 import 'package:qr_checkin/features/employee/domain/entities/employee.dart';
 
-/// Mirrors check-in form session filtering for unit coverage.
-Set<String> checkedInMemberIdsForSession({
+/// QR typeahead hides members whose ids appear in the public
+/// `sessionAttendance/{yyyy-MM-dd}.checkedInMemberIds` projection.
+List<Employee> availableMembersForSession({
   required List<Employee> employees,
-  required List<CheckInSubmission> checkIns,
-  required DateTime sessionDay,
+  required Set<String> checkedInMemberIds,
 }) {
-  final ids = <String>{};
-  for (final sub in checkIns) {
-    if (sub.type.isVisitor) continue;
-    final local = sub.timestamp.toLocal();
-    final sameDay = local.year == sessionDay.year &&
-        local.month == sessionDay.month &&
-        local.day == sessionDay.day;
-    if (!sameDay) continue;
-    final matched = EmployeeLookup.forCheckIn(employees, sub);
-    if (matched != null) ids.add(matched.id);
-  }
-  return ids;
-}
-
-CheckInSubmission _sub({
-  required String id,
-  required String name,
-  required String phone,
-  required DateTime timestamp,
-  CheckInType type = CheckInType.member,
-  String? memberId,
-  String? substituteFor,
-}) {
-  return CheckInSubmission(
-    id: id,
-    locationId: 'loc',
-    locationName: 'Venue',
-    userName: name,
-    userPhone: phone,
-    type: type,
-    userLatitude: 0,
-    userLongitude: 0,
-    gpsAccuracy: 5,
-    distanceMeters: 0,
-    timestamp: timestamp,
-    memberId: memberId,
-    substituteForMember: substituteFor,
-  );
+  return employees
+      .where((emp) => !checkedInMemberIds.contains(emp.id))
+      .toList();
 }
 
 void main() {
@@ -66,60 +28,27 @@ void main() {
     ),
   ];
 
-  final sessionDay = DateTime(2026, 10, 8);
-
-  test('hides member who checked in on session day', () {
-    final ids = checkedInMemberIdsForSession(
+  test('hides member whose id is in sessionAttendance projection', () {
+    final available = availableMembersForSession(
       employees: employees,
-      checkIns: [
-        _sub(
-          id: 'c1',
-          name: 'Avnish Mehta',
-          phone: '9702454242',
-          timestamp: DateTime(2026, 10, 8, 11, 30),
-          memberId: 'emp_avnish',
-        ),
-      ],
-      sessionDay: sessionDay,
+      checkedInMemberIds: {'emp_avnish'},
     );
-    expect(ids, {'emp_avnish'});
-    final available =
-        employees.where((e) => !ids.contains(e.id)).map((e) => e.name);
-    expect(available, ['Rohan Mehta']);
+    expect(available.map((e) => e.id), ['emp_rohan']);
   });
 
-  test('resets on next Thursday — prior week check-in does not hide name', () {
-    final ids = checkedInMemberIdsForSession(
+  test('resets next session when projection is empty for new date', () {
+    final available = availableMembersForSession(
       employees: employees,
-      checkIns: [
-        _sub(
-          id: 'c1',
-          name: 'Avnish Mehta',
-          phone: '9702454242',
-          timestamp: DateTime(2026, 10, 8, 11, 30),
-          memberId: 'emp_avnish',
-        ),
-      ],
-      sessionDay: DateTime(2026, 10, 15),
+      checkedInMemberIds: const {},
     );
-    expect(ids, isEmpty);
+    expect(available.map((e) => e.id), ['emp_avnish', 'emp_rohan']);
   });
 
-  test('substitute check-in removes the target member for that session', () {
-    final ids = checkedInMemberIdsForSession(
+  test('substitute-for target member id is excluded like a member check-in', () {
+    final available = availableMembersForSession(
       employees: employees,
-      checkIns: [
-        _sub(
-          id: 'c2',
-          name: 'Someone Else',
-          phone: '9000000000',
-          timestamp: DateTime(2026, 10, 8, 12),
-          type: CheckInType.substitute,
-          substituteFor: 'Avnish Mehta',
-        ),
-      ],
-      sessionDay: sessionDay,
+      checkedInMemberIds: {'emp_rohan'},
     );
-    expect(ids, {'emp_avnish'});
+    expect(available.map((e) => e.id), ['emp_avnish']);
   });
 }

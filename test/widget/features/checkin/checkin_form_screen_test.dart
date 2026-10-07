@@ -69,6 +69,9 @@ void main() {
         liveCheckInsStreamProvider.overrideWith(
           (ref) => Stream.value(const <CheckInSubmission>[]),
         ),
+        sessionCheckedInMemberIdsProvider.overrideWith(
+          (ref, sessionDateYmd) => Stream.value(const <String>{}),
+        ),
       ];
 
   Widget createWidgetUnderTest() {
@@ -225,6 +228,42 @@ void main() {
       await tester.tap(find.text('Rohan Mehta'));
       await tester.pump(const Duration(milliseconds: 250));
 
+      expect(find.text('Rohan Mehta'), findsOneWidget);
+    });
+
+    testWidgets(
+        'substitute typeahead stays open after field unfocus (keyboard Done)',
+        (tester) async {
+      tester.view.physicalSize = const Size(1000, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      await tester.pumpWidget(createWidgetUnderTest());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      await tester.tap(find.text('Substitute'));
+      await tester.pump(const Duration(milliseconds: 200));
+
+      final substituteForField = find.widgetWithText(
+        TextFormField,
+        'Type to search member name',
+      );
+      await tester.tap(substituteForField);
+      await tester.pump();
+      await tester.enterText(substituteForField, 'Roh');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(find.text('Rohan Mehta'), findsOneWidget);
+
+      // Simulate soft-keyboard Done: unfocus without tapping outside.
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // Suggestions must remain so the user can still pick a name.
       expect(find.text('Rohan Mehta'), findsOneWidget);
     });
 

@@ -25,11 +25,25 @@ final checkInRepositoryProvider = Provider<CheckInRepository>((ref) {
   return CheckInRepositoryImpl(ref.watch(checkInRemoteDataSourceProvider));
 });
 
-/// Live check-ins for member dropdown filtering (hide already checked-in names).
+/// Checked-in member IDs for a QR session day (public projection — no checkIns).
+final sessionCheckedInMemberIdsProvider =
+    StreamProvider.family<Set<String>, String>((ref, sessionDateYmd) {
+  final date = sessionDateYmd.trim();
+  if (date.length != 10) {
+    return Stream.value(const <String>{});
+  }
+  return ref
+      .watch(checkInRepositoryProvider)
+      .streamSessionCheckedInMemberIds(date);
+});
+
+/// @Deprecated Use [sessionCheckedInMemberIdsProvider] on QR. Kept as an alias
+/// of the admin [checkInsStreamProvider] only for legacy test overrides.
+@Deprecated('Use sessionCheckedInMemberIdsProvider on QR check-in')
 final liveCheckInsStreamProvider =
     StreamProvider<List<CheckInSubmission>>((ref) {
-  ref.keepAlive();
-  return ref.watch(checkInRepositoryProvider).streamCheckIns();
+  // Intentionally empty on QR paths — do not open unbounded checkIns here.
+  return Stream.value(const <CheckInSubmission>[]);
 });
 
 /// Provider for [SubmitCheckIn] usecase.

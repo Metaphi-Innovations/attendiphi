@@ -54,11 +54,76 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
   CollectionReference<Map<String, dynamic>> get _collection =>
       _firestore.collection(AppConstants.employeesCollection);
 
+  CollectionReference<Map<String, dynamic>> get _faceTemplates =>
+      _firestore.collection(AppConstants.faceTemplatesCollection);
+
+  /// Writes biometrics to locked [faceTemplates]; never on public employees.
+  Future<void> _upsertFaceTemplates({
+    required String memberId,
+    List<double>? faceEmbedding,
+    List<List<double>>? faceTemplates,
+    String? faceModel,
+    String? faceModelVersion,
+  }) async {
+    if (faceEmbedding == null &&
+        (faceTemplates == null || faceTemplates.isEmpty)) {
+      return;
+    }
+    final embedding = faceEmbedding ??
+        (faceTemplates != null && faceTemplates.isNotEmpty
+            ? faceTemplates.first
+            : null);
+    await _faceTemplates.doc(memberId).set({
+      'memberId': memberId,
+      if (embedding != null) 'faceEmbedding': Employee.firestoreVector(embedding),
+      if (faceTemplates != null)
+        'faceTemplates': Employee.faceTemplatesToFirestore(faceTemplates),
+      if (faceModel != null) 'faceModel': faceModel,
+      if (faceModelVersion != null) 'faceModelVersion': faceModelVersion,
+      'updatedAt': DateTime.now().toIso8601String(),
+    }, SetOptions(merge: true));
+  }
+
+  /// Public employee maps must not expose biometrics to QR clients.
+  Map<String, dynamic> _publicEmployeeMap(Map<String, dynamic> raw) {
+    final data = Map<String, dynamic>.from(raw);
+    data.remove('faceEmbedding');
+    data.remove('faceTemplates');
+    data.remove('faceDescriptors');
+    return data;
+  }
+
+  Future<Employee> _employeeWithOptionalTemplates(
+    Map<String, dynamic> publicData, {
+    required String docId,
+  }) async {
+    var employee = Employee.fromMap(publicData, docId: docId);
+    try {
+      final tpl = await _faceTemplates.doc(docId).get();
+      if (tpl.exists && tpl.data() != null) {
+        final merged = {
+          ...publicData,
+          ...tpl.data()!,
+          'id': docId,
+        };
+        employee = Employee.fromMap(merged, docId: docId);
+      }
+    } catch (_) {
+      // Unauthenticated / non-admin readers cannot load faceTemplates.
+    }
+    return employee;
+  }
+
   @override
   Stream<List<Employee>> streamEmployees() {
     return _collection.snapshots().map((snapshot) {
       final employees = snapshot.docs
-          .map((doc) => Employee.fromMap(doc.data(), docId: doc.id))
+          .map(
+            (doc) => Employee.fromMap(
+              _publicEmployeeMap(doc.data()),
+              docId: doc.id,
+            ),
+          )
           .toList();
 
       // Sort alphabetically by name
@@ -76,11 +141,17 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
         const GetOptions(source: Source.server),
       );
       if (!snap.exists || snap.data() == null) return null;
-      return Employee.fromMap(snap.data()!, docId: snap.id);
+      return _employeeWithOptionalTemplates(
+        _publicEmployeeMap(snap.data()!),
+        docId: snap.id,
+      );
     } on FirebaseException {
       final snap = await _collection.doc(trimmed).get();
       if (!snap.exists || snap.data() == null) return null;
-      return Employee.fromMap(snap.data()!, docId: snap.id);
+      return _employeeWithOptionalTemplates(
+        _publicEmployeeMap(snap.data()!),
+        docId: snap.id,
+      );
     }
   }
 
@@ -134,19 +205,18 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
         'faceModel': ?faceModel,
         'faceModelVersion': ?faceModelVersion,
         'photoUrl': ?photoUrl,
-        'faceEmbedding': faceEmbedding != null
-            ? Employee.firestoreVector(faceEmbedding)
-            : (faceTemplates != null && faceTemplates.isNotEmpty
-                ? Employee.firestoreVector(faceTemplates.first)
-                : null),
-        'faceTemplates': faceTemplates != null
-            ? Employee.faceTemplatesToFirestore(faceTemplates)
-            : null,
         'faceRegistered': faceEnrolled,
         if (faceEnrolled) 'faceRegisteredAt': now,
         'createdAt': now,
         'updatedAt': now,
       });
+      await _upsertFaceTemplates(
+        memberId: docRef.id,
+        faceEmbedding: faceEmbedding,
+        faceTemplates: faceTemplates,
+        faceModel: faceModel,
+        faceModelVersion: faceModelVersion,
+      );
 
       AppLogger.info('Employee added: $cleanName (${docRef.id})', tag: 'EmployeeRemoteDataSource');
     } on AppException {
@@ -219,15 +289,10 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
       if (photoUrl != null) {
         data['photoUrl'] = photoUrl;
       }
-      if (faceEmbedding != null) {
-        data['faceEmbedding'] = Employee.firestoreVector(faceEmbedding);
-      } else if (faceTemplates != null && faceTemplates.isNotEmpty) {
-        data['faceEmbedding'] = Employee.firestoreVector(faceTemplates.first);
-      }
-      if (faceTemplates != null) {
-        data['faceTemplates'] = Employee.faceTemplatesToFirestore(faceTemplates);
-        data['faceDescriptors'] = FieldValue.delete();
-      }
+      // Strip biometrics from public employees (migrate to faceTemplates).
+      data['faceEmbedding'] = FieldValue.delete();
+      data['faceTemplates'] = FieldValue.delete();
+      data['faceDescriptors'] = FieldValue.delete();
       if (faceEnrolled != null) {
         data['faceEnrolled'] = faceEnrolled;
         data['faceRegistered'] = faceEnrolled;
@@ -243,6 +308,13 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
       }
 
       await _collection.doc(id).update(data);
+      await _upsertFaceTemplates(
+        memberId: id,
+        faceEmbedding: faceEmbedding,
+        faceTemplates: faceTemplates,
+        faceModel: faceModel,
+        faceModelVersion: faceModelVersion,
+      );
       await _syncDenormalizedCheckInIdentity(
         employeeId: id,
         oldName: previousName,
@@ -277,7 +349,10 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
   @override
   Future<void> deleteEmployee(String id) async {
     try {
-      await _collection.doc(id).delete();
+      final batch = _firestore.batch();
+      batch.delete(_collection.doc(id));
+      batch.delete(_faceTemplates.doc(id));
+      await batch.commit();
       AppLogger.info('Employee deleted: $id', tag: 'EmployeeRemoteDataSource');
     } on FirebaseException catch (e, st) {
       AppLogger.error('Firestore error deleting employee: ${e.message}', error: e, stackTrace: st, tag: 'EmployeeRemoteDataSource');

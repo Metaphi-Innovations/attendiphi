@@ -25,16 +25,21 @@ class _AdminLoginScreenState extends ConsumerState<AdminLoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _emailFocusNode = FocusNode();
+  final _passwordFocusNode = FocusNode();
   bool _obscurePassword = true;
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _emailFocusNode.dispose();
+    _passwordFocusNode.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
+    if (ref.read(adminAuthProvider).isLoading) return;
     if (!_formKey.currentState!.validate()) return;
 
     final success = await ref.read(adminAuthProvider.notifier).signIn(
@@ -110,10 +115,16 @@ class _AdminLoginScreenState extends ConsumerState<AdminLoginScreen> {
                         AppTextField(
                           label: 'Email',
                           controller: _emailController,
+                          focusNode: _emailFocusNode,
                           keyboardType: TextInputType.emailAddress,
+                          textInputAction: TextInputAction.next,
+                          autofillHints: const [AutofillHints.email],
                           prefixIcon: const Icon(Icons.email_outlined),
                           validator: Validators.validateEmail,
                           maxLength: 320,
+                          onFieldSubmitted: (_) {
+                            _passwordFocusNode.requestFocus();
+                          },
                         ),
 
                         const SizedBox(height: 18),
@@ -128,8 +139,11 @@ class _AdminLoginScreenState extends ConsumerState<AdminLoginScreen> {
                         AppTextField(
                           label: 'Password',
                           controller: _passwordController,
+                          focusNode: _passwordFocusNode,
                           maxLength: 128,
                           obscureText: _obscurePassword,
+                          textInputAction: TextInputAction.go,
+                          autofillHints: const [AutofillHints.password],
                           prefixIcon: const Icon(Icons.lock_outline_rounded),
                           suffixIcon: IconButton(
                             icon: Icon(
@@ -145,6 +159,7 @@ class _AdminLoginScreenState extends ConsumerState<AdminLoginScreen> {
                           validator: (val) => val == null || val.isEmpty
                               ? 'Enter password'
                               : null,
+                          onFieldSubmitted: (_) => _submit(),
                         ),
 
                         const SizedBox(height: 8),

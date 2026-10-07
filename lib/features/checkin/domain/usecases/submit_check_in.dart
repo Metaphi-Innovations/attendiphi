@@ -10,6 +10,7 @@ import '../../data/datasources/notification_dispatch_service.dart';
 import '../entities/check_in_submission.dart';
 import '../entities/check_in_type.dart';
 import '../repositories/check_in_repository.dart';
+import '../session_lock_ids.dart';
 
 /// Usecase coordinating validation and submission of an attendance check-in.
 class SubmitCheckIn {
@@ -40,6 +41,8 @@ class SubmitCheckIn {
     String? sessionDateStr,
     String? deviceId,
     String? recognizedMemberId,
+    /// Member id being substituted for (locks that member for the session day).
+    String? substituteForMemberId,
     /// When false, skips Thursday / QR-date / one-device / GPS enforcement.
     /// Phone uniqueness and required fields still apply.
     bool restrictionsEnabled = true,
@@ -170,9 +173,9 @@ class SubmitCheckIn {
       faceVerified: false,
     );
 
-    // 5. Server-side duplicate validation
-    // Phone uniqueness always enforced (when readable).
-    // Device duplicate + lock only when restrictionsEnabled.
+    // 5. Optional best-effort duplicate probe when checkIns are readable (admin).
+    // Public QR cannot read checkIns — uniqueness is enforced via session locks
+    // claimed atomically with the check-in write below.
     final formattedPhone = Validators.formatPhoneWithCountryCode(phone);
     final hasDevice = deviceId != null && deviceId.trim().isNotEmpty;
 
@@ -205,33 +208,37 @@ class SubmitCheckIn {
       rethrow;
     } catch (_) {
       // Unauthenticated QR clients cannot read checkIns after rules lock-down.
-      // Device uniqueness is enforced via deviceSessionLocks create-once below.
     }
 
-    // 5b. Server-enforced one-device-one-check-in (skipped when restrictions OFF).
-    if (restrictionsEnabled && hasDevice) {
-      final sessionDateYmd = () {
-        final fromQr = sessionDateStr?.trim() ?? '';
-        if (fromQr.length >= 10) return fromQr.substring(0, 10);
-        final t = submissionTimestamp;
-        final m = t.month.toString().padLeft(2, '0');
-        final d = t.day.toString().padLeft(2, '0');
-        return '${t.year}-$m-$d';
-      }();
-      await _repository.claimDeviceSessionLock(
-        deviceId: deviceId.trim(),
-        sessionDateYmd: sessionDateYmd,
-      );
-    }
+    final sessionDateYmd = SessionLockIds.sessionDateYmd(
+      sessionDateStr: sessionDateStr,
+      fallbackTimestamp: submissionTimestamp,
+    );
 
-    // 6. Save to Firestore. Member selfies are not stored on the attendance
-    // document — keeping that payload off the write makes success navigation fast.
+    final claimMemberId = () {
+      if (type.isMember) {
+        final id = recognizedMemberId?.trim() ?? '';
+        return id.isEmpty ? null : id;
+      }
+      if (type.isSubstitute) {
+        final id = substituteForMemberId?.trim() ?? '';
+        return id.isEmpty ? null : id;
+      }
+      return null;
+    }();
+
+    // 6. Atomic write: phone (+ member / device) locks + checkIns in one
+    // transaction so a failed/timeout write cannot orphan a device lock.
     final stored = type.isMember
         ? submission.copyWith(photoBase64: '')
         : submission;
     await _repository.submitCheckIn(
       stored,
       enforceThursday: restrictionsEnabled,
+      sessionDateYmd: sessionDateYmd,
+      claimDeviceId:
+          restrictionsEnabled && hasDevice ? deviceId.trim() : null,
+      claimMemberId: claimMemberId,
     );
 
     // 6. Trigger Admin Push Notification dispatch (non-blocking)

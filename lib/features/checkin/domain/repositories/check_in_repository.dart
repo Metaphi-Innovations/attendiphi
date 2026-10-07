@@ -8,9 +8,16 @@ import '../entities/paginated_check_ins_result.dart';
 abstract class CheckInRepository {
   /// Submits an attendance check-in record to Firestore.
   /// When [enforceThursday] is false, skips the Thursday weekday guard.
+  ///
+  /// When [sessionDateYmd] is set, phone (and optional member/device) locks are
+  /// claimed in the same transaction as the check-in write so a failed write
+  /// cannot leave an orphan lock.
   Future<void> submitCheckIn(
     CheckInSubmission submission, {
     bool enforceThursday = true,
+    String? sessionDateYmd,
+    String? claimDeviceId,
+    String? claimMemberId,
   });
 
   /// Updates an existing check-in record in Firestore.
@@ -46,6 +53,10 @@ abstract class CheckInRepository {
 
   /// Streams check-ins for the admin dashboard.
   Stream<List<CheckInSubmission>> streamCheckIns({String? locationId});
+
+  /// Public projection of member IDs already checked in for [sessionDateYmd].
+  /// Used by QR typeahead (does not require reading `checkIns`).
+  Stream<Set<String>> streamSessionCheckedInMemberIds(String sessionDateYmd);
 
   /// Fetches a paginated cursor page of check-ins from Firestore.
   Future<PaginatedCheckInsResult> getPaginatedCheckIns({

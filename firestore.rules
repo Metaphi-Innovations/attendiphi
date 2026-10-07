@@ -51,9 +51,21 @@ service cloud.firestore {
     }
 
     // Public QR create only. Reads/updates/deletes: Attendiphi admins.
-    // GPS, Thursday, face match, and phone duplicates are NOT enforceable here.
+    // Phone / member / device uniqueness enforced via session lock docs.
+    // GPS / Thursday remain client + lock/transaction helpers (not fully rules-enforceable).
     match /checkIns/{checkInId} {
-      allow create: if request.resource.data.userName is string
+      allow create: if request.resource.data.keys().hasOnly([
+                      'id', 'locationId', 'locationName', 'userName', 'userPhone',
+                      'type', 'userLatitude', 'userLongitude', 'gpsAccuracy',
+                      'distanceMeters', 'timestamp', 'userEmail',
+                      'substituteForMember', 'substituteName', 'companyName',
+                      'category', 'invitedByMember', 'photoBase64', 'adminId',
+                      'deviceId', 'isVerified', 'verifiedAt', 'verifiedBy',
+                      'isEdited', 'editedAt', 'createdAt', 'isFlagged',
+                      'flagReason', 'memberId', 'verificationMethod',
+                      'faceVerified', 'sessionDate'
+                    ])
+                    && request.resource.data.userName is string
                     && request.resource.data.userName.size() > 0
                     && request.resource.data.userName.size() <= 120
                     && request.resource.data.userPhone is string
@@ -62,9 +74,21 @@ service cloud.firestore {
                     && request.resource.data.locationId is string
                     && request.resource.data.locationId.size() > 0
                     && request.resource.data.locationId.size() <= 128
+                    && request.resource.data.locationName is string
+                    && request.resource.data.locationName.size() <= 200
+                    && request.resource.data.type is string
+                    && request.resource.data.type.size() <= 32
+                    && (!('photoBase64' in request.resource.data)
+                        || (request.resource.data.photoBase64 is string
+                            && request.resource.data.photoBase64.size() <= 150000))
+                    && (!('sessionDate' in request.resource.data)
+                        || (request.resource.data.sessionDate is string
+                            && request.resource.data.sessionDate.size() == 10))
                     && !('role' in request.resource.data)
                     && !('isSuperAdmin' in request.resource.data)
-                    && !('isAdmin' in request.resource.data);
+                    && !('isAdmin' in request.resource.data)
+                    && !('faceEmbedding' in request.resource.data)
+                    && !('password' in request.resource.data);
       allow read, update, delete: if isAttendiphiAdmin();
     }
 
@@ -77,11 +101,65 @@ service cloud.firestore {
                     && request.resource.data.sessionDate is string
                     && request.resource.data.sessionDate.size() == 10
                     && lockId == request.resource.data.deviceId + '_' + request.resource.data.sessionDate
+                    && request.resource.data.keys().hasOnly([
+                      'deviceId', 'sessionDate', 'createdAt', 'checkInId'
+                    ])
                     && !('role' in request.resource.data)
                     && !('isSuperAdmin' in request.resource.data)
                     && !('isAdmin' in request.resource.data);
       allow get: if true;
       allow list, update: if false;
+      allow delete: if isAttendiphiAdmin();
+    }
+
+    // One phone = one check-in per session date (always, even when restrictions OFF).
+    match /phoneSessionLocks/{lockId} {
+      allow create: if request.resource.data.phoneDigits is string
+                    && request.resource.data.phoneDigits.size() == 10
+                    && request.resource.data.sessionDate is string
+                    && request.resource.data.sessionDate.size() == 10
+                    && lockId == request.resource.data.phoneDigits + '_' + request.resource.data.sessionDate
+                    && request.resource.data.keys().hasOnly([
+                      'phoneDigits', 'sessionDate', 'createdAt', 'checkInId'
+                    ]);
+      allow get: if true;
+      allow list, update: if false;
+      allow delete: if isAttendiphiAdmin();
+    }
+
+    // One member (self or substitute-for) = one check-in per session date.
+    match /memberSessionLocks/{lockId} {
+      allow create: if request.resource.data.memberId is string
+                    && request.resource.data.memberId.size() > 0
+                    && request.resource.data.memberId.size() <= 128
+                    && request.resource.data.sessionDate is string
+                    && request.resource.data.sessionDate.size() == 10
+                    && lockId == request.resource.data.memberId + '_' + request.resource.data.sessionDate
+                    && request.resource.data.keys().hasOnly([
+                      'memberId', 'sessionDate', 'createdAt', 'checkInId'
+                    ]);
+      allow get: if true;
+      allow list, update: if false;
+      allow delete: if isAttendiphiAdmin();
+    }
+
+    // Public projection for QR typeahead: checked-in member IDs for yyyy-MM-dd.
+    match /sessionAttendance/{dateId} {
+      allow get: if true;
+      allow list: if false;
+      allow create, update: if dateId.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+                    && request.resource.data.sessionDate == dateId
+                    && request.resource.data.checkedInMemberIds is list
+                    && request.resource.data.checkedInMemberIds.size() <= 500
+                    && request.resource.data.keys().hasOnly([
+                      'sessionDate', 'checkedInMemberIds', 'updatedAt'
+                    ])
+                    && (resource == null
+                        || request.resource.data.checkedInMemberIds.size()
+                            >= resource.data.checkedInMemberIds.size())
+                    && (resource == null
+                        || request.resource.data.checkedInMemberIds.size()
+                            - resource.data.checkedInMemberIds.size() <= 2);
       allow delete: if isAttendiphiAdmin();
     }
 
@@ -139,17 +217,21 @@ service cloud.firestore {
         );
     }
 
-    // Public read is required for QR member lookup and client-side SFace
-    // matching. Face embeddings on this document remain readable by check-in
-    // clients (architectural limitation; see SECURITY_AUDIT SEC-006).
-    // Writes: Attendiphi admins only — not any Firebase Auth user.
+    // Public read for QR member dropdown (name/phone). New creates must not
+    // ship biometrics here — use faceTemplates (admin-only). Updates may still
+    // carry legacy embedding fields until migrated; clients strip on write.
     match /employees/{employeeId} {
       allow read: if true;
-      allow create, update, delete: if isAttendiphiAdmin();
+      allow create: if isAttendiphiAdmin()
+        && !('faceEmbedding' in request.resource.data)
+        && !('faceTemplates' in request.resource.data)
+        && !('faceDescriptors' in request.resource.data);
+      allow update, delete: if isAttendiphiAdmin();
     }
 
+    // Locked biometrics — Attendiphi admins only (not public QR).
     match /faceTemplates/{memberId} {
-      allow read, write: if false;
+      allow read, write: if isAttendiphiAdmin();
     }
 
     match /admin_devices/{tokenId} {

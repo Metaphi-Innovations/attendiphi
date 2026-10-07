@@ -139,10 +139,10 @@ async function handleDeleteAdmin(
     return json(401, { ok: false, error: "Firebase token is missing user identity" }, cors);
   }
 
-  const isAdmin = await assertAttendiphiAdmin(firebaseToken, actorUid);
-  if (!isAdmin) {
-    console.log(`delete_admin_denied reason=not_admin status=403 uid=${actorUid}`);
-    return json(403, { ok: false, error: "Only Attendiphi administrators can delete accounts" }, cors);
+  const isSuperAdmin = await assertAttendiphiSuperAdmin(firebaseToken, actorUid);
+  if (!isSuperAdmin) {
+    console.log(`delete_admin_denied reason=not_super_admin status=403 uid=${actorUid}`);
+    return json(403, { ok: false, error: "Only Super Admin can delete Firebase Auth accounts" }, cors);
   }
 
   let targetUid = String(body.targetUid ?? body.uid ?? "").trim();
@@ -528,6 +528,23 @@ async function assertAttendiphiAdmin(
   firebaseIdToken: string,
   uid: string,
 ): Promise<boolean> {
+  const role = await attendiphiAdminRole(firebaseIdToken, uid);
+  return role === "admin" || role === "superadmin";
+}
+
+/** Firebase Auth delete is Super Admin only (H5). Welcome email still allows regular admin. */
+async function assertAttendiphiSuperAdmin(
+  firebaseIdToken: string,
+  uid: string,
+): Promise<boolean> {
+  const role = await attendiphiAdminRole(firebaseIdToken, uid);
+  return role === "superadmin";
+}
+
+async function attendiphiAdminRole(
+  firebaseIdToken: string,
+  uid: string,
+): Promise<string | null> {
   const response = await fetch(
     `${FIRESTORE_DOC_BASE}/admins/${encodeURIComponent(uid)}`,
     {
@@ -536,14 +553,13 @@ async function assertAttendiphiAdmin(
   );
   if (!response.ok) {
     console.log(`email_denied reason=firestore_lookup status=${response.status}`);
-    return false;
+    return null;
   }
   const doc = await response.json() as {
     fields?: { isActive?: { booleanValue?: boolean }; role?: { stringValue?: string } };
   };
-  if (doc.fields?.isActive?.booleanValue === false) return false;
-  const role = (doc.fields?.role?.stringValue ?? "").trim().toLowerCase();
-  return role === "admin" || role === "superadmin";
+  if (doc.fields?.isActive?.booleanValue === false) return null;
+  return (doc.fields?.role?.stringValue ?? "").trim().toLowerCase() || null;
 }
 
 function sanitizePortalUrl(raw: unknown): string {
@@ -756,7 +772,7 @@ You have been granted Administrator access to the QR Check-in & Attendance Porta
 Your Login Credentials:
 ────────────────────────────────────
 • Portal URL: ${input.portalUrl}
-• Login Email (ID): ${input.email}
+• Login Email id: ${input.email}
 • Password: ${input.password}
 • Access Role: ${input.roleLabel}
 ────────────────────────────────────
@@ -792,7 +808,7 @@ function welcomeHtml(input: {
       <p style="font-size:14px;font-weight:600;margin-bottom:8px;">Your Login Credentials:</p>
       <div style="background:#f1f5f9;border-radius:12px;padding:18px;border:1px solid #cbd5e1;margin-bottom:24px;font-size:13.5px;">
         <p><strong>Portal URL:</strong> <a href="${escapeHtml(input.portalUrl)}">${escapeHtml(input.portalUrl)}</a></p>
-        <p><strong>Login Email (ID):</strong> ${escapeHtml(input.email)}</p>
+        <p><strong>Login Email id:</strong> ${escapeHtml(input.email)}</p>
         <p><strong>Password:</strong> ${escapeHtml(input.password)}</p>
         <p><strong>Access Role:</strong> ${escapeHtml(input.roleLabel)}</p>
       </div>

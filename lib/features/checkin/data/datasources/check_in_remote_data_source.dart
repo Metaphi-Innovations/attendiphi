@@ -8,17 +8,22 @@ import '../../../../core/logger/app_logger.dart';
 import '../../../../core/utils/validators.dart';
 import '../../domain/entities/check_in_submission.dart';
 import '../../domain/entities/paginated_check_ins_result.dart';
+import '../../domain/session_lock_ids.dart';
 
 /// Remote data source writing check-ins to Cloud Firestore.
 abstract class CheckInRemoteDataSource {
   Future<void> createCheckIn(
     CheckInSubmission submission, {
     bool enforceThursday = true,
+    String? sessionDateYmd,
+    String? claimDeviceId,
+    String? claimMemberId,
   });
   Future<void> updateCheckIn(CheckInSubmission submission);
   Future<void> deleteCheckIn(String checkInId);
   Future<void> deleteAllCheckIns({String? locationId});
   Stream<List<CheckInSubmission>> streamCheckIns({String? locationId});
+  Stream<Set<String>> streamSessionCheckedInMemberIds(String sessionDateYmd);
   Future<PaginatedCheckInsResult> getPaginatedCheckIns({
     int limit = AppConstants.dashboardPageSize,
     DocumentSnapshot<Map<String, dynamic>>? startAfter,
@@ -51,6 +56,9 @@ class CheckInRemoteDataSourceImpl implements CheckInRemoteDataSource {
   Future<void> createCheckIn(
     CheckInSubmission submission, {
     bool enforceThursday = true,
+    String? sessionDateYmd,
+    String? claimDeviceId,
+    String? claimMemberId,
   }) async {
     try {
       if (enforceThursday &&
@@ -62,23 +70,140 @@ class CheckInRemoteDataSourceImpl implements CheckInRemoteDataSource {
         );
       }
 
+      final date = SessionLockIds.sessionDateYmd(
+        sessionDateStr: sessionDateYmd,
+        fallbackTimestamp: submission.timestamp,
+      );
+
+      final photo = submission.photoBase64;
+      if (photo != null &&
+          photo.length > AppConstants.maxCheckInPhotoBase64Chars) {
+        throw const CheckInSubmissionFailedException(
+          userMessage: 'Photo is too large. Please retake a clearer selfie.',
+          technicalMessage: 'photoBase64 exceeds maxCheckInPhotoBase64Chars',
+        );
+      }
+
+      final checkInPayload = <String, dynamic>{
+        ...submission.toMap(),
+        'sessionDate': date,
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+      // Drop null optional fields so rules allowlist stays tight.
+      checkInPayload.removeWhere((_, v) => v == null);
+
       final docRef = _firestore
           .collection(AppConstants.checkInsCollection)
           .doc(submission.id);
 
-      await docRef.set({
-        ...submission.toMap(),
-        'createdAt': FieldValue.serverTimestamp(),
-      }).timeout(
-        const Duration(seconds: 8),
-        onTimeout: () {
-          throw const ServerException(
-            userMessage:
-                'Network is slow. Your face was verified — tap Member to try saving again.',
-            technicalMessage: 'Firestore check-in write timed out after 8s',
+      final phoneDigits = SessionLockIds.phoneDigits(submission.userPhone);
+      final phoneLockRef = _firestore
+          .collection(AppConstants.phoneSessionLocksCollection)
+          .doc(SessionLockIds.phoneLockId(submission.userPhone, date));
+
+      final memberId = claimMemberId?.trim() ?? '';
+      final memberLockRef = memberId.isEmpty
+          ? null
+          : _firestore
+              .collection(AppConstants.memberSessionLocksCollection)
+              .doc(SessionLockIds.memberLockId(memberId, date));
+
+      final deviceId = claimDeviceId?.trim() ?? '';
+      final deviceLockRef = deviceId.isEmpty
+          ? null
+          : _firestore
+              .collection(AppConstants.deviceSessionLocksCollection)
+              .doc(SessionLockIds.deviceLockId(deviceId, date));
+
+      final attendanceRef = memberId.isEmpty
+          ? null
+          : _firestore
+              .collection(AppConstants.sessionAttendanceCollection)
+              .doc(date);
+
+      await _firestore
+          .runTransaction((transaction) async {
+            final phoneSnap = await transaction.get(phoneLockRef);
+            if (phoneSnap.exists) {
+              throw const DuplicateCheckInException(
+                userMessage:
+                    'This phone number has already submitted attendance for today.',
+                technicalMessage: 'phoneSessionLocks already-exists',
+              );
+            }
+
+            if (memberLockRef != null) {
+              final memberSnap = await transaction.get(memberLockRef);
+              if (memberSnap.exists) {
+                throw const DuplicateCheckInException(
+                  userMessage:
+                      'This member has already been checked in for this session.',
+                  technicalMessage: 'memberSessionLocks already-exists',
+                );
+              }
+            }
+
+            if (deviceLockRef != null) {
+              final deviceSnap = await transaction.get(deviceLockRef);
+              if (deviceSnap.exists) {
+                throw const DuplicateCheckInException(
+                  userMessage:
+                      'This device has already recorded attendance for today.',
+                  technicalMessage: 'deviceSessionLocks already-exists',
+                );
+              }
+            }
+
+            transaction.set(phoneLockRef, {
+              'phoneDigits': phoneDigits,
+              'sessionDate': date,
+              'checkInId': submission.id,
+              'createdAt': FieldValue.serverTimestamp(),
+            });
+
+            if (memberLockRef != null) {
+              transaction.set(memberLockRef, {
+                'memberId': memberId,
+                'sessionDate': date,
+                'checkInId': submission.id,
+                'createdAt': FieldValue.serverTimestamp(),
+              });
+            }
+
+            if (deviceLockRef != null) {
+              transaction.set(deviceLockRef, {
+                'deviceId': deviceId,
+                'sessionDate': date,
+                'checkInId': submission.id,
+                'createdAt': FieldValue.serverTimestamp(),
+              });
+            }
+
+            transaction.set(docRef, checkInPayload);
+
+            if (attendanceRef != null) {
+              transaction.set(
+                attendanceRef,
+                {
+                  'sessionDate': date,
+                  'checkedInMemberIds': FieldValue.arrayUnion([memberId]),
+                  'updatedAt': FieldValue.serverTimestamp(),
+                },
+                SetOptions(merge: true),
+              );
+            }
+          })
+          .timeout(
+            const Duration(seconds: 8),
+            onTimeout: () {
+              throw const ServerException(
+                userMessage:
+                    'Network is slow. Your face was verified — tap Member to try saving again.',
+                technicalMessage:
+                    'Firestore atomic check-in write timed out after 8s',
+              );
+            },
           );
-        },
-      );
 
       AppLogger.info(
         'Check-in recorded: ${submission.userName} (${submission.type.name}) at ${submission.locationName}',
@@ -99,6 +224,7 @@ class CheckInRemoteDataSourceImpl implements CheckInRemoteDataSource {
         stackTrace: st,
       );
     } catch (e, st) {
+      if (e is AppException) rethrow;
       AppLogger.error(
         'Unexpected error recording check-in: $e',
         error: e,
@@ -289,6 +415,28 @@ class CheckInRemoteDataSourceImpl implements CheckInRemoteDataSource {
         }
         return CheckInSubmission.fromMap(data);
       }).toList();
+    });
+  }
+
+  @override
+  Stream<Set<String>> streamSessionCheckedInMemberIds(String sessionDateYmd) {
+    final date = sessionDateYmd.trim();
+    if (date.length != 10) {
+      return Stream.value(const <String>{});
+    }
+
+    final docRef = _firestore
+        .collection(AppConstants.sessionAttendanceCollection)
+        .doc(date);
+
+    return docRef.snapshots().map((snap) {
+      if (!snap.exists) return const <String>{};
+      final raw = snap.data()?['checkedInMemberIds'];
+      if (raw is! List) return const <String>{};
+      return {
+        for (final id in raw)
+          if (id != null && id.toString().trim().isNotEmpty) id.toString().trim(),
+      };
     });
   }
 

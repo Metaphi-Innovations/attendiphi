@@ -78,7 +78,7 @@ You have been granted Administrator access to the QR Check-in & Attendance Porta
 Your Login Credentials:
 ────────────────────────────────────
 • Portal URL: $portalUrl
-• Login Email (ID): $email
+• Login Email id: $email
 • Password: $password
 • Access Role: $roleLabel
 ────────────────────────────────────

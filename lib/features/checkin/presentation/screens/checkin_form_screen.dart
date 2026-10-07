@@ -108,28 +108,14 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     return DateTime(n.year, n.month, n.day);
   }
 
-  bool _isSameSessionDay(DateTime timestamp, DateTime sessionDay) {
-    final local = timestamp.toLocal();
-    return local.year == sessionDay.year &&
-        local.month == sessionDay.month &&
-        local.day == sessionDay.day;
-  }
-
-  /// Members who already have attendance for [sessionDay] (member / substitute /
-  /// absent). Visitors do not remove a member from the dropdown.
-  Set<String> _checkedInMemberIdsForSession({
-    required List<Employee> employees,
-    required List<CheckInSubmission> checkIns,
-    required DateTime sessionDay,
-  }) {
-    final ids = <String>{};
-    for (final sub in checkIns) {
-      if (sub.type.isVisitor) continue;
-      if (!_isSameSessionDay(sub.timestamp, sessionDay)) continue;
-      final matched = EmployeeLookup.forCheckIn(employees, sub);
-      if (matched != null) ids.add(matched.id);
-    }
-    return ids;
+  /// yyyy-MM-dd for the public sessionAttendance projection (QR typeahead).
+  String get _sessionDateYmdForAttendance {
+    final raw = _effectiveSessionDateStr?.trim() ?? '';
+    if (raw.length >= 10) return raw.substring(0, 10);
+    final d = _sessionDayForDropdown;
+    final m = d.month.toString().padLeft(2, '0');
+    final day = d.day.toString().padLeft(2, '0');
+    return '${d.year}-$m-$day';
   }
 
   bool get _isTodayThursday => _now.weekday == DateTime.thursday;
@@ -180,7 +166,11 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   bool _substituteForPointerActive = false;
   bool _invitedByPointerActive = false;
 
+  /// Last keyboard inset used to re-scroll when the soft keyboard animates.
+  double _lastKeyboardInset = 0;
+
   String? _selectedSubstituteForMember;
+  String? _selectedSubstituteForMemberId;
   String? _selectedInvitedByMember;
 
   bool _isCheckingDevice = true;
@@ -232,15 +222,39 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   }) {
     if (focusNode.hasFocus) {
       setState(() => setShowSuggestions(true));
-      _scrollFieldIntoView(fieldKey);
+      _scrollTypeaheadIntoView(fieldKey);
       return;
     }
+    // Soft keyboard "Done" unfocuses the field on mobile web. Keep the
+    // suggestions list open so the user can still tap a name. Close only via
+    // TapRegion outside, chevron, clear, or selection.
     Future<void>.delayed(const Duration(milliseconds: 220), () {
       if (!mounted || focusNode.hasFocus) return;
       if (isPointerActive()) return;
-      setState(() => setShowSuggestions(false));
-      _formKey.currentState?.validate();
+      // Do not call setShowSuggestions(false) here.
     });
+  }
+
+  GlobalKey? get _activeTypeaheadFieldKey {
+    if (_showMemberSuggestions) return _memberNameFieldKey;
+    if (_showSubstituteForSuggestions) return _substituteForFieldKey;
+    if (_showInvitedBySuggestions) return _invitedByFieldKey;
+    return null;
+  }
+
+  /// True when the field sits low in the viewport above the keyboard — show
+  /// the suggestions panel above the input so it is not covered.
+  bool _shouldShowSuggestionsAbove(GlobalKey fieldKey) {
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    if (keyboardInset <= 0) return false;
+    final ctx = fieldKey.currentContext;
+    if (ctx == null) return false;
+    final box = ctx.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return false;
+    final fieldTop = box.localToGlobal(Offset.zero).dy;
+    final visibleHeight =
+        MediaQuery.sizeOf(context).height - keyboardInset;
+    return fieldTop > visibleHeight * 0.38;
   }
 
   void _closeTypeahead({
@@ -279,14 +293,14 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
         showSuggestions: _showInvitedBySuggestions,
       );
 
-  void _scrollFieldIntoView(GlobalKey fieldKey) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+  void _scrollTypeaheadIntoView(GlobalKey fieldKey) {
+    void ensure({required double alignment}) {
       if (!mounted) return;
       final ctx = fieldKey.currentContext;
       if (ctx != null) {
         Scrollable.ensureVisible(
           ctx,
-          alignment: 0.05,
+          alignment: alignment,
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOut,
         );
@@ -299,6 +313,15 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
           curve: Curves.easeOut,
         );
       }
+    }
+
+    // First pass after focus; second pass after suggestions panel lays out.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final showAbove = _shouldShowSuggestionsAbove(fieldKey);
+      ensure(alignment: showAbove ? 0.72 : 0.08);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ensure(alignment: _shouldShowSuggestionsAbove(fieldKey) ? 0.72 : 0.08);
+      });
     });
   }
 
@@ -440,6 +463,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     // 2. Clear state variables
     setState(() {
       _selectedSubstituteForMember = null;
+      _selectedSubstituteForMemberId = null;
       _selectedInvitedByMember = null;
       _showMemberSuggestions = false;
       _showSubstituteForSuggestions = false;
@@ -486,6 +510,10 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   }
 
   Future<void> _onSubmit(LocationConfig location, ProximityResult proximity) async {
+    final formState = ref.read(checkInFormProvider);
+    // Ignore second taps while submitting / before async device probes (H4).
+    if (formState.isSubmitting) return;
+
     final restrictionsEnabled = ref.read(restrictionsEnabledProvider);
     if (restrictionsEnabled) {
       final deviceService = ref.read(deviceCheckInServiceProvider);
@@ -507,7 +535,6 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       }
     }
 
-    final formState = ref.read(checkInFormProvider);
     final currentType = formState.type;
     if (currentType == null) {
       return;
@@ -592,7 +619,10 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     }
     notifier.setCompanyName(_companyController.text.trim());
     notifier.setCategory(_categoryController.text.trim());
-    notifier.setSubstituteForMember(_selectedSubstituteForMember);
+    notifier.setSubstituteForMember(
+      _selectedSubstituteForMember,
+      memberId: _selectedSubstituteForMemberId,
+    );
     notifier.setInvitedByMember(_selectedInvitedByMember);
 
     final success = await notifier.submit(
@@ -905,6 +935,20 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
           gpsAccuracy: 5.0,
         );
     final canSubmit = _canSubmit(formState);
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    if (_anyMemberTypeaheadOpen && keyboardInset != _lastKeyboardInset) {
+      _lastKeyboardInset = keyboardInset;
+      final activeKey = _activeTypeaheadFieldKey;
+      if (activeKey != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _anyMemberTypeaheadOpen) {
+            _scrollTypeaheadIntoView(activeKey);
+          }
+        });
+      }
+    } else if (!_anyMemberTypeaheadOpen) {
+      _lastKeyboardInset = keyboardInset;
+    }
 
     return AppScaffold(
       title: AppStrings.checkInFormTitle,
@@ -924,10 +968,11 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                     hPadding,
                     isCompact ? 16 : 24,
                     hPadding,
-                    // Extra space so suggestions can scroll above the keyboard.
+                    // Extra space so lower typeaheads (Substitute / Visitor)
+                    // can scroll the field + suggestions above the keyboard.
                     (isCompact ? 16 : 24) +
-                        MediaQuery.viewInsetsOf(context).bottom +
-                        (_anyMemberTypeaheadOpen ? 160 : 0),
+                        keyboardInset +
+                        (_anyMemberTypeaheadOpen ? 320 : 0),
                   ),
                   child: Align(
                     alignment: Alignment.topCenter,
@@ -1147,6 +1192,15 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   }) {
     final query = controller.text.trim();
     final hasQuery = query.isNotEmpty;
+    final showAbove =
+        showSuggestions && _shouldShowSuggestionsAbove(fieldKey);
+
+    final suggestionsPanel = _buildMemberSuggestionsPanel(
+      query: query,
+      excludeSessionCheckedIn: excludeSessionCheckedIn,
+      setPointerActive: setPointerActive,
+      onSelectEmployee: onSelectEmployee,
+    );
 
     return TapRegion(
       onTapOutside: (_) {
@@ -1156,6 +1210,10 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildFieldLabel(label, isRequired: true),
+          if (showSuggestions && showAbove) ...[
+            suggestionsPanel,
+            const SizedBox(height: 8),
+          ],
           KeyedSubtree(
             key: fieldKey,
             child: AppTextField(
@@ -1175,7 +1233,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                         onClearSelection();
                         setState(() => setShowSuggestions(true));
                         focusNode.requestFocus();
-                        _scrollFieldIntoView(fieldKey);
+                        _scrollTypeaheadIntoView(fieldKey);
                       },
                     )
                   : IconButton(
@@ -1195,14 +1253,14 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                         } else {
                           focusNode.requestFocus();
                           setState(() => setShowSuggestions(true));
-                          _scrollFieldIntoView(fieldKey);
+                          _scrollTypeaheadIntoView(fieldKey);
                         }
                       },
                     ),
               onChanged: (val) {
                 setState(() => setShowSuggestions(true));
                 onQueryChanged(val);
-                _scrollFieldIntoView(fieldKey);
+                _scrollTypeaheadIntoView(fieldKey);
               },
               autovalidateMode: AutovalidateMode.onUserInteraction,
               validator: (val) {
@@ -1216,14 +1274,9 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
               },
             ),
           ),
-          if (showSuggestions) ...[
+          if (showSuggestions && !showAbove) ...[
             const SizedBox(height: 8),
-            _buildMemberSuggestionsPanel(
-              query: query,
-              excludeSessionCheckedIn: excludeSessionCheckedIn,
-              setPointerActive: setPointerActive,
-              onSelectEmployee: onSelectEmployee,
-            ),
+            suggestionsPanel,
           ],
         ],
       ),
@@ -1239,9 +1292,12 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     final screenHeight = MediaQuery.sizeOf(context).height;
     final availableAboveKeyboard = keyboardInset > 0
-        ? (screenHeight - keyboardInset) * 0.48
+        ? (screenHeight - keyboardInset) * 0.42
         : 280.0;
-    final maxHeight = availableAboveKeyboard.clamp(160.0, 280.0);
+    // Cap lower when keyboard is open so the panel fits on short phones.
+    final maxHeight = keyboardInset > 0
+        ? availableAboveKeyboard.clamp(120.0, 220.0)
+        : availableAboveKeyboard.clamp(160.0, 280.0);
 
     return Listener(
       onPointerDown: (_) => setPointerActive(true),
@@ -1270,7 +1326,13 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
             child: Consumer(
               builder: (context, ref, _) {
                 final employeesAsync = ref.watch(employeesStreamProvider);
-                final checkInsAsync = ref.watch(liveCheckInsStreamProvider);
+                final checkedInAsync = excludeSessionCheckedIn
+                    ? ref.watch(
+                        sessionCheckedInMemberIdsProvider(
+                          _sessionDateYmdForAttendance,
+                        ),
+                      )
+                    : null;
 
                 return employeesAsync.when(
                   loading: () => const Padding(
@@ -1301,13 +1363,8 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                       adminId: widget.adminId,
                       activeOnly: true,
                     );
-                    final checkIns = checkInsAsync.value ?? const [];
                     final checkedInIds = excludeSessionCheckedIn
-                        ? _checkedInMemberIdsForSession(
-                            employees: scopedEmployees,
-                            checkIns: checkIns,
-                            sessionDay: _sessionDayForDropdown,
-                          )
+                        ? (checkedInAsync?.value ?? const <String>{})
                         : const <String>{};
                     final availableEmployees = scopedEmployees
                         .where((emp) => !checkedInIds.contains(emp.id))
@@ -1571,7 +1628,10 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
           excludeSessionCheckedIn: true,
           prefixIcon: Icons.swap_horiz_rounded,
           onClearSelection: () {
-            setState(() => _selectedSubstituteForMember = null);
+            setState(() {
+              _selectedSubstituteForMember = null;
+              _selectedSubstituteForMemberId = null;
+            });
             ref.read(checkInFormProvider.notifier).setSubstituteForMember(null);
           },
           onQueryChanged: (val) {
@@ -1579,7 +1639,10 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
             final stillMatches = selected != null &&
                 selected.trim().toLowerCase() == val.trim().toLowerCase();
             if (!stillMatches) {
-              setState(() => _selectedSubstituteForMember = null);
+              setState(() {
+                _selectedSubstituteForMember = null;
+                _selectedSubstituteForMemberId = null;
+              });
               ref
                   .read(checkInFormProvider.notifier)
                   .setSubstituteForMember(null);
@@ -1589,10 +1652,11 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
             _substituteForController.text = emp.name;
             setState(() {
               _selectedSubstituteForMember = emp.name;
+              _selectedSubstituteForMemberId = emp.id;
               _showSubstituteForSuggestions = false;
             });
             final notifier = ref.read(checkInFormProvider.notifier);
-            notifier.setSubstituteForMember(emp.name);
+            notifier.setSubstituteForMember(emp.name, memberId: emp.id);
             notifier.setAdminId(emp.adminId ?? widget.adminId);
             _substituteForFocusNode.unfocus();
           },

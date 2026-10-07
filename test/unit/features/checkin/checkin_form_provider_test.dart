@@ -101,7 +101,13 @@ void main() {
     });
 
     test('submits successfully for Member and updates state', () async {
-      when(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday')))
+      when(() => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: any(named: 'enforceThursday'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+          claimDeviceId: any(named: 'claimDeviceId'),
+          claimMemberId: any(named: 'claimMemberId'),
+        ))
           .thenAnswer((_) async {});
 
       final notifier = container.read(checkInFormProvider.notifier);
@@ -121,8 +127,47 @@ void main() {
       expect(state.submissionResult?.userName, 'Pooja Nair');
     });
 
+    test('ignores second submit while isSubmitting (H4)', () async {
+      var calls = 0;
+      when(() => mockRepository.submitCheckIn(
+            any(),
+            enforceThursday: any(named: 'enforceThursday'),
+            sessionDateYmd: any(named: 'sessionDateYmd'),
+            claimDeviceId: any(named: 'claimDeviceId'),
+            claimMemberId: any(named: 'claimMemberId'),
+          )).thenAnswer((_) async {
+        calls++;
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+      });
+
+      final notifier = container.read(checkInFormProvider.notifier);
+      notifier.setName('Pooja Nair');
+      notifier.setPhone('9876543210');
+      notifier.setType(CheckInType.member);
+
+      final first = notifier.submit(
+        location: testLocation,
+        proximityResult: testProximity,
+      );
+      final second = await notifier.submit(
+        location: testLocation,
+        proximityResult: testProximity,
+      );
+      final firstResult = await first;
+
+      expect(second, isFalse);
+      expect(firstResult, isTrue);
+      expect(calls, 1);
+    });
+
     test('defaults type to Member when submitted without explicitly setting type', () async {
-      when(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday')))
+      when(() => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: any(named: 'enforceThursday'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+          claimDeviceId: any(named: 'claimDeviceId'),
+          claimMemberId: any(named: 'claimMemberId'),
+        ))
           .thenAnswer((_) async {});
 
       final notifier = container.read(checkInFormProvider.notifier);
@@ -178,7 +223,13 @@ void main() {
       final state = container.read(checkInFormProvider);
       expect(state.error, isA<DuplicateCheckInException>());
       expect(state.submissionResult?.id, 'sub-existing-01');
-      verifyNever(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday')));
+      verifyNever(() => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: any(named: 'enforceThursday'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+          claimDeviceId: any(named: 'claimDeviceId'),
+          claimMemberId: any(named: 'claimMemberId'),
+        ));
     });
 
     test('2026-09-03 rejects second face check-in on the same device', () async {
@@ -220,7 +271,13 @@ void main() {
       final state = container.read(checkInFormProvider);
       expect(state.error, isA<DuplicateCheckInException>());
       expect(state.submissionResult?.id, 'sub-omkaarr');
-      verifyNever(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday')));
+      verifyNever(() => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: any(named: 'enforceThursday'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+          claimDeviceId: any(named: 'claimDeviceId'),
+          claimMemberId: any(named: 'claimMemberId'),
+        ));
     });
 
     test('2026-09-24 rejects second face check-in on the same device', () async {
@@ -262,7 +319,13 @@ void main() {
       final state = container.read(checkInFormProvider);
       expect(state.error, isA<DuplicateCheckInException>());
       expect(state.submissionResult?.id, 'sub-first');
-      verifyNever(() => mockRepository.submitCheckIn(any(), enforceThursday: any(named: 'enforceThursday')));
+      verifyNever(() => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: any(named: 'enforceThursday'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+          claimDeviceId: any(named: 'claimDeviceId'),
+          claimMemberId: any(named: 'claimMemberId'),
+        ));
     });
   });
 }

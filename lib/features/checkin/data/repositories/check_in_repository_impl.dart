@@ -16,10 +16,16 @@ class CheckInRepositoryImpl implements CheckInRepository {
   Future<void> submitCheckIn(
     CheckInSubmission submission, {
     bool enforceThursday = true,
+    String? sessionDateYmd,
+    String? claimDeviceId,
+    String? claimMemberId,
   }) {
     return _remoteDataSource.createCheckIn(
       submission,
       enforceThursday: enforceThursday,
+      sessionDateYmd: sessionDateYmd,
+      claimDeviceId: claimDeviceId,
+      claimMemberId: claimMemberId,
     );
   }
 
@@ -78,6 +84,11 @@ class CheckInRepositoryImpl implements CheckInRepository {
   @override
   Stream<List<CheckInSubmission>> streamCheckIns({String? locationId}) {
     return _remoteDataSource.streamCheckIns(locationId: locationId);
+  }
+
+  @override
+  Stream<Set<String>> streamSessionCheckedInMemberIds(String sessionDateYmd) {
+    return _remoteDataSource.streamSessionCheckedInMemberIds(sessionDateYmd);
   }
 
   @override

@@ -235,7 +235,7 @@ class _AttendanceOverviewScreenState
         );
       case MemberAttendanceStatus.upcoming:
         return const AppBadge(
-          label: 'Upcoming',
+          label: 'Open / upcoming',
           variant: AppBadgeVariant.neutral,
         );
     }
@@ -482,12 +482,12 @@ class _AttendanceOverviewScreenState
         isDark: isDark,
       ),
       _buildLegendItem(
-        label: 'Absent (-)',
+        label: 'Absent (past)',
         color: const Color(0xFFEF4444),
         isDark: isDark,
       ),
       _buildLegendItem(
-        label: 'Upcoming',
+        label: 'Open / upcoming',
         color: const Color(0xFF94A3B8),
         isDark: isDark,
       ),

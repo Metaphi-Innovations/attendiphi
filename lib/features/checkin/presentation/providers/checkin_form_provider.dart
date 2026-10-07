@@ -37,8 +37,20 @@ class CheckInFormNotifier extends Notifier<CheckInFormState> {
     state = state.copyWith(type: type, clearError: true);
   }
 
-  void setSubstituteForMember(String? member) {
-    state = state.copyWith(substituteForMember: member, clearError: true);
+  void setSubstituteForMember(String? member, {String? memberId}) {
+    if (member == null || member.trim().isEmpty) {
+      state = state.copyWith(
+        clearSubstituteFor: true,
+        clearError: true,
+      );
+      return;
+    }
+    state = state.copyWith(
+      substituteForMember: member,
+      substituteForMemberId: memberId,
+      clearSubstituteForMemberId: memberId == null || memberId.isEmpty,
+      clearError: true,
+    );
   }
 
   void setCompanyName(String companyName) {
@@ -86,44 +98,47 @@ class CheckInFormNotifier extends Notifier<CheckInFormState> {
     required ProximityResult proximityResult,
     String? sessionDateStr,
   }) async {
+    // Disable Check-In before any async device probes (H4 double-submit).
+    if (state.isSubmitting) return false;
+
     if (state.type == null) {
       state = state.copyWith(type: CheckInType.member);
     }
 
+    state = state.copyWith(isSubmitting: true, clearError: true);
+
     final deviceService = ref.read(deviceCheckInServiceProvider);
     final restrictionsEnabled = ref.read(restrictionsEnabledProvider);
 
-    // One device = one check-in only while production restrictions are ON.
-    if (restrictionsEnabled) {
-      final hasCheckedIn = await deviceService.hasCheckedInForSession(
-        sessionDateStr: sessionDateStr,
-        locationId: location.id,
-        probeServer: true,
-      );
-
-      if (hasCheckedIn) {
-        final existingSubmission = await deviceService.getSubmissionForSession(
+    try {
+      // One device = one check-in only while production restrictions are ON.
+      if (restrictionsEnabled) {
+        final hasCheckedIn = await deviceService.hasCheckedInForSession(
           sessionDateStr: sessionDateStr,
           locationId: location.id,
-          probeServer: false,
+          probeServer: true,
         );
 
-        state = state.copyWith(
-          isSubmitting: false,
-          error: DuplicateCheckInException(
-            userMessage:
-                'This device has already recorded attendance for today.',
-            existingSubmissionData: existingSubmission?.toMap(),
-          ),
-          submissionResult: existingSubmission,
-        );
-        return false;
+        if (hasCheckedIn) {
+          final existingSubmission = await deviceService.getSubmissionForSession(
+            sessionDateStr: sessionDateStr,
+            locationId: location.id,
+            probeServer: false,
+          );
+
+          state = state.copyWith(
+            isSubmitting: false,
+            error: DuplicateCheckInException(
+              userMessage:
+                  'This device has already recorded attendance for today.',
+              existingSubmissionData: existingSubmission?.toMap(),
+            ),
+            submissionResult: existingSubmission,
+          );
+          return false;
+        }
       }
-    }
 
-    state = state.copyWith(isSubmitting: true, clearError: true);
-
-    try {
       final deviceId = await deviceService.getOrCreateDeviceId();
       final submitUseCase = ref.read(submitCheckInUseCaseProvider);
       final submission = await submitUseCase(
@@ -134,6 +149,7 @@ class CheckInFormNotifier extends Notifier<CheckInFormState> {
         proximityResult: proximityResult,
         email: state.email,
         substituteForMember: state.substituteForMember,
+        substituteForMemberId: state.substituteForMemberId,
         companyName: state.companyName,
         category: state.category,
         invitedByMember: state.invitedByMember,

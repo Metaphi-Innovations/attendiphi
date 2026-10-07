@@ -46,6 +46,14 @@ class AppConstants {
   static const String checkInsCollection = 'checkIns';
   /// Public create-once locks: one device may check in once per session date.
   static const String deviceSessionLocksCollection = 'deviceSessionLocks';
+  /// Public create-once locks: one phone may check in once per session date.
+  static const String phoneSessionLocksCollection = 'phoneSessionLocks';
+  /// Public create-once locks: one member (or substitute-for) per session date.
+  static const String memberSessionLocksCollection = 'memberSessionLocks';
+  /// Public projection of checked-in member IDs per session day (QR typeahead).
+  static const String sessionAttendanceCollection = 'sessionAttendance';
+  /// Locked biometrics store (admin / trusted server only — not public employees).
+  static const String faceTemplatesCollection = 'faceTemplates';
   static const String adminsCollection = 'admins';
   static const String employeesCollection = 'employees';
   static const String adminDevicesCollection = 'admin_devices';
@@ -55,6 +63,8 @@ class AppConstants {
   static const String appConfigCollection = 'appConfig';
   static const String checkInRestrictionsDocId = 'checkInRestrictions';
   static const String substitutePhotosPath = 'substitute_photos';
+  /// Max base64 photo payload accepted by public checkIns create rules (~150KB).
+  static const int maxCheckInPhotoBase64Chars = 150000;
 
   // ── Push Notifications ────────────────────────────────────────────────
   static const String notificationChannelId = 'admin_attendance_channel';
