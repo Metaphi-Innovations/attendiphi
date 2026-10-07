@@ -122,16 +122,18 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   late final TextEditingController _companyController;
   late final TextEditingController _categoryController;
 
-  // Search controllers for dropdowns
-  late final TextEditingController _memberSearchController;
+  // Search controllers for Substitute / Visitor dropdowns
   late final TextEditingController _substituteForSearchController;
   late final TextEditingController _invitedBySearchController;
 
-  bool _isMemberDropdownOpen = false;
+  final FocusNode _memberNameFocusNode = FocusNode();
+  final ScrollController _formScrollController = ScrollController();
+  final GlobalKey _memberNameFieldKey = GlobalKey();
+
+  bool _showMemberSuggestions = false;
   bool _isSubstituteForDropdownOpen = false;
   bool _isInvitedByDropdownOpen = false;
 
-  String _memberSearchQuery = '';
   String _substituteForSearchQuery = '';
   String _invitedBySearchQuery = '';
 
@@ -142,16 +144,51 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   bool _hasCheckedIn = false;
   CheckInSubmission? _existingSubmission;
 
-  /// Member selected from the searchable dropdown (manual check-in only).
+  /// Member selected from the typeahead list (manual check-in only).
   Employee? _manuallySelectedMember;
 
   void _clearLocalIdentity() {
     _manuallySelectedMember = null;
-    _isMemberDropdownOpen = false;
-    _memberSearchQuery = '';
+    _showMemberSuggestions = false;
     _nameController.clear();
     _phoneController.clear();
     _emailController.clear();
+  }
+
+  void _onMemberNameFocusChanged() {
+    if (_memberNameFocusNode.hasFocus) {
+      setState(() => _showMemberSuggestions = true);
+      _scrollMemberFieldIntoView();
+    } else {
+      // Delay close so a suggestion tap can register first.
+      Future<void>.delayed(const Duration(milliseconds: 180), () {
+        if (!mounted || _memberNameFocusNode.hasFocus) return;
+        setState(() => _showMemberSuggestions = false);
+      });
+    }
+  }
+
+  void _scrollMemberFieldIntoView() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ctx = _memberNameFieldKey.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          alignment: 0.05,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+        );
+        return;
+      }
+      if (_formScrollController.hasClients) {
+        _formScrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   @override
@@ -168,9 +205,9 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     _companyController = TextEditingController();
     _categoryController = TextEditingController();
 
-    _memberSearchController = TextEditingController();
     _substituteForSearchController = TextEditingController();
     _invitedBySearchController = TextEditingController();
+    _memberNameFocusNode.addListener(_onMemberNameFocusChanged);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -257,12 +294,14 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
 
   @override
   void dispose() {
+    _memberNameFocusNode.removeListener(_onMemberNameFocusChanged);
+    _memberNameFocusNode.dispose();
+    _formScrollController.dispose();
     _nameController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
     _companyController.dispose();
     _categoryController.dispose();
-    _memberSearchController.dispose();
     _substituteForSearchController.dispose();
     _invitedBySearchController.dispose();
     super.dispose();
@@ -275,18 +314,17 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     _emailController.clear();
     _companyController.clear();
     _categoryController.clear();
-    _memberSearchController.clear();
     _substituteForSearchController.clear();
     _invitedBySearchController.clear();
+    _memberNameFocusNode.unfocus();
 
     // 2. Clear state variables
     setState(() {
       _selectedSubstituteForMember = null;
       _selectedInvitedByMember = null;
-      _memberSearchQuery = '';
       _substituteForSearchQuery = '';
       _invitedBySearchQuery = '';
-      _isMemberDropdownOpen = false;
+      _showMemberSuggestions = false;
       _isSubstituteForDropdownOpen = false;
       _isInvitedByDropdownOpen = false;
       _manuallySelectedMember = null;
@@ -759,9 +797,17 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
               // Scrollable Form Content (Top-aligned, identical padding across all 3 states)
               Expanded(
                 child: SingleChildScrollView(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: hPadding,
-                    vertical: isCompact ? 16 : 24,
+                  controller: _formScrollController,
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.fromLTRB(
+                    hPadding,
+                    isCompact ? 16 : 24,
+                    hPadding,
+                    // Extra space so suggestions can scroll above the keyboard.
+                    (isCompact ? 16 : 24) +
+                        MediaQuery.viewInsetsOf(context).bottom +
+                        (_showMemberSuggestions ? 160 : 0),
                   ),
                   child: Align(
                     alignment: Alignment.topCenter,
@@ -839,8 +885,9 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                 ),
               ),
 
-              // 4. Sticky Submit Button at the bottom of the viewport
-              if (currentType != null) ...[
+              // 4. Sticky Submit Button — hide while Member suggestions are open
+              // so the keyboard + list stay usable on mobile web.
+              if (currentType != null && !_showMemberSuggestions) ...[
               Container(
                 width: double.infinity,
                 padding: EdgeInsets.symmetric(
@@ -958,81 +1005,99 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
 
 
   // ==========================================
-  // 1. MEMBER FORM FIELDS (dropdown + autofill)
+  // 1. MEMBER FORM FIELDS (typeahead name + autofill phone)
   // ==========================================
   Widget _buildMemberFormFields() {
+    final query = _nameController.text.trim();
+    final hasQuery = query.isNotEmpty;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildFieldLabel('Select Member Name', isRequired: true),
-        AppTextField(
-          hint: 'Select or search your name from member list',
-          showFloatingLabel: false,
-          controller: _nameController,
-          prefixIcon: const Icon(Icons.person_outline_rounded),
-          suffixIcon: IconButton(
-            icon: Icon(
-              _isMemberDropdownOpen
-                  ? Icons.keyboard_arrow_up_rounded
-                  : Icons.arrow_drop_down_rounded,
-              size: 28,
-              color: _isMemberDropdownOpen
-                  ? AppColors.primary
-                  : const Color(0xFF64748B),
-            ),
-            tooltip: _isMemberDropdownOpen ? 'Close list' : 'Select member',
-            onPressed: () {
+        KeyedSubtree(
+          key: _memberNameFieldKey,
+          child: AppTextField(
+            hint: 'Type to search your name',
+            showFloatingLabel: false,
+            controller: _nameController,
+            focusNode: _memberNameFocusNode,
+            textCapitalization: TextCapitalization.words,
+            textInputAction: TextInputAction.search,
+            prefixIcon: const Icon(Icons.person_outline_rounded),
+            suffixIcon: hasQuery
+                ? IconButton(
+                    icon: const Icon(Icons.clear_rounded, size: 22),
+                    tooltip: 'Clear',
+                    onPressed: () {
+                      _nameController.clear();
+                      _phoneController.clear();
+                      _emailController.clear();
+                      final notifier = ref.read(checkInFormProvider.notifier);
+                      notifier.clearIdentity();
+                      if (widget.adminId != null && widget.adminId!.isNotEmpty) {
+                        notifier.setAdminId(widget.adminId);
+                      }
+                      setState(() {
+                        _manuallySelectedMember = null;
+                        _showMemberSuggestions = true;
+                      });
+                      _memberNameFocusNode.requestFocus();
+                      _scrollMemberFieldIntoView();
+                    },
+                  )
+                : IconButton(
+                    icon: Icon(
+                      _showMemberSuggestions
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.arrow_drop_down_rounded,
+                      size: 28,
+                      color: _showMemberSuggestions
+                          ? AppColors.primary
+                          : const Color(0xFF64748B),
+                    ),
+                    tooltip: _showMemberSuggestions ? 'Hide list' : 'Show members',
+                    onPressed: () {
+                      if (_showMemberSuggestions) {
+                        _memberNameFocusNode.unfocus();
+                        setState(() => _showMemberSuggestions = false);
+                      } else {
+                        _memberNameFocusNode.requestFocus();
+                        setState(() => _showMemberSuggestions = true);
+                        _scrollMemberFieldIntoView();
+                      }
+                    },
+                  ),
+            onChanged: (val) {
+              final selected = _manuallySelectedMember;
+              final stillMatches = selected != null &&
+                  selected.name.trim().toLowerCase() == val.trim().toLowerCase();
               setState(() {
-                _isMemberDropdownOpen = !_isMemberDropdownOpen;
-                if (!_isMemberDropdownOpen) {
-                  _memberSearchController.clear();
-                  _memberSearchQuery = '';
+                _showMemberSuggestions = true;
+                if (!stillMatches) {
+                  _manuallySelectedMember = null;
+                  _phoneController.clear();
+                  _emailController.clear();
+                  final notifier = ref.read(checkInFormProvider.notifier);
+                  notifier.setName(val);
+                  notifier.setPhone('');
+                  notifier.setEmail('');
+                  notifier.setRecognizedMember(null);
                 }
               });
+              _scrollMemberFieldIntoView();
+            },
+            validator: (_) {
+              if (_manuallySelectedMember == null) {
+                return 'Please select your name from the member list';
+              }
+              return null;
             },
           ),
-          // Selection-only: ignore free typing; identity comes from dropdown.
-          onChanged: (_) {},
-          validator: (_) {
-            if (_manuallySelectedMember == null) {
-              return 'Please select your name from the member list';
-            }
-            return null;
-          },
         ),
-        if (_isMemberDropdownOpen) ...[
+        if (_showMemberSuggestions) ...[
           const SizedBox(height: 8),
-          _buildSearchableDropdownPanel(
-            searchController: _memberSearchController,
-            searchQuery: _memberSearchQuery,
-            hintText: 'Search registered member...',
-            onSearchChanged: (val) =>
-                setState(() => _memberSearchQuery = val.trim()),
-            onClearSearch: () {
-              _memberSearchController.clear();
-              setState(() => _memberSearchQuery = '');
-            },
-            onSelectEmployee: (emp) {
-              _nameController.text = emp.name;
-              _phoneController.text = emp.phone;
-              _emailController.text = emp.email;
-
-              final notifier = ref.read(checkInFormProvider.notifier);
-              notifier.setName(emp.name);
-              notifier.setPhone(emp.phone);
-              notifier.setEmail(emp.email);
-              notifier.setAdminId(emp.adminId ?? widget.adminId);
-              notifier.setRecognizedMember(emp.id);
-              notifier.clearPhoto();
-
-              setState(() {
-                _manuallySelectedMember = emp;
-                _isMemberDropdownOpen = false;
-                _memberSearchController.clear();
-                _memberSearchQuery = '';
-              });
-            },
-          ),
+          _buildMemberSuggestionsPanel(query: query),
         ],
         const SizedBox(height: 18),
         _buildFieldLabel('Phone Number', isRequired: true, suffix: ' (Auto-filled)'),
@@ -1051,6 +1116,164 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
         ),
       ],
     );
+  }
+
+  /// Inline member suggestions under the name field (no nested search bar).
+  Widget _buildMemberSuggestionsPanel({required String query}) {
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    // Keep ~2–3 rows visible above the soft keyboard on mobile web.
+    final availableAboveKeyboard = keyboardInset > 0
+        ? (screenHeight - keyboardInset) * 0.42
+        : 220.0;
+    final maxHeight = availableAboveKeyboard.clamp(132.0, 220.0);
+
+    return Material(
+      color: Colors.white,
+      borderRadius: AppRadius.mdAll,
+      elevation: 4,
+      shadowColor: Colors.black.withAlpha(30),
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          borderRadius: AppRadius.mdAll,
+          border: Border.all(
+            color: AppColors.primary.withAlpha(90),
+            width: 1.5,
+          ),
+        ),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: Consumer(
+            builder: (context, ref, _) {
+              final employeesAsync = ref.watch(employeesStreamProvider);
+
+              return employeesAsync.when(
+                loading: () => const Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Center(
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                ),
+                error: (e, _) => Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Center(
+                    child: Text(
+                      'Error loading names: $e',
+                      style: const TextStyle(color: AppColors.error, fontSize: 12),
+                    ),
+                  ),
+                ),
+                data: (allEmployees) {
+                  final scopedEmployees = EmployeeLookup.scoped(
+                    employees: allEmployees,
+                    adminId: widget.adminId,
+                    activeOnly: true,
+                  );
+
+                  final q = query.toLowerCase();
+                  final filtered = q.isEmpty
+                      ? scopedEmployees
+                      : scopedEmployees
+                          .where((emp) {
+                            final name = emp.name.toLowerCase();
+                            final phone = emp.phone.toLowerCase();
+                            return name.contains(q) || phone.contains(q);
+                          })
+                          .toList();
+
+                  if (filtered.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Center(
+                        child: Text(
+                          'No matching members found',
+                          style: TextStyle(color: Colors.grey, fontSize: 13),
+                        ),
+                      ),
+                    );
+                  }
+
+                  return ListView.separated(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    itemCount: filtered.length,
+                    separatorBuilder: (context, index) =>
+                        const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                    itemBuilder: (context, index) {
+                      final emp = filtered[index];
+                      return ListTile(
+                        dense: true,
+                        visualDensity: VisualDensity.compact,
+                        leading: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withAlpha(25),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.person_rounded,
+                            size: 16,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        title: Text(
+                          emp.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                        subtitle: emp.phone.isNotEmpty
+                            ? Text(
+                                emp.phone,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF64748B),
+                                ),
+                              )
+                            : null,
+                        trailing: const Icon(
+                          Icons.north_west_rounded,
+                          size: 14,
+                          color: Color(0xFF94A3B8),
+                        ),
+                        onTap: () => _selectMemberFromSuggestions(emp),
+                      );
+                    },
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _selectMemberFromSuggestions(Employee emp) {
+    _nameController.text = emp.name;
+    _phoneController.text = emp.phone;
+    _emailController.text = emp.email;
+
+    final notifier = ref.read(checkInFormProvider.notifier);
+    notifier.setName(emp.name);
+    notifier.setPhone(emp.phone);
+    notifier.setEmail(emp.email);
+    notifier.setAdminId(emp.adminId ?? widget.adminId);
+    notifier.setRecognizedMember(emp.id);
+    notifier.clearPhoto();
+
+    setState(() {
+      _manuallySelectedMember = emp;
+      _showMemberSuggestions = false;
+    });
+    _memberNameFocusNode.unfocus();
   }
 
   // ==========================================

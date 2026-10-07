@@ -24,6 +24,8 @@ import '../../../employee/domain/employee_lookup.dart';
 import '../../../employee/domain/entities/employee.dart';
 import '../../../employee/presentation/providers/employee_providers.dart';
 import '../providers/admin_dashboard_provider.dart';
+import '../providers/attendance_overview_provider.dart';
+import '../widgets/searchable_thursday_date_dialog.dart';
 
 Widget _buildAttendanceRecordAvatar({
   required CheckInSubmission record,
@@ -1240,15 +1242,14 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     AdminDashboardFilterState filterState,
   ) {
     final activeThursday = _getActiveThursday(now);
-    final isThursday = now.weekday == DateTime.thursday;
-    final String dateSubtitle;
-    if (isThursday) {
-      dateSubtitle =
-          'Live attendance for today, ${DateFormat('EEEE, d MMM yyyy').format(now)}.';
-    } else {
-      final activeDateStr = DateFormat('EEEE, d MMM yyyy').format(activeThursday);
-      dateSubtitle = 'Attendance records for $activeDateStr.';
-    }
+    final viewingDate = filterState.selectedDate ?? activeThursday;
+    final viewingDateStr =
+        DateFormat('EEEE, d MMM yyyy').format(viewingDate);
+    final isLiveToday = now.weekday == DateTime.thursday &&
+        filterState.selectedDate == null;
+    final dateSubtitle = isLiveToday
+        ? 'Live attendance for today, $viewingDateStr.'
+        : 'Attendance records for $viewingDateStr.';
 
     return AppPageHeader(
       title: 'Daily Attendance',
@@ -1258,6 +1259,91 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       actions: const [
         CheckInRestrictionsToggle(),
       ],
+    );
+  }
+
+  Widget _buildSessionDateDropdown(
+    BuildContext context,
+    ThemeData theme,
+    bool isDark,
+    AdminDashboardFilterState filterState,
+    DateTime now,
+  ) {
+    final allThursdays = ref.watch(allThursdayDatesProvider);
+    final activeThursday = _getActiveThursday(now);
+    final viewingDate = filterState.selectedDate ?? activeThursday;
+    final isCustom = filterState.selectedDate != null;
+    final displayText = DateFormat('EEE, dd MMM yyyy').format(viewingDate);
+
+    return Builder(
+      builder: (btnContext) {
+        return InkWell(
+          onTap: () {
+            showSearchableThursdayDateDropdown(
+              context: btnContext,
+              isDark: isDark,
+              selectedDate: viewingDate,
+              allThursdays: allThursdays,
+              onDateSelected: (date) {
+                ref.read(adminDashboardFilterProvider.notifier).setSelectedDate(
+                      date == null
+                          ? null
+                          : DateTime(date.year, date.month, date.day),
+                    );
+              },
+            );
+          },
+          borderRadius: AppRadius.mdAll,
+          child: Container(
+            height: 40,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: isCustom
+                  ? AppColors.primary.withAlpha(isDark ? 40 : 20)
+                  : (isDark
+                      ? const Color(0xFF0F172A)
+                      : const Color(0xFFF1F5F9)),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isCustom
+                    ? AppColors.primary.withAlpha(120)
+                    : (isDark
+                        ? const Color(0xFF334155)
+                        : const Color(0xFFCBD5E1)),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.calendar_month_rounded,
+                  size: 16,
+                  color: isCustom
+                      ? AppColors.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  displayText,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: isCustom
+                        ? AppColors.primary
+                        : theme.colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.arrow_drop_down_rounded,
+                  size: 20,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -1524,6 +1610,15 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       },
     );
 
+    final now = DateTime.now();
+    final sessionDateDropdown = _buildSessionDateDropdown(
+      context,
+      theme,
+      isDark,
+      filterState,
+      now,
+    );
+
     final filterChips = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1574,6 +1669,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(child: searchField),
+              const SizedBox(width: 12),
+              sessionDateDropdown,
               const SizedBox(width: 16),
               filterChips,
             ],
@@ -1586,6 +1683,11 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             searchField,
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: sessionDateDropdown,
+            ),
             const SizedBox(height: 10),
             // Horizontally scrollable filter pills with smooth trailing peek / fade shader
             ShaderMask(

@@ -10,6 +10,7 @@
  *   node scripts/manage_auth_admins.js list
  *   node scripts/manage_auth_admins.js delete <email-or-uid>
  *   node scripts/manage_auth_admins.js clean-orphans
+ *   node scripts/manage_auth_admins.js create-superadmin <email> <password> [name]
  */
 
 const path = require('path');
@@ -121,6 +122,74 @@ async function deleteUser(identifier) {
   console.log('\n🎉 Done!\n');
 }
 
+/**
+ * Create or update a Firebase Auth user and Firestore admins/{uid} as Super Admin.
+ * Passwords are CLI args only — never commit them to source.
+ */
+async function createSuperAdmin(emailArg, passwordArg, nameArg) {
+  const email = String(emailArg || '').trim().toLowerCase();
+  const password = String(passwordArg || '');
+  const name = String(nameArg || email.split('@')[0] || 'Super Admin').trim();
+
+  if (!email || !email.includes('@')) {
+    console.error('❌ Valid email is required.');
+    process.exit(1);
+  }
+  if (password.length < 8) {
+    console.error('❌ Password must be at least 8 characters.');
+    process.exit(1);
+  }
+
+  let user;
+  try {
+    user = await auth.getUserByEmail(email);
+    await auth.updateUser(user.uid, {
+      password,
+      displayName: name,
+      disabled: false,
+      emailVerified: true,
+    });
+    console.log(`♻️  Updated existing Auth user: ${email} (${user.uid})`);
+  } catch (err) {
+    if (err.code !== 'auth/user-not-found') {
+      throw err;
+    }
+    user = await auth.createUser({
+      email,
+      password,
+      displayName: name,
+      emailVerified: true,
+      disabled: false,
+    });
+    console.log(`✅ Created Auth user: ${email} (${user.uid})`);
+  }
+
+  const docRef = db.collection('admins').doc(user.uid);
+  const existing = await docRef.get();
+  const payload = {
+    uid: user.uid,
+    email,
+    name,
+    role: 'superadmin',
+    isActive: true,
+    phone: existing.exists ? (existing.data().phone || '') : '',
+    mustResetPassword: false,
+    createdBy: existing.exists
+      ? (existing.data().createdBy || user.uid)
+      : user.uid,
+    assignedLocationIds: existing.exists
+      ? (existing.data().assignedLocationIds || [])
+      : [],
+  };
+  if (!existing.exists) {
+    payload.createdAt = admin.firestore.FieldValue.serverTimestamp();
+  }
+
+  await docRef.set(payload, { merge: true });
+  console.log(`✅ Firestore admins/${user.uid} → role=superadmin, isActive=true`);
+  console.log(`🎉 Super Admin ready: ${email}\n`);
+}
+
 async function cleanOrphans() {
   console.log(`\n🧹 Scanning for orphaned Firebase Auth users...\n`);
   const listResult = await auth.listUsers(1000);
@@ -154,7 +223,7 @@ async function cleanOrphans() {
 }
 
 async function main() {
-  const [cmd, arg] = process.argv.slice(2);
+  const [cmd, arg, arg2, arg3] = process.argv.slice(2);
 
   switch (cmd) {
     case 'list':
@@ -165,6 +234,9 @@ async function main() {
       break;
     case 'clean-orphans':
       await cleanOrphans();
+      break;
+    case 'create-superadmin':
+      await createSuperAdmin(arg, arg2, arg3);
       break;
     default:
       console.log(`
@@ -179,6 +251,9 @@ Commands:
 
   node scripts/manage_auth_admins.js clean-orphans
       Delete all Firebase Auth accounts that have no Firestore admin document
+
+  node scripts/manage_auth_admins.js create-superadmin <email> <password> [name]
+      Create/update Auth user + Firestore Super Admin (password via CLI only)
 `);
       break;
   }

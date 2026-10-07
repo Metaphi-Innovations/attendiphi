@@ -99,6 +99,12 @@ class SubmitCheckIn {
     // 4. Strict Thursday-Only + QR session date (when restrictions ON)
     final now = nowProvider != null ? nowProvider!() : DateTime.now();
 
+    final parsedSessionDate = () {
+      final raw = sessionDateStr?.trim();
+      if (raw == null || raw.isEmpty) return null;
+      return DateTime.tryParse(raw);
+    }();
+
     if (restrictionsEnabled) {
       if (now.weekday != DateTime.thursday) {
         throw const CheckInSubmissionFailedException(
@@ -107,24 +113,34 @@ class SubmitCheckIn {
         );
       }
 
-      if (sessionDateStr != null && sessionDateStr.trim().isNotEmpty) {
-        final parsed = DateTime.tryParse(sessionDateStr.trim());
-        if (parsed != null) {
-          final isSameDate = parsed.year == now.year &&
-              parsed.month == now.month &&
-              parsed.day == now.day;
-          if (!isSameDate) {
-            throw const CheckInSubmissionFailedException(
-              userMessage: 'This check-in QR session is not valid for today.',
-              technicalMessage:
-                  'Check-in rejected: QR session date does not match today',
-            );
-          }
+      if (parsedSessionDate != null) {
+        final isSameDate = parsedSessionDate.year == now.year &&
+            parsedSessionDate.month == now.month &&
+            parsedSessionDate.day == now.day;
+        if (!isSameDate) {
+          throw const CheckInSubmissionFailedException(
+            userMessage: 'This check-in QR session is not valid for today.',
+            technicalMessage:
+                'Check-in rejected: QR session date does not match today',
+          );
         }
       }
     }
 
-    final submissionTimestamp = now;
+    // Attribute attendance to the QR session calendar day (so Daily Attendance /
+    // Overview show the check-in under that session when restrictions are OFF).
+    // Keep wall-clock time from "now" for ordering within the day.
+    final submissionTimestamp = parsedSessionDate != null
+        ? DateTime(
+            parsedSessionDate.year,
+            parsedSessionDate.month,
+            parsedSessionDate.day,
+            now.hour,
+            now.minute,
+            now.second,
+            now.millisecond,
+          )
+        : now;
 
     final docId = _uuid.v4();
 

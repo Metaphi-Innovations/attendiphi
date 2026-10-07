@@ -161,11 +161,12 @@ void main() {
       ).called(1);
     });
 
-    test('OFF allows mismatched QR session date', () async {
+    test('OFF allows mismatched QR session date and stamps that session day',
+        () async {
       final usecase = SubmitCheckIn(
         mockRepository,
         notificationDispatchService: mockDispatchService,
-        nowProvider: () => DateTime(2026, 9, 24, 10, 0),
+        nowProvider: () => DateTime(2026, 9, 24, 10, 30),
       );
 
       final submission = await usecase(
@@ -179,13 +180,42 @@ void main() {
         restrictionsEnabled: false,
       );
 
-      expect(submission.timestamp.day, 24);
+      // Attendance is attributed to the QR session date (not "today").
+      expect(submission.timestamp.year, 2026);
+      expect(submission.timestamp.month, 9);
+      expect(submission.timestamp.day, 3);
+      expect(submission.timestamp.hour, 10);
+      expect(submission.timestamp.minute, 30);
       verifyNever(
         () => mockRepository.claimDeviceSessionLock(
           deviceId: any(named: 'deviceId'),
           sessionDateYmd: any(named: 'sessionDateYmd'),
         ),
       );
+    });
+
+    test('OFF Oct 8 QR stamps Oct 8 even when today is earlier', () async {
+      final usecase = SubmitCheckIn(
+        mockRepository,
+        notificationDispatchService: mockDispatchService,
+        nowProvider: () => DateTime(2026, 10, 7, 14, 5), // Wednesday
+      );
+
+      final submission = await usecase(
+        name: 'Rahul Sharma',
+        phone: '9876543210',
+        type: CheckInType.member,
+        location: testLocation,
+        proximityResult: testProximity,
+        sessionDateStr: '2026-10-08',
+        deviceId: 'device-b',
+        restrictionsEnabled: false,
+      );
+
+      expect(submission.timestamp.year, 2026);
+      expect(submission.timestamp.month, 10);
+      expect(submission.timestamp.day, 8);
+      expect(submission.timestamp.hour, 14);
     });
   });
 }

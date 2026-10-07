@@ -115,6 +115,8 @@ void main() {
       expect(find.text('Start Camera'), findsNothing);
       expect(find.text('Verify Face'), findsNothing);
       expect(find.text('Select Member Name *'), findsOneWidget);
+      expect(find.text('Type to search your name'), findsOneWidget);
+      expect(find.text('Search registered member...'), findsNothing);
       expect(find.text('Phone Number * (Auto-filled)'), findsOneWidget);
       expect(find.widgetWithText(AppButton, 'Check-In'), findsOneWidget);
 
@@ -126,7 +128,8 @@ void main() {
       expect(disabledButton.onPressed, isNull);
     });
 
-    testWidgets('selecting a member autofills fields and enables Check-In', (tester) async {
+    testWidgets('typing in name field filters members and selecting enables Check-In',
+        (tester) async {
       tester.view.physicalSize = const Size(1000, 1600);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() {
@@ -138,13 +141,23 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      // Open searchable member dropdown via the arrow button.
-      await tester.tap(find.byIcon(Icons.arrow_drop_down_rounded));
+      // No nested search field — typeahead is the name field itself.
+      expect(find.text('Search registered member...'), findsNothing);
+      expect(find.text('Type to search your name'), findsOneWidget);
+
+      // Type into the name field to filter suggestions.
+      await tester.enterText(find.byType(TextFormField).first, 'Rohan');
+      await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
+      expect(find.text('Search registered member...'), findsNothing);
       expect(find.text('Rohan Mehta'), findsOneWidget);
+      expect(find.text('Pooja Nair'), findsNothing);
+
       await tester.tap(find.text('Rohan Mehta'));
-      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pump();
+      // Allow suggestion-close delay + unfocus.
+      await tester.pump(const Duration(milliseconds: 250));
 
       expect(find.text('Rohan Mehta'), findsOneWidget);
       expect(find.text('9876543210'), findsOneWidget);

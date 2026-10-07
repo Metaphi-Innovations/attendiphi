@@ -553,7 +553,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       const Text(
-                                        'Member Face Photo',
+                                        'Member Face Photo (Optional)',
                                         style: TextStyle(
                                           fontSize: 13,
                                           fontWeight: FontWeight.w700,
@@ -561,7 +561,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                       ),
                                       const SizedBox(height: 4),
                                       const Text(
-                                        'Required for instant face recognition check-in',
+                                        'Optional — used only if you enroll face recognition later',
                                         style: TextStyle(
                                           fontSize: 11,
                                           color: Color(0xFF64748B),
@@ -747,13 +747,24 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                       ),
                       const SizedBox(height: 18),
 
-                      // Name Field
-                      Text(
-                        'Name',
-                        style: TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w600,
-                          color: labelColor,
+                      // Name Field (required)
+                      Text.rich(
+                        TextSpan(
+                          text: 'Name',
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                            color: labelColor,
+                          ),
+                          children: const [
+                            TextSpan(
+                              text: ' *',
+                              style: TextStyle(
+                                color: AppColors.error,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(height: 7),
@@ -787,13 +798,24 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // Phone Number Field
-                      Text(
-                        'Phone Number',
-                        style: TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w600,
-                          color: labelColor,
+                      // Phone Number Field (required)
+                      Text.rich(
+                        TextSpan(
+                          text: 'Phone Number',
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                            color: labelColor,
+                          ),
+                          children: const [
+                            TextSpan(
+                              text: ' *',
+                              style: TextStyle(
+                                color: AppColors.error,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(height: 7),
@@ -837,9 +859,9 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // Email Field
+                      // Email Field (optional)
                       Text(
-                        'Email',
+                        'Email (Optional)',
                         style: TextStyle(
                           fontSize: 13.5,
                           fontWeight: FontWeight.w600,
@@ -866,9 +888,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                         ),
                         validator: (val) {
                           final trimmed = val?.trim() ?? '';
-                          if (trimmed.isEmpty) {
-                            return 'Please enter email address';
-                          }
+                          if (trimmed.isEmpty) return null;
                           final emailPattern = RegExp(
                             r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
                           );

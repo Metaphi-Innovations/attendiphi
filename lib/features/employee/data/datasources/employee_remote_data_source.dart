@@ -108,6 +108,16 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
           technicalMessage: 'Validation failed: empty employee name',
         );
       }
+      final cleanPhone = phone.trim().replaceAll(RegExp(r'\D'), '');
+      final phoneDigits = (cleanPhone.startsWith('91') && cleanPhone.length == 12)
+          ? cleanPhone.substring(2)
+          : cleanPhone;
+      if (phoneDigits.length != 10) {
+        throw const ServerException(
+          userMessage: 'Please enter a valid 10-digit phone number',
+          technicalMessage: 'Validation failed: empty or invalid employee phone',
+        );
+      }
 
       final docRef = _collection.doc();
       final now = DateTime.now().toIso8601String();
@@ -115,7 +125,7 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
         'id': docRef.id,
         'name': cleanName,
         'email': email.trim(),
-        'phone': phone.trim(),
+        'phone': phoneDigits,
         'role': role.trim().isEmpty ? 'Member' : role.trim(),
         'designation': designation.trim(),
         'isActive': isActive,
@@ -172,9 +182,19 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
           technicalMessage: 'Validation failed: empty employee name',
         );
       }
+      final cleanPhone = phone.trim().replaceAll(RegExp(r'\D'), '');
+      final phoneDigits = (cleanPhone.startsWith('91') && cleanPhone.length == 12)
+          ? cleanPhone.substring(2)
+          : cleanPhone;
+      if (phoneDigits.length != 10) {
+        throw const ServerException(
+          userMessage: 'Please enter a valid 10-digit phone number',
+          technicalMessage: 'Validation failed: empty or invalid employee phone',
+        );
+      }
 
       String previousName = cleanName;
-      String previousPhone = phone.trim();
+      String previousPhone = phoneDigits;
       try {
         final existing = await _collection.doc(id).get();
         final existingData = existing.data();
@@ -187,7 +207,7 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
       final data = <String, dynamic>{
         'name': cleanName,
         'email': email.trim(),
-        'phone': phone.trim(),
+        'phone': phoneDigits,
         'role': role.trim().isEmpty ? 'Member' : role.trim(),
         'designation': designation.trim(),
         'isActive': isActive,
