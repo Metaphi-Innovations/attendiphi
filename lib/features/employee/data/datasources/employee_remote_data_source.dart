@@ -78,8 +78,8 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
       if (embedding != null) 'faceEmbedding': Employee.firestoreVector(embedding),
       if (faceTemplates != null)
         'faceTemplates': Employee.faceTemplatesToFirestore(faceTemplates),
-      if (faceModel != null) 'faceModel': faceModel,
-      if (faceModelVersion != null) 'faceModelVersion': faceModelVersion,
+      'faceModel': ?faceModel,
+      'faceModelVersion': ?faceModelVersion,
       'updatedAt': DateTime.now().toIso8601String(),
     }, SetOptions(merge: true));
   }
@@ -141,14 +141,14 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
         const GetOptions(source: Source.server),
       );
       if (!snap.exists || snap.data() == null) return null;
-      return _employeeWithOptionalTemplates(
+      return await _employeeWithOptionalTemplates(
         _publicEmployeeMap(snap.data()!),
         docId: snap.id,
       );
     } on FirebaseException {
       final snap = await _collection.doc(trimmed).get();
       if (!snap.exists || snap.data() == null) return null;
-      return _employeeWithOptionalTemplates(
+      return await _employeeWithOptionalTemplates(
         _publicEmployeeMap(snap.data()!),
         docId: snap.id,
       );
