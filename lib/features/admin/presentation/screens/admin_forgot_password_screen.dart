@@ -155,7 +155,7 @@ class _AdminForgotPasswordScreenState
                   label: 'Email',
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
-                  enabled: !_isSending,
+                  enabled: !_isSending,  
                   prefixIcon: const Icon(Icons.email_outlined),
                   validator: Validators.validateEmail,
                 ),
