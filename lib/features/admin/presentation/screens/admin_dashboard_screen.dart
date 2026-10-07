@@ -16,6 +16,7 @@ import '../../../../core/widgets/app_empty_view.dart';
 import '../../../../core/widgets/app_page_header.dart';
 import '../../../../core/widgets/app_shimmer.dart';
 import '../../../../core/widgets/member_photo.dart';
+import '../../../app_config/presentation/providers/check_in_restrictions_provider.dart';
 import '../../../app_config/presentation/widgets/check_in_restrictions_toggle.dart';
 import '../../../checkin/domain/entities/check_in_submission.dart';
 import '../../../checkin/domain/entities/check_in_type.dart';
@@ -140,24 +141,9 @@ String _formatTime(DateTime? dt) {
   return '$hour:$minute $period';
 }
 
-/// Formats GPS distance for list tiles.
-/// Shows 'On-site' with clean status representation (no redundant checkmark icon inside string).
-String _formatGpsDistance(CheckInSubmission record) {
-  final latPrefix = record.userLatitude.toStringAsFixed(2);
-  final lonPrefix = record.userLongitude.toStringAsFixed(2);
-  final isSameCoord =
-      (latPrefix == '18.99' && lonPrefix == '72.82') ||
-      (latPrefix == '19.08' && lonPrefix == '72.91');
-
-  if (record.distanceMeters == 0 ||
-      (isSameCoord && record.distanceMeters <= 150)) {
-    return 'On-site';
-  }
-  if (record.distanceMeters >= 1000) {
-    return '${(record.distanceMeters / 1000).toStringAsFixed(1)}km away';
-  }
-  return '${record.distanceMeters.round()}m away';
-}
+/// GPS status label for Daily Attendance list tiles.
+/// Always "On-Site" — never show km/m distance.
+String _formatGpsDistance(CheckInSubmission _) => 'On-Site';
 
 /// Formats phone number for clean reference viewing (e.g. 83560 11246).
 String _formatPhoneNumber(String phone) {
@@ -171,23 +157,9 @@ String _formatPhoneNumber(String phone) {
   return phone;
 }
 
-/// Formats GPS distance for detail modal.
-String _formatGpsDistanceDetail(CheckInSubmission record) {
-  final latPrefix = record.userLatitude.toStringAsFixed(2);
-  final lonPrefix = record.userLongitude.toStringAsFixed(2);
-  final isSameCoord =
-      (latPrefix == '18.99' && lonPrefix == '72.82') ||
-      (latPrefix == '19.08' && lonPrefix == '72.91');
-
-  if (record.distanceMeters == 0 ||
-      (isSameCoord && record.distanceMeters <= 150)) {
-    return '✓ On-site (Same Location)';
-  }
-  if (record.distanceMeters >= 1000) {
-    return '${(record.distanceMeters / 1000).toStringAsFixed(1)}km (±${record.gpsAccuracy.round()}m)';
-  }
-  return '${record.distanceMeters.round()}m (±${record.gpsAccuracy.round()}m)';
-}
+/// GPS distance label for Daily Attendance detail modal.
+/// Always "On-Site" — never show km/m distance.
+String _formatGpsDistanceDetail(CheckInSubmission _) => 'On-Site';
 
 class AdminDashboardScreen extends ConsumerStatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -1223,14 +1195,11 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     );
   }
 
-  DateTime _getActiveThursday(DateTime n) {
-    if (n.weekday == DateTime.thursday) {
-      return DateTime(n.year, n.month, n.day);
-    }
-    int daysSinceThursday = (n.weekday - DateTime.thursday) % 7;
-    if (daysSinceThursday <= 0) daysSinceThursday += 7;
-    return DateTime(n.year, n.month, n.day)
-        .subtract(Duration(days: daysSinceThursday));
+  DateTime _defaultSessionDate(DateTime now) {
+    return defaultAttendanceSessionDate(
+      now,
+      restrictionsEnabled: ref.watch(restrictionsEnabledProvider),
+    );
   }
 
   Widget _buildHeader(
@@ -1241,8 +1210,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     DateTime now,
     AdminDashboardFilterState filterState,
   ) {
-    final activeThursday = _getActiveThursday(now);
-    final viewingDate = filterState.selectedDate ?? activeThursday;
+    final viewingDate =
+        filterState.selectedDate ?? _defaultSessionDate(now);
     final viewingDateStr =
         DateFormat('EEEE, d MMM yyyy').format(viewingDate);
     final isLiveToday = now.weekday == DateTime.thursday &&
@@ -1270,8 +1239,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     DateTime now,
   ) {
     final allThursdays = ref.watch(allThursdayDatesProvider);
-    final activeThursday = _getActiveThursday(now);
-    final viewingDate = filterState.selectedDate ?? activeThursday;
+    final viewingDate =
+        filterState.selectedDate ?? _defaultSessionDate(now);
     final isCustom = filterState.selectedDate != null;
     final displayText = DateFormat('EEE, dd MMM yyyy').format(viewingDate);
 
@@ -1348,15 +1317,24 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   }
 
   Widget _buildThursdayNotice(DateTime now) {
+    final restrictionsEnabled = ref.watch(restrictionsEnabledProvider);
+    // When restrictions are OFF, check-in is allowed any day for the upcoming
+    // session — do not show the Thursday-only banner.
+    if (!restrictionsEnabled) return const SizedBox.shrink();
+
     final isThursday = now.weekday == DateTime.thursday;
     if (isThursday) return const SizedBox.shrink();
 
-    final activeThursday = _getActiveThursday(now);
+    final activeThursday = defaultAttendanceSessionDate(
+      now,
+      restrictionsEnabled: true,
+    );
     final activeDateStr = DateFormat('EEEE, d MMM yyyy').format(activeThursday);
 
-    int daysUntilThursday = (DateTime.thursday - now.weekday) % 7;
-    if (daysUntilThursday <= 0) daysUntilThursday += 7;
-    final nextThursday = now.add(Duration(days: daysUntilThursday));
+    final nextThursday = defaultAttendanceSessionDate(
+      now,
+      restrictionsEnabled: false,
+    );
     final nextDateStr = DateFormat('EEEE, d MMM yyyy').format(nextThursday);
 
     return Container(

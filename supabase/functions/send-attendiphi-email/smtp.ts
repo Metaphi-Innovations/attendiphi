@@ -9,21 +9,27 @@
  * Production Gmail (set via `supabase secrets set`, not in git):
  *   SMTP_HOST=smtp.gmail.com
  *   SMTP_PORT=465
- *   SMTP_USERNAME=omkaranarse.metaphi@gmail.com
- *   SMTP_FROM_EMAIL=omkaranarse.metaphi@gmail.com
- *   SMTP_FROM_NAME=Attendephi by Metaphi
+ *   SMTP_USERNAME=attendiphi.metaphi@gmail.com
+ *   SMTP_FROM_EMAIL=attendiphi.metaphi@gmail.com
+ *   SMTP_FROM_NAME=Attendiphi by Metaphi
  *   SMTP_PASSWORD=<Gmail App Password only>
  *
  * Deno Deploy: prefer 465 (TLS). Ports 25/587 are often blocked.
  */
 
 import { SMTPClient } from "denomailer";
+import { ATTENDIPHI_LOGO_PNG_BASE64 } from "./logo_png_base64.ts";
+
+/** Content-ID used in HTML as cid:attendiphi-logo (inline, not remote URL). */
+export const ATTENDIPHI_LOGO_CID = "attendiphi-logo";
 
 export interface SmtpMail {
   to: string;
   subject: string;
   text: string;
   html: string;
+  /** When true, embeds the Attendiphi logo for cid:attendiphi-logo in HTML. */
+  attachLogo?: boolean;
 }
 
 export interface SmtpSendResult {
@@ -70,7 +76,7 @@ export function readSmtpConfig(): SmtpConfig {
     .trim();
   const fromEmail = Deno.env.get("SMTP_FROM_EMAIL")?.trim() || "";
   const fromName =
-    Deno.env.get("SMTP_FROM_NAME")?.trim() || "Attendephi by Metaphi";
+    Deno.env.get("SMTP_FROM_NAME")?.trim() || "Attendiphi by Metaphi";
   const secureRaw = Deno.env.get("SMTP_SECURE")?.trim().toLowerCase();
 
   const missing: string[] = [];
@@ -99,7 +105,7 @@ export function readSmtpConfig(): SmtpConfig {
 export function smtpFromHeader(config: SmtpConfig): string {
   const name =
     config.fromName.replaceAll(/[<>\r\n]/g, "").trim() ||
-    "Attendephi by Metaphi";
+    "Attendiphi by Metaphi";
   return `${name} <${config.fromEmail}>`;
 }
 
@@ -171,6 +177,19 @@ export async function sendSmtpMail(mail: SmtpMail): Promise<SmtpSendResult> {
         subject: mail.subject,
         content: mail.text,
         html: mail.html,
+        // Inline CID so Gmail shows the logo without fetching a remote URL
+        // (remote images often break in Spam / behind image proxy).
+        attachments: mail.attachLogo === false
+          ? undefined
+          : [
+            {
+              contentType: "image/png",
+              filename: "attendiphi_logo.png",
+              contentID: ATTENDIPHI_LOGO_CID,
+              encoding: "base64",
+              content: ATTENDIPHI_LOGO_PNG_BASE64,
+            },
+          ],
       }),
       SMTP_TIMEOUT_MS,
     );

@@ -97,7 +97,7 @@ void main() {
   const admin = AdminUser(
     id: 'adm-new',
     name: 'test',
-    email: 'omkaranarse.metaphi@gmail.com',
+    email: 'attendiphi.metaphi@gmail.com',
     phone: '9876543213',
     role: AdminRole.admin,
   );

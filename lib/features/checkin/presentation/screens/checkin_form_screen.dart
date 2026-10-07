@@ -32,6 +32,7 @@ import '../../domain/entities/check_in_submission.dart';
 import '../../domain/entities/check_in_type.dart';
 import '../providers/checkin_form_provider.dart';
 import '../providers/checkin_form_state.dart';
+import '../providers/checkin_providers.dart';
 import 'checkin_result_screen.dart';
 
 /// Clean, light-themed attendance check-in form supporting Member, Substitute, and Visitor workflows.
@@ -96,6 +97,41 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   DateTime get _now =>
       widget.nowProvider != null ? widget.nowProvider!() : DateTime.now();
 
+  /// Calendar day used to attribute check-ins (QR session date, else today).
+  /// Next Thursday's QR uses a new date, so the dropdown resets automatically.
+  DateTime get _sessionDayForDropdown {
+    final parsed = _parsedSessionDate;
+    if (parsed != null) {
+      return DateTime(parsed.year, parsed.month, parsed.day);
+    }
+    final n = _now;
+    return DateTime(n.year, n.month, n.day);
+  }
+
+  bool _isSameSessionDay(DateTime timestamp, DateTime sessionDay) {
+    final local = timestamp.toLocal();
+    return local.year == sessionDay.year &&
+        local.month == sessionDay.month &&
+        local.day == sessionDay.day;
+  }
+
+  /// Members who already have attendance for [sessionDay] (member / substitute /
+  /// absent). Visitors do not remove a member from the dropdown.
+  Set<String> _checkedInMemberIdsForSession({
+    required List<Employee> employees,
+    required List<CheckInSubmission> checkIns,
+    required DateTime sessionDay,
+  }) {
+    final ids = <String>{};
+    for (final sub in checkIns) {
+      if (sub.type.isVisitor) continue;
+      if (!_isSameSessionDay(sub.timestamp, sessionDay)) continue;
+      final matched = EmployeeLookup.forCheckIn(employees, sub);
+      if (matched != null) ids.add(matched.id);
+    }
+    return ids;
+  }
+
   bool get _isTodayThursday => _now.weekday == DateTime.thursday;
 
   bool get _isSessionExpired {
@@ -122,20 +158,27 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   late final TextEditingController _companyController;
   late final TextEditingController _categoryController;
 
-  // Search controllers for Substitute / Visitor dropdowns
-  late final TextEditingController _substituteForSearchController;
-  late final TextEditingController _invitedBySearchController;
+  /// Typeahead controllers for Substitute-for / Invited-by member pickers.
+  late final TextEditingController _substituteForController;
+  late final TextEditingController _invitedByController;
 
   final FocusNode _memberNameFocusNode = FocusNode();
+  final FocusNode _substituteForFocusNode = FocusNode();
+  final FocusNode _invitedByFocusNode = FocusNode();
   final ScrollController _formScrollController = ScrollController();
   final GlobalKey _memberNameFieldKey = GlobalKey();
+  final GlobalKey _substituteForFieldKey = GlobalKey();
+  final GlobalKey _invitedByFieldKey = GlobalKey();
 
   bool _showMemberSuggestions = false;
-  bool _isSubstituteForDropdownOpen = false;
-  bool _isInvitedByDropdownOpen = false;
+  bool _showSubstituteForSuggestions = false;
+  bool _showInvitedBySuggestions = false;
 
-  String _substituteForSearchQuery = '';
-  String _invitedBySearchQuery = '';
+  /// True while the user is interacting with a suggestions list so focus
+  /// loss (common on mobile web scroll) does not dismiss the dropdown.
+  bool _memberSuggestionsPointerActive = false;
+  bool _substituteForPointerActive = false;
+  bool _invitedByPointerActive = false;
 
   String? _selectedSubstituteForMember;
   String? _selectedInvitedByMember;
@@ -147,6 +190,11 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   /// Member selected from the typeahead list (manual check-in only).
   Employee? _manuallySelectedMember;
 
+  bool get _anyMemberTypeaheadOpen =>
+      _showMemberSuggestions ||
+      _showSubstituteForSuggestions ||
+      _showInvitedBySuggestions;
+
   void _clearLocalIdentity() {
     _manuallySelectedMember = null;
     _showMemberSuggestions = false;
@@ -155,23 +203,86 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     _emailController.clear();
   }
 
-  void _onMemberNameFocusChanged() {
-    if (_memberNameFocusNode.hasFocus) {
-      setState(() => _showMemberSuggestions = true);
-      _scrollMemberFieldIntoView();
-    } else {
-      // Delay close so a suggestion tap can register first.
-      Future<void>.delayed(const Duration(milliseconds: 180), () {
-        if (!mounted || _memberNameFocusNode.hasFocus) return;
-        setState(() => _showMemberSuggestions = false);
-      });
+  void _onMemberNameFocusChanged() => _onTypeaheadFocusChanged(
+        focusNode: _memberNameFocusNode,
+        fieldKey: _memberNameFieldKey,
+        isPointerActive: () => _memberSuggestionsPointerActive,
+        setShowSuggestions: (v) => _showMemberSuggestions = v,
+      );
+
+  void _onSubstituteForFocusChanged() => _onTypeaheadFocusChanged(
+        focusNode: _substituteForFocusNode,
+        fieldKey: _substituteForFieldKey,
+        isPointerActive: () => _substituteForPointerActive,
+        setShowSuggestions: (v) => _showSubstituteForSuggestions = v,
+      );
+
+  void _onInvitedByFocusChanged() => _onTypeaheadFocusChanged(
+        focusNode: _invitedByFocusNode,
+        fieldKey: _invitedByFieldKey,
+        isPointerActive: () => _invitedByPointerActive,
+        setShowSuggestions: (v) => _showInvitedBySuggestions = v,
+      );
+
+  void _onTypeaheadFocusChanged({
+    required FocusNode focusNode,
+    required GlobalKey fieldKey,
+    required bool Function() isPointerActive,
+    required void Function(bool) setShowSuggestions,
+  }) {
+    if (focusNode.hasFocus) {
+      setState(() => setShowSuggestions(true));
+      _scrollFieldIntoView(fieldKey);
+      return;
     }
+    Future<void>.delayed(const Duration(milliseconds: 220), () {
+      if (!mounted || focusNode.hasFocus) return;
+      if (isPointerActive()) return;
+      setState(() => setShowSuggestions(false));
+      _formKey.currentState?.validate();
+    });
   }
 
-  void _scrollMemberFieldIntoView() {
+  void _closeTypeahead({
+    required FocusNode focusNode,
+    required void Function(bool) setShowSuggestions,
+    required void Function(bool) setPointerActive,
+    required bool showSuggestions,
+  }) {
+    setPointerActive(false);
+    if (!showSuggestions && !focusNode.hasFocus) return;
+    setState(() => setShowSuggestions(false));
+    focusNode.unfocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _formKey.currentState?.validate();
+    });
+  }
+
+  void _closeMemberSuggestions() => _closeTypeahead(
+        focusNode: _memberNameFocusNode,
+        setShowSuggestions: (v) => _showMemberSuggestions = v,
+        setPointerActive: (v) => _memberSuggestionsPointerActive = v,
+        showSuggestions: _showMemberSuggestions,
+      );
+
+  void _closeSubstituteForSuggestions() => _closeTypeahead(
+        focusNode: _substituteForFocusNode,
+        setShowSuggestions: (v) => _showSubstituteForSuggestions = v,
+        setPointerActive: (v) => _substituteForPointerActive = v,
+        showSuggestions: _showSubstituteForSuggestions,
+      );
+
+  void _closeInvitedBySuggestions() => _closeTypeahead(
+        focusNode: _invitedByFocusNode,
+        setShowSuggestions: (v) => _showInvitedBySuggestions = v,
+        setPointerActive: (v) => _invitedByPointerActive = v,
+        showSuggestions: _showInvitedBySuggestions,
+      );
+
+  void _scrollFieldIntoView(GlobalKey fieldKey) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final ctx = _memberNameFieldKey.currentContext;
+      final ctx = fieldKey.currentContext;
       if (ctx != null) {
         Scrollable.ensureVisible(
           ctx,
@@ -205,9 +316,11 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     _companyController = TextEditingController();
     _categoryController = TextEditingController();
 
-    _substituteForSearchController = TextEditingController();
-    _invitedBySearchController = TextEditingController();
+    _substituteForController = TextEditingController();
+    _invitedByController = TextEditingController();
     _memberNameFocusNode.addListener(_onMemberNameFocusChanged);
+    _substituteForFocusNode.addListener(_onSubstituteForFocusChanged);
+    _invitedByFocusNode.addListener(_onInvitedByFocusChanged);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -295,15 +408,19 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   @override
   void dispose() {
     _memberNameFocusNode.removeListener(_onMemberNameFocusChanged);
+    _substituteForFocusNode.removeListener(_onSubstituteForFocusChanged);
+    _invitedByFocusNode.removeListener(_onInvitedByFocusChanged);
     _memberNameFocusNode.dispose();
+    _substituteForFocusNode.dispose();
+    _invitedByFocusNode.dispose();
     _formScrollController.dispose();
     _nameController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
     _companyController.dispose();
     _categoryController.dispose();
-    _substituteForSearchController.dispose();
-    _invitedBySearchController.dispose();
+    _substituteForController.dispose();
+    _invitedByController.dispose();
     super.dispose();
   }
 
@@ -314,19 +431,19 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     _emailController.clear();
     _companyController.clear();
     _categoryController.clear();
-    _substituteForSearchController.clear();
-    _invitedBySearchController.clear();
+    _substituteForController.clear();
+    _invitedByController.clear();
     _memberNameFocusNode.unfocus();
+    _substituteForFocusNode.unfocus();
+    _invitedByFocusNode.unfocus();
 
     // 2. Clear state variables
     setState(() {
       _selectedSubstituteForMember = null;
       _selectedInvitedByMember = null;
-      _substituteForSearchQuery = '';
-      _invitedBySearchQuery = '';
       _showMemberSuggestions = false;
-      _isSubstituteForDropdownOpen = false;
-      _isInvitedByDropdownOpen = false;
+      _showSubstituteForSuggestions = false;
+      _showInvitedBySuggestions = false;
       _manuallySelectedMember = null;
     });
 
@@ -798,8 +915,11 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
               Expanded(
                 child: SingleChildScrollView(
                   controller: _formScrollController,
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  // Keep the keyboard (and suggestions) open while scrolling
+                  // the member list on mobile web.
+                  keyboardDismissBehavior: _anyMemberTypeaheadOpen
+                      ? ScrollViewKeyboardDismissBehavior.manual
+                      : ScrollViewKeyboardDismissBehavior.onDrag,
                   padding: EdgeInsets.fromLTRB(
                     hPadding,
                     isCompact ? 16 : 24,
@@ -807,7 +927,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                     // Extra space so suggestions can scroll above the keyboard.
                     (isCompact ? 16 : 24) +
                         MediaQuery.viewInsetsOf(context).bottom +
-                        (_showMemberSuggestions ? 160 : 0),
+                        (_anyMemberTypeaheadOpen ? 160 : 0),
                   ),
                   child: Align(
                     alignment: Alignment.topCenter,
@@ -817,6 +937,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                       ),
                       child: Form(
                         key: _formKey,
+                        autovalidateMode: AutovalidateMode.onUserInteraction,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
@@ -887,7 +1008,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
 
               // 4. Sticky Submit Button — hide while Member suggestions are open
               // so the keyboard + list stay usable on mobile web.
-              if (currentType != null && !_showMemberSuggestions) ...[
+              if (currentType != null && !_anyMemberTypeaheadOpen) ...[
               Container(
                 width: double.infinity,
                 padding: EdgeInsets.symmetric(
@@ -1005,102 +1126,358 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
 
 
   // ==========================================
+  // Shared member typeahead (Member / Substitute-for / Invited-by)
+  // ==========================================
+  Widget _buildMemberTypeaheadField({
+    required String label,
+    required String hint,
+    required TextEditingController controller,
+    required FocusNode focusNode,
+    required GlobalKey fieldKey,
+    required bool showSuggestions,
+    required VoidCallback onCloseSuggestions,
+    required void Function(bool show) setShowSuggestions,
+    required void Function(bool active) setPointerActive,
+    required bool hasValidSelection,
+    required bool excludeSessionCheckedIn,
+    required ValueChanged<Employee> onSelectEmployee,
+    required VoidCallback onClearSelection,
+    required ValueChanged<String> onQueryChanged,
+    IconData prefixIcon = Icons.person_outline_rounded,
+  }) {
+    final query = controller.text.trim();
+    final hasQuery = query.isNotEmpty;
+
+    return TapRegion(
+      onTapOutside: (_) {
+        if (showSuggestions) onCloseSuggestions();
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildFieldLabel(label, isRequired: true),
+          KeyedSubtree(
+            key: fieldKey,
+            child: AppTextField(
+              hint: hint,
+              showFloatingLabel: false,
+              controller: controller,
+              focusNode: focusNode,
+              textCapitalization: TextCapitalization.words,
+              textInputAction: TextInputAction.search,
+              prefixIcon: Icon(prefixIcon),
+              suffixIcon: hasQuery
+                  ? IconButton(
+                      icon: const Icon(Icons.clear_rounded, size: 22),
+                      tooltip: 'Clear',
+                      onPressed: () {
+                        controller.clear();
+                        onClearSelection();
+                        setState(() => setShowSuggestions(true));
+                        focusNode.requestFocus();
+                        _scrollFieldIntoView(fieldKey);
+                      },
+                    )
+                  : IconButton(
+                      icon: Icon(
+                        showSuggestions
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.arrow_drop_down_rounded,
+                        size: 28,
+                        color: showSuggestions
+                            ? AppColors.primary
+                            : const Color(0xFF64748B),
+                      ),
+                      tooltip: showSuggestions ? 'Hide list' : 'Show members',
+                      onPressed: () {
+                        if (showSuggestions) {
+                          onCloseSuggestions();
+                        } else {
+                          focusNode.requestFocus();
+                          setState(() => setShowSuggestions(true));
+                          _scrollFieldIntoView(fieldKey);
+                        }
+                      },
+                    ),
+              onChanged: (val) {
+                setState(() => setShowSuggestions(true));
+                onQueryChanged(val);
+                _scrollFieldIntoView(fieldKey);
+              },
+              autovalidateMode: AutovalidateMode.onUserInteraction,
+              validator: (val) {
+                if (hasValidSelection) return null;
+                if (showSuggestions) return null;
+                final typed = (val ?? '').trim();
+                if (typed.isEmpty) {
+                  return 'Please select a name from the member list';
+                }
+                return 'Please select a valid name from the list';
+              },
+            ),
+          ),
+          if (showSuggestions) ...[
+            const SizedBox(height: 8),
+            _buildMemberSuggestionsPanel(
+              query: query,
+              excludeSessionCheckedIn: excludeSessionCheckedIn,
+              setPointerActive: setPointerActive,
+              onSelectEmployee: onSelectEmployee,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMemberSuggestionsPanel({
+    required String query,
+    required bool excludeSessionCheckedIn,
+    required void Function(bool active) setPointerActive,
+    required ValueChanged<Employee> onSelectEmployee,
+  }) {
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final availableAboveKeyboard = keyboardInset > 0
+        ? (screenHeight - keyboardInset) * 0.48
+        : 280.0;
+    final maxHeight = availableAboveKeyboard.clamp(160.0, 280.0);
+
+    return Listener(
+      onPointerDown: (_) => setPointerActive(true),
+      onPointerUp: (_) {
+        Future<void>.delayed(const Duration(milliseconds: 250), () {
+          if (mounted) setPointerActive(false);
+        });
+      },
+      onPointerCancel: (_) => setPointerActive(false),
+      child: Material(
+        color: Colors.white,
+        borderRadius: AppRadius.mdAll,
+        elevation: 4,
+        shadowColor: Colors.black.withAlpha(30),
+        child: Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            borderRadius: AppRadius.mdAll,
+            border: Border.all(
+              color: AppColors.primary.withAlpha(90),
+              width: 1.5,
+            ),
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxHeight),
+            child: Consumer(
+              builder: (context, ref, _) {
+                final employeesAsync = ref.watch(employeesStreamProvider);
+                final checkInsAsync = ref.watch(liveCheckInsStreamProvider);
+
+                return employeesAsync.when(
+                  loading: () => const Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Center(
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  ),
+                  error: (e, _) => Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Center(
+                      child: Text(
+                        'Error loading names: $e',
+                        style: const TextStyle(
+                          color: AppColors.error,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+                  data: (allEmployees) {
+                    final scopedEmployees = EmployeeLookup.scoped(
+                      employees: allEmployees,
+                      adminId: widget.adminId,
+                      activeOnly: true,
+                    );
+                    final checkIns = checkInsAsync.value ?? const [];
+                    final checkedInIds = excludeSessionCheckedIn
+                        ? _checkedInMemberIdsForSession(
+                            employees: scopedEmployees,
+                            checkIns: checkIns,
+                            sessionDay: _sessionDayForDropdown,
+                          )
+                        : const <String>{};
+                    final availableEmployees = scopedEmployees
+                        .where((emp) => !checkedInIds.contains(emp.id))
+                        .toList();
+
+                    final q = query.toLowerCase();
+                    final filtered = q.isEmpty
+                        ? availableEmployees
+                        : availableEmployees
+                            .where((emp) {
+                              final name = emp.name.toLowerCase();
+                              final phone = emp.phone.toLowerCase();
+                              return name.contains(q) || phone.contains(q);
+                            })
+                            .toList();
+
+                    if (filtered.isEmpty) {
+                      final emptyMessage = excludeSessionCheckedIn &&
+                              availableEmployees.isEmpty
+                          ? 'All members have already checked in for this session'
+                          : 'No matching members found';
+                      return Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Center(
+                          child: Text(
+                            emptyMessage,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+
+                    return NotificationListener<ScrollNotification>(
+                      onNotification: (_) => true,
+                      child: ListView.separated(
+                        primary: false,
+                        shrinkWrap: true,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        itemCount: filtered.length,
+                        separatorBuilder: (context, index) => const Divider(
+                          height: 1,
+                          color: Color(0xFFF1F5F9),
+                        ),
+                        itemBuilder: (context, index) {
+                          final emp = filtered[index];
+                          return ListTile(
+                            dense: true,
+                            visualDensity: VisualDensity.compact,
+                            leading: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withAlpha(25),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.person_rounded,
+                                size: 16,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                            title: Text(
+                              emp.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                            subtitle: emp.phone.isNotEmpty
+                                ? Text(
+                                    emp.phone,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                  )
+                                : null,
+                            trailing: const Icon(
+                              Icons.north_west_rounded,
+                              size: 14,
+                              color: Color(0xFF94A3B8),
+                            ),
+                            onTap: () => onSelectEmployee(emp),
+                          );
+                        },
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ==========================================
   // 1. MEMBER FORM FIELDS (typeahead name + autofill phone)
   // ==========================================
   Widget _buildMemberFormFields() {
-    final query = _nameController.text.trim();
-    final hasQuery = query.isNotEmpty;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _buildFieldLabel('Select Member Name', isRequired: true),
-        KeyedSubtree(
-          key: _memberNameFieldKey,
-          child: AppTextField(
-            hint: 'Type to search your name',
-            showFloatingLabel: false,
-            controller: _nameController,
-            focusNode: _memberNameFocusNode,
-            textCapitalization: TextCapitalization.words,
-            textInputAction: TextInputAction.search,
-            prefixIcon: const Icon(Icons.person_outline_rounded),
-            suffixIcon: hasQuery
-                ? IconButton(
-                    icon: const Icon(Icons.clear_rounded, size: 22),
-                    tooltip: 'Clear',
-                    onPressed: () {
-                      _nameController.clear();
-                      _phoneController.clear();
-                      _emailController.clear();
-                      final notifier = ref.read(checkInFormProvider.notifier);
-                      notifier.clearIdentity();
-                      if (widget.adminId != null && widget.adminId!.isNotEmpty) {
-                        notifier.setAdminId(widget.adminId);
-                      }
-                      setState(() {
-                        _manuallySelectedMember = null;
-                        _showMemberSuggestions = true;
-                      });
-                      _memberNameFocusNode.requestFocus();
-                      _scrollMemberFieldIntoView();
-                    },
-                  )
-                : IconButton(
-                    icon: Icon(
-                      _showMemberSuggestions
-                          ? Icons.keyboard_arrow_up_rounded
-                          : Icons.arrow_drop_down_rounded,
-                      size: 28,
-                      color: _showMemberSuggestions
-                          ? AppColors.primary
-                          : const Color(0xFF64748B),
-                    ),
-                    tooltip: _showMemberSuggestions ? 'Hide list' : 'Show members',
-                    onPressed: () {
-                      if (_showMemberSuggestions) {
-                        _memberNameFocusNode.unfocus();
-                        setState(() => _showMemberSuggestions = false);
-                      } else {
-                        _memberNameFocusNode.requestFocus();
-                        setState(() => _showMemberSuggestions = true);
-                        _scrollMemberFieldIntoView();
-                      }
-                    },
-                  ),
-            onChanged: (val) {
-              final selected = _manuallySelectedMember;
-              final stillMatches = selected != null &&
-                  selected.name.trim().toLowerCase() == val.trim().toLowerCase();
-              setState(() {
-                _showMemberSuggestions = true;
-                if (!stillMatches) {
-                  _manuallySelectedMember = null;
-                  _phoneController.clear();
-                  _emailController.clear();
-                  final notifier = ref.read(checkInFormProvider.notifier);
-                  notifier.setName(val);
-                  notifier.setPhone('');
-                  notifier.setEmail('');
-                  notifier.setRecognizedMember(null);
-                }
-              });
-              _scrollMemberFieldIntoView();
-            },
-            validator: (_) {
-              if (_manuallySelectedMember == null) {
-                return 'Please select your name from the member list';
-              }
-              return null;
-            },
-          ),
+        _buildMemberTypeaheadField(
+          label: 'Select Member Name',
+          hint: 'Type to search your name',
+          controller: _nameController,
+          focusNode: _memberNameFocusNode,
+          fieldKey: _memberNameFieldKey,
+          showSuggestions: _showMemberSuggestions,
+          onCloseSuggestions: _closeMemberSuggestions,
+          setShowSuggestions: (v) => _showMemberSuggestions = v,
+          setPointerActive: (v) => _memberSuggestionsPointerActive = v,
+          hasValidSelection: _manuallySelectedMember != null,
+          excludeSessionCheckedIn: true,
+          onClearSelection: () {
+            _phoneController.clear();
+            _emailController.clear();
+            final notifier = ref.read(checkInFormProvider.notifier);
+            notifier.clearIdentity();
+            if (widget.adminId != null && widget.adminId!.isNotEmpty) {
+              notifier.setAdminId(widget.adminId);
+            }
+            setState(() => _manuallySelectedMember = null);
+          },
+          onQueryChanged: (val) {
+            final selected = _manuallySelectedMember;
+            final stillMatches = selected != null &&
+                selected.name.trim().toLowerCase() == val.trim().toLowerCase();
+            if (!stillMatches) {
+              _phoneController.clear();
+              _emailController.clear();
+              final notifier = ref.read(checkInFormProvider.notifier);
+              notifier.setName(val);
+              notifier.setPhone('');
+              notifier.setEmail('');
+              notifier.setRecognizedMember(null);
+              setState(() => _manuallySelectedMember = null);
+            }
+          },
+          onSelectEmployee: (emp) {
+            _nameController.text = emp.name;
+            _phoneController.text = emp.phone;
+            _emailController.text = emp.email;
+            final notifier = ref.read(checkInFormProvider.notifier);
+            notifier.setName(emp.name);
+            notifier.setPhone(emp.phone);
+            notifier.setEmail(emp.email);
+            notifier.setAdminId(emp.adminId ?? widget.adminId);
+            notifier.setRecognizedMember(emp.id);
+            notifier.clearPhoto();
+            setState(() {
+              _manuallySelectedMember = emp;
+              _showMemberSuggestions = false;
+            });
+            _memberNameFocusNode.unfocus();
+          },
         ),
-        if (_showMemberSuggestions) ...[
-          const SizedBox(height: 8),
-          _buildMemberSuggestionsPanel(query: query),
-        ],
         const SizedBox(height: 18),
-        _buildFieldLabel('Phone Number', isRequired: true, suffix: ' (Auto-filled)'),
+        _buildFieldLabel(
+          'Phone Number',
+          isRequired: true,
+          suffix: ' (Auto-filled)',
+        ),
         AppTextField(
           hint: '10-digit mobile number',
           showFloatingLabel: false,
@@ -1116,164 +1493,6 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
         ),
       ],
     );
-  }
-
-  /// Inline member suggestions under the name field (no nested search bar).
-  Widget _buildMemberSuggestionsPanel({required String query}) {
-    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
-    final screenHeight = MediaQuery.sizeOf(context).height;
-    // Keep ~2–3 rows visible above the soft keyboard on mobile web.
-    final availableAboveKeyboard = keyboardInset > 0
-        ? (screenHeight - keyboardInset) * 0.42
-        : 220.0;
-    final maxHeight = availableAboveKeyboard.clamp(132.0, 220.0);
-
-    return Material(
-      color: Colors.white,
-      borderRadius: AppRadius.mdAll,
-      elevation: 4,
-      shadowColor: Colors.black.withAlpha(30),
-      child: Container(
-        width: double.infinity,
-        decoration: BoxDecoration(
-          borderRadius: AppRadius.mdAll,
-          border: Border.all(
-            color: AppColors.primary.withAlpha(90),
-            width: 1.5,
-          ),
-        ),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: maxHeight),
-          child: Consumer(
-            builder: (context, ref, _) {
-              final employeesAsync = ref.watch(employeesStreamProvider);
-
-              return employeesAsync.when(
-                loading: () => const Padding(
-                  padding: EdgeInsets.all(20),
-                  child: Center(
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  ),
-                ),
-                error: (e, _) => Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Center(
-                    child: Text(
-                      'Error loading names: $e',
-                      style: const TextStyle(color: AppColors.error, fontSize: 12),
-                    ),
-                  ),
-                ),
-                data: (allEmployees) {
-                  final scopedEmployees = EmployeeLookup.scoped(
-                    employees: allEmployees,
-                    adminId: widget.adminId,
-                    activeOnly: true,
-                  );
-
-                  final q = query.toLowerCase();
-                  final filtered = q.isEmpty
-                      ? scopedEmployees
-                      : scopedEmployees
-                          .where((emp) {
-                            final name = emp.name.toLowerCase();
-                            final phone = emp.phone.toLowerCase();
-                            return name.contains(q) || phone.contains(q);
-                          })
-                          .toList();
-
-                  if (filtered.isEmpty) {
-                    return const Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Center(
-                        child: Text(
-                          'No matching members found',
-                          style: TextStyle(color: Colors.grey, fontSize: 13),
-                        ),
-                      ),
-                    );
-                  }
-
-                  return ListView.separated(
-                    shrinkWrap: true,
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    itemCount: filtered.length,
-                    separatorBuilder: (context, index) =>
-                        const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                    itemBuilder: (context, index) {
-                      final emp = filtered[index];
-                      return ListTile(
-                        dense: true,
-                        visualDensity: VisualDensity.compact,
-                        leading: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary.withAlpha(25),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.person_rounded,
-                            size: 16,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                        title: Text(
-                          emp.name,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                            color: Color(0xFF0F172A),
-                          ),
-                        ),
-                        subtitle: emp.phone.isNotEmpty
-                            ? Text(
-                                emp.phone,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Color(0xFF64748B),
-                                ),
-                              )
-                            : null,
-                        trailing: const Icon(
-                          Icons.north_west_rounded,
-                          size: 14,
-                          color: Color(0xFF94A3B8),
-                        ),
-                        onTap: () => _selectMemberFromSuggestions(emp),
-                      );
-                    },
-                  );
-                },
-              );
-            },
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _selectMemberFromSuggestions(Employee emp) {
-    _nameController.text = emp.name;
-    _phoneController.text = emp.phone;
-    _emailController.text = emp.email;
-
-    final notifier = ref.read(checkInFormProvider.notifier);
-    notifier.setName(emp.name);
-    notifier.setPhone(emp.phone);
-    notifier.setEmail(emp.email);
-    notifier.setAdminId(emp.adminId ?? widget.adminId);
-    notifier.setRecognizedMember(emp.id);
-    notifier.clearPhoto();
-
-    setState(() {
-      _manuallySelectedMember = emp;
-      _showMemberSuggestions = false;
-    });
-    _memberNameFocusNode.unfocus();
   }
 
   // ==========================================
@@ -1337,91 +1556,47 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
 
         const SizedBox(height: 18),
 
-        // Name of the Member they are substituting for
-        _buildFieldLabel('Substituting For (Member Name)', isRequired: true),
-        InkWell(
-          onTap: () {
-            setState(() {
-              _isSubstituteForDropdownOpen = !_isSubstituteForDropdownOpen;
-              if (!_isSubstituteForDropdownOpen) {
-                _substituteForSearchController.clear();
-                _substituteForSearchQuery = '';
-              }
-            });
+        _buildMemberTypeaheadField(
+          label: 'Substituting For (Member Name)',
+          hint: 'Type to search member name',
+          controller: _substituteForController,
+          focusNode: _substituteForFocusNode,
+          fieldKey: _substituteForFieldKey,
+          showSuggestions: _showSubstituteForSuggestions,
+          onCloseSuggestions: _closeSubstituteForSuggestions,
+          setShowSuggestions: (v) => _showSubstituteForSuggestions = v,
+          setPointerActive: (v) => _substituteForPointerActive = v,
+          hasValidSelection:
+              _selectedSubstituteForMember?.trim().isNotEmpty ?? false,
+          excludeSessionCheckedIn: true,
+          prefixIcon: Icons.swap_horiz_rounded,
+          onClearSelection: () {
+            setState(() => _selectedSubstituteForMember = null);
+            ref.read(checkInFormProvider.notifier).setSubstituteForMember(null);
           },
-          borderRadius: AppRadius.mdAll,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: AppRadius.mdAll,
-              border: Border.all(
-                color: _isSubstituteForDropdownOpen
-                    ? AppColors.primary
-                    : (_selectedSubstituteForMember != null
-                        ? const Color(0xFF64748B)
-                        : const Color(0xFFCBD5E1)),
-                width: _isSubstituteForDropdownOpen ? 1.5 : 1,
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.swap_horiz_rounded,
-                  color: _isSubstituteForDropdownOpen ? AppColors.primary : const Color(0xFF64748B),
-                  size: 22,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    _selectedSubstituteForMember ?? 'Select member you are substituting for',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: _selectedSubstituteForMember != null
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                      color: _selectedSubstituteForMember != null
-                          ? const Color(0xFF0F172A)
-                          : const Color(0xFF94A3B8),
-                    ),
-                  ),
-                ),
-                Icon(
-                  _isSubstituteForDropdownOpen
-                      ? Icons.keyboard_arrow_up_rounded
-                      : Icons.arrow_drop_down_rounded,
-                  color: const Color(0xFF64748B),
-                ),
-              ],
-            ),
-          ),
+          onQueryChanged: (val) {
+            final selected = _selectedSubstituteForMember;
+            final stillMatches = selected != null &&
+                selected.trim().toLowerCase() == val.trim().toLowerCase();
+            if (!stillMatches) {
+              setState(() => _selectedSubstituteForMember = null);
+              ref
+                  .read(checkInFormProvider.notifier)
+                  .setSubstituteForMember(null);
+            }
+          },
+          onSelectEmployee: (emp) {
+            _substituteForController.text = emp.name;
+            setState(() {
+              _selectedSubstituteForMember = emp.name;
+              _showSubstituteForSuggestions = false;
+            });
+            final notifier = ref.read(checkInFormProvider.notifier);
+            notifier.setSubstituteForMember(emp.name);
+            notifier.setAdminId(emp.adminId ?? widget.adminId);
+            _substituteForFocusNode.unfocus();
+          },
         ),
-
-        // Dropdown Panel for Substitute Member selection
-        if (_isSubstituteForDropdownOpen) ...[
-          const SizedBox(height: 8),
-          _buildSearchableDropdownPanel(
-            searchController: _substituteForSearchController,
-            searchQuery: _substituteForSearchQuery,
-            hintText: 'Search member to substitute...',
-            onSearchChanged: (val) => setState(() => _substituteForSearchQuery = val.trim()),
-            onClearSearch: () {
-              _substituteForSearchController.clear();
-              setState(() => _substituteForSearchQuery = '');
-            },
-            onSelectEmployee: (emp) {
-              setState(() {
-                _selectedSubstituteForMember = emp.name;
-                _isSubstituteForDropdownOpen = false;
-                _substituteForSearchController.clear();
-                _substituteForSearchQuery = '';
-              });
-              final notifier = ref.read(checkInFormProvider.notifier);
-              notifier.setSubstituteForMember(emp.name);
-              notifier.setAdminId(emp.adminId ?? widget.adminId);
-            },
-          ),
-        ],
 
         const SizedBox(height: 20),
 
@@ -1536,270 +1711,46 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
 
         const SizedBox(height: 18),
 
-        // Invited By (Select Member)
-        _buildFieldLabel('Invited By (Select Member)', isRequired: true),
-        InkWell(
-          onTap: () {
-            setState(() {
-              _isInvitedByDropdownOpen = !_isInvitedByDropdownOpen;
-              if (!_isInvitedByDropdownOpen) {
-                _invitedBySearchController.clear();
-                _invitedBySearchQuery = '';
-              }
-            });
+        _buildMemberTypeaheadField(
+          label: 'Invited By (Select Member)',
+          hint: 'Type to search inviting member',
+          controller: _invitedByController,
+          focusNode: _invitedByFocusNode,
+          fieldKey: _invitedByFieldKey,
+          showSuggestions: _showInvitedBySuggestions,
+          onCloseSuggestions: _closeInvitedBySuggestions,
+          setShowSuggestions: (v) => _showInvitedBySuggestions = v,
+          setPointerActive: (v) => _invitedByPointerActive = v,
+          hasValidSelection:
+              _selectedInvitedByMember?.trim().isNotEmpty ?? false,
+          excludeSessionCheckedIn: false,
+          prefixIcon: Icons.person_add_alt_1_rounded,
+          onClearSelection: () {
+            setState(() => _selectedInvitedByMember = null);
+            ref.read(checkInFormProvider.notifier).setInvitedByMember(null);
           },
-          borderRadius: AppRadius.mdAll,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: AppRadius.mdAll,
-              border: Border.all(
-                color: _isInvitedByDropdownOpen
-                    ? AppColors.primary
-                    : (_selectedInvitedByMember != null
-                        ? const Color(0xFF64748B)
-                        : const Color(0xFFCBD5E1)),
-                width: _isInvitedByDropdownOpen ? 1.5 : 1,
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.person_add_alt_1_rounded,
-                  color: _isInvitedByDropdownOpen ? AppColors.primary : const Color(0xFF64748B),
-                  size: 22,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    _selectedInvitedByMember ?? 'Select member who invited you',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: _selectedInvitedByMember != null
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                      color: _selectedInvitedByMember != null
-                          ? const Color(0xFF0F172A)
-                          : const Color(0xFF94A3B8),
-                    ),
-                  ),
-                ),
-                Icon(
-                  _isInvitedByDropdownOpen
-                      ? Icons.keyboard_arrow_up_rounded
-                      : Icons.arrow_drop_down_rounded,
-                  color: const Color(0xFF64748B),
-                ),
-              ],
-            ),
-          ),
+          onQueryChanged: (val) {
+            final selected = _selectedInvitedByMember;
+            final stillMatches = selected != null &&
+                selected.trim().toLowerCase() == val.trim().toLowerCase();
+            if (!stillMatches) {
+              setState(() => _selectedInvitedByMember = null);
+              ref.read(checkInFormProvider.notifier).setInvitedByMember(null);
+            }
+          },
+          onSelectEmployee: (emp) {
+            _invitedByController.text = emp.name;
+            setState(() {
+              _selectedInvitedByMember = emp.name;
+              _showInvitedBySuggestions = false;
+            });
+            final notifier = ref.read(checkInFormProvider.notifier);
+            notifier.setInvitedByMember(emp.name);
+            notifier.setAdminId(emp.adminId ?? widget.adminId);
+            _invitedByFocusNode.unfocus();
+          },
         ),
-
-        // Dropdown Panel for Invited By Member selection
-        if (_isInvitedByDropdownOpen) ...[
-          const SizedBox(height: 8),
-          _buildSearchableDropdownPanel(
-            searchController: _invitedBySearchController,
-            searchQuery: _invitedBySearchQuery,
-            hintText: 'Search inviting member...',
-            onSearchChanged: (val) => setState(() => _invitedBySearchQuery = val.trim()),
-            onClearSearch: () {
-              _invitedBySearchController.clear();
-              setState(() => _invitedBySearchQuery = '');
-            },
-            onSelectEmployee: (emp) {
-              setState(() {
-                _selectedInvitedByMember = emp.name;
-                _isInvitedByDropdownOpen = false;
-                _invitedBySearchController.clear();
-                _invitedBySearchQuery = '';
-              });
-              final notifier = ref.read(checkInFormProvider.notifier);
-              notifier.setInvitedByMember(emp.name);
-              notifier.setAdminId(emp.adminId ?? widget.adminId);
-            },
-          ),
-        ],
       ],
-    );
-  }
-
-  // ==========================================
-  // Helper: Searchable Dropdown Panel
-  // ==========================================
-  Widget _buildSearchableDropdownPanel({
-    required TextEditingController searchController,
-    required String searchQuery,
-    required String hintText,
-    required ValueChanged<String> onSearchChanged,
-    required VoidCallback onClearSearch,
-    required ValueChanged<Employee> onSelectEmployee,
-  }) {
-    return Material(
-      color: Colors.white,
-      borderRadius: AppRadius.mdAll,
-      elevation: 4,
-      shadowColor: Colors.black.withAlpha(30),
-      child: Container(
-        width: double.infinity,
-        decoration: BoxDecoration(
-          borderRadius: AppRadius.mdAll,
-          border: Border.all(
-            color: const Color(0xFFCBD5E1),
-            width: 1.5,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Search Input Field
-            Padding(
-              padding: const EdgeInsets.all(10),
-              child: TextField(
-                controller: searchController,
-                autofocus: true,
-                decoration: InputDecoration(
-                  hintText: hintText,
-                  prefixIcon: const Icon(
-                    Icons.search_rounded,
-                    size: 20,
-                  ),
-                  suffixIcon: searchQuery.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear_rounded, size: 18),
-                          onPressed: onClearSearch,
-                        )
-                      : null,
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  filled: true,
-                  fillColor: const Color(0xFFF1F5F9),
-                  border: const OutlineInputBorder(
-                    borderRadius: AppRadius.smAll,
-                    borderSide: BorderSide(color: Color(0xFFCBD5E1)),
-                  ),
-                  enabledBorder: const OutlineInputBorder(
-                    borderRadius: AppRadius.smAll,
-                    borderSide: BorderSide(color: Color(0xFFCBD5E1)),
-                  ),
-                  focusedBorder: const OutlineInputBorder(
-                    borderRadius: AppRadius.smAll,
-                    borderSide: BorderSide(color: AppColors.primary, width: 1.5),
-                  ),
-                ),
-                onChanged: onSearchChanged,
-              ),
-            ),
-            const Divider(height: 1, color: Color(0xFFE2E8F0)),
-
-            // List of filtered employees
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 220),
-              child: Consumer(
-                builder: (context, ref, _) {
-                  final employeesAsync = ref.watch(employeesStreamProvider);
-
-                  return employeesAsync.when(
-                    loading: () => const Padding(
-                      padding: EdgeInsets.all(20),
-                      child: Center(
-                        child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      ),
-                    ),
-                    error: (e, _) => Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Center(
-                        child: Text(
-                          'Error loading names: $e',
-                          style: const TextStyle(color: AppColors.error, fontSize: 12),
-                        ),
-                      ),
-                    ),
-                    data: (allEmployees) {
-                      final scopedEmployees = EmployeeLookup.scoped(
-                        employees: allEmployees,
-                        adminId: widget.adminId,
-                        activeOnly: true,
-                      );
-
-                      final filtered = searchQuery.isEmpty
-                          ? scopedEmployees
-                          : scopedEmployees
-                              .where((emp) => emp.name
-                                  .toLowerCase()
-                                  .contains(searchQuery.toLowerCase()))
-                              .toList();
-
-                      if (filtered.isEmpty) {
-                        return const Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Center(
-                            child: Text(
-                              'No matching members found',
-                              style: TextStyle(color: Colors.grey, fontSize: 13),
-                            ),
-                          ),
-                        );
-                      }
-
-                      return ListView.separated(
-                        shrinkWrap: true,
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        itemCount: filtered.length,
-                        separatorBuilder: (context, index) =>
-                            const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                        itemBuilder: (context, index) {
-                          final emp = filtered[index];
-                          return ListTile(
-                            dense: true,
-                            leading: Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: AppColors.primary.withAlpha(25),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.person_rounded,
-                                size: 16,
-                                color: AppColors.primary,
-                              ),
-                            ),
-                            title: Text(
-                              emp.name,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                                color: Color(0xFF0F172A),
-                              ),
-                            ),
-                            subtitle: emp.phone.isNotEmpty
-                                ? Text(
-                                    emp.phone,
-                                    style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-                                  )
-                                : null,
-                            trailing: const Icon(
-                              Icons.north_west_rounded,
-                              size: 14,
-                              color: Color(0xFF94A3B8),
-                            ),
-                            onTap: () => onSelectEmployee(emp),
-                          );
-                        },
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

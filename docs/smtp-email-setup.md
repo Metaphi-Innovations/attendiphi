@@ -33,9 +33,9 @@ elevated Firebase credentials or private transport:
 |---------|--------|
 | Host | `smtp.gmail.com` |
 | Port | `465` (SSL/TLS) |
-| Username | `omkaranarse.metaphi@gmail.com` |
-| From email | `omkaranarse.metaphi@gmail.com` |
-| From name | `Attendephi by Metaphi` |
+| Username | `attendiphi.metaphi@gmail.com` |
+| From email | `attendiphi.metaphi@gmail.com` |
+| From name | `Attendiphi by Metaphi` |
 | Password | **Google App Password** (secret only) |
 
 ## Supabase secrets
@@ -45,9 +45,9 @@ Set non-password values (safe to run as-is):
 ```bash
 npx supabase secrets set SMTP_HOST="smtp.gmail.com" --project-ref ktnhyohshdwqvvlgeynp
 npx supabase secrets set SMTP_PORT="465" --project-ref ktnhyohshdwqvvlgeynp
-npx supabase secrets set SMTP_USERNAME="omkaranarse.metaphi@gmail.com" --project-ref ktnhyohshdwqvvlgeynp
-npx supabase secrets set SMTP_FROM_EMAIL="omkaranarse.metaphi@gmail.com" --project-ref ktnhyohshdwqvvlgeynp
-npx supabase secrets set SMTP_FROM_NAME="Attendephi by Metaphi" --project-ref ktnhyohshdwqvvlgeynp
+npx supabase secrets set SMTP_USERNAME="attendiphi.metaphi@gmail.com" --project-ref ktnhyohshdwqvvlgeynp
+npx supabase secrets set SMTP_FROM_EMAIL="attendiphi.metaphi@gmail.com" --project-ref ktnhyohshdwqvvlgeynp
+npx supabase secrets set SMTP_FROM_NAME="Attendiphi by Metaphi" --project-ref ktnhyohshdwqvvlgeynp
 npx supabase secrets set SMTP_SECURE="true" --project-ref ktnhyohshdwqvvlgeynp
 ```
 
@@ -79,7 +79,7 @@ npx supabase secrets unset ATTENDIPHI_FROM_EMAIL --project-ref ktnhyohshdwqvvlge
 
 ## Create a Gmail App Password
 
-1. Use the Google account `omkaranarse.metaphi@gmail.com`.
+1. Use the Google account `attendiphi.metaphi@gmail.com`.
 2. Turn on [2-Step Verification](https://myaccount.google.com/signinoptions/two-step-verification).
 3. Open [App passwords](https://myaccount.google.com/apppasswords).
 4. Create an app password (e.g. “Attendiphi SMTP”).
@@ -121,6 +121,6 @@ https://ktnhyohshdwqvvlgeynp.supabase.co/functions/v1/send-attendiphi-email
 
 1. Set secrets (including `SMTP_PASSWORD`) and deploy.
 2. Super Admin → Create Admin → confirm Auth + Firestore.
-3. Click **Send Mail** → inbox from `omkaranarse.metaphi@gmail.com`.
+3. Click **Send Mail** → inbox from `attendiphi.metaphi@gmail.com`.
 4. Wrong App Password → clear failure; admin still listed.
 5. Forgot Password → same Gmail SMTP path.

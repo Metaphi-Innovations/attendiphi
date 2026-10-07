@@ -1,5 +1,6 @@
 import { jwtVerify, createRemoteJWKSet, SignJWT, importPKCS8, type JWTPayload } from "jose";
 import {
+  ATTENDIPHI_LOGO_CID,
   sendSmtpMail,
   smtpErrorDetail,
   smtpUserMessage,
@@ -13,10 +14,8 @@ const IDENTITY_TOOLKIT_OOB_URL =
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const RESET_CONTINUE_URL =
   "https://attendiphi-by-metaphi.web.app/admin-reset-password";
-// Logo + reset landing use Firebase Hosting. App + CORS also allow
-// https://attendiphi.metaphi.in (main branded site).
-const LOGO_URL =
-  "https://attendiphi-by-metaphi.web.app/assets/assets/images/attendiphi_logo.png";
+/** Inline CID logo embedded by smtp.ts (reliable in Gmail; no remote image fetch). */
+const LOGO_SRC = `cid:${ATTENDIPHI_LOGO_CID}`;
 const GENERIC_RESET_MESSAGE =
   "If an account exists for this email, a password reset link has been sent.";
 
@@ -398,7 +397,7 @@ async function handleAdminWelcome(
   const roleLabel = (body.roleLabel ?? "Admin").trim() || "Admin";
   const portalUrl = sanitizePortalUrl(body.portalUrl);
   const subject = (body.subject ?? "").trim() ||
-    "Your QR Check-in Admin Login Credentials";
+    "Attendiphi - Your QR Check-in Admin Login Credentials";
 
   if (!EMAIL_RE.test(recipientEmail)) {
     return json(400, { ok: false, error: "recipientEmail is invalid" }, cors);
@@ -711,9 +710,9 @@ function resetHtml(resetUrl: string): string {
 </head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f8fafc;margin:0;padding:24px;color:#1e293b;">
   <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0;">
-    <div style="background:#4f46e5;padding:28px 24px;text-align:center;color:#ffffff;">
-      <img src="${LOGO_URL}" alt="Attendiphi" width="160" style="max-width:160px;height:auto;margin:0 auto 12px;display:block;">
-      <p style="margin:0;font-size:13px;opacity:0.9;">Attendiphi by Metaphi</p>
+    <div style="background:#ffffff;padding:28px 24px;text-align:center;border-bottom:1px solid #e2e8f0;">
+      <img src="${LOGO_SRC}" alt="Attendiphi" width="160" style="max-width:160px;height:auto;margin:0 auto 12px;display:block;border:0;" />
+      <p style="margin:0;font-size:13px;color:#64748b;">Attendiphi by Metaphi</p>
     </div>
     <div style="padding:28px 24px;">
       <h1 style="margin:0 0 16px;font-size:22px;color:#0f172a;">Reset your password</h1>
@@ -765,7 +764,7 @@ Your Login Credentials:
 Please sign in using the Portal URL above and keep your login credentials secure.
 
 Best regards,
-Super Admin Team
+Super Admin
 `;
 }
 
@@ -781,9 +780,9 @@ function welcomeHtml(input: {
 <head><meta charset="utf-8"></head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f8fafc;margin:0;padding:24px;color:#1e293b;">
   <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0;">
-    <div style="background:#4f46e5;padding:28px 24px;text-align:center;color:#ffffff;">
-      <h1 style="margin:0;font-size:20px;">Attendiphi-by-Metaphi</h1>
-      <p style="margin:8px 0 0;font-size:13px;opacity:0.9;">QR Check-in &amp; Attendance Portal</p>
+    <div style="background:#ffffff;padding:24px 24px 20px;text-align:center;border-bottom:1px solid #e2e8f0;">
+      <img src="${LOGO_SRC}" alt="Attendiphi" width="160" style="max-height:72px;width:auto;height:auto;display:inline-block;border:0;" />
+      <p style="margin:12px 0 0;font-size:13px;color:#64748b;">QR Check-in &amp; Attendance Portal</p>
     </div>
     <div style="padding:28px 24px;">
       <p style="font-size:16px;font-weight:600;">Hello ${escapeHtml(input.name)},</p>
@@ -798,7 +797,7 @@ function welcomeHtml(input: {
         <p><strong>Access Role:</strong> ${escapeHtml(input.roleLabel)}</p>
       </div>
       <p style="font-size:13px;color:#64748b;">Please sign in using the Portal URL above and keep your login credentials secure.</p>
-      <p style="font-size:13px;">Best regards,<br/>Super Admin Team</p>
+      <p style="font-size:13px;">Best regards,<br/>Super Admin</p>
     </div>
   </div>
 </body>

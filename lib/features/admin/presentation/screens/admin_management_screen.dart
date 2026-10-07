@@ -1205,7 +1205,7 @@ class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
 
     // Shared flex ratios to guarantee ample room, equal alignment, and zero clashing:
     const int flexAdmin = 3;     // ADMIN (Avatar + Name + Role)
-    const int flexEmail = 4;     // EMAIL (Long email addresses like omkaranarse.metaphi@gmail.com)
+    const int flexEmail = 4;     // EMAIL (Long email addresses like attendiphi.metaphi@gmail.com)
     const int flexPhone = 2;     // PHONE (Phone numbers)
     const int flexStatus = 1;    // STATUS (Active / Inactive badge)
     const int flexCreated = 2;   // CREATED ON (e.g. 07 Sep 2026)

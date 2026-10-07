@@ -149,6 +149,8 @@ async function dispatchAdminNotification({
 }
 
 const DEFAULT_PORTAL_URL = 'https://attendiphi-by-metaphi.web.app/';
+const LOGO_URL =
+  'https://attendiphi-by-metaphi.web.app/email/attendiphi_logo.png';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function escapeHtml(value) {
@@ -160,7 +162,7 @@ function escapeHtml(value) {
 }
 
 function buildCredentialsEmail({ name, email, password, roleLabel, portalUrl }) {
-  const subject = 'Your QR Check-in Admin Login Credentials';
+  const subject = 'Attendiphi - Your QR Check-in Admin Login Credentials';
   const text = `Hello ${name},
 
 You have been granted Administrator access to the QR Check-in & Attendance Portal.
@@ -177,7 +179,7 @@ Your Login Credentials:
 Please sign in using the Portal URL above and keep your login credentials secure.
 
 Best regards,
-Super Admin Team
+Super Admin
 `;
 
   const html = `<!DOCTYPE html>
@@ -187,9 +189,9 @@ Super Admin Team
 </head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f8fafc;margin:0;padding:24px;color:#1e293b;">
   <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0;">
-    <div style="background:#4f46e5;padding:28px 24px;text-align:center;color:#ffffff;">
-      <h1 style="margin:0;font-size:20px;">Attendiphi-by-Metaphi</h1>
-      <p style="margin:8px 0 0;font-size:13px;opacity:0.9;">QR Check-in &amp; Attendance Portal</p>
+    <div style="background:#ffffff;padding:24px 24px 20px;text-align:center;border-bottom:1px solid #e2e8f0;">
+      <img src="${LOGO_URL}" alt="Attendiphi" width="160" style="max-height:72px;width:auto;height:auto;display:inline-block;border:0;" />
+      <p style="margin:12px 0 0;font-size:13px;color:#64748b;">QR Check-in &amp; Attendance Portal</p>
     </div>
     <div style="padding:28px 24px;">
       <p style="font-size:16px;font-weight:600;">Hello ${escapeHtml(name)},</p>
@@ -204,7 +206,7 @@ Super Admin Team
         <p><strong>Access Role:</strong> ${escapeHtml(roleLabel)}</p>
       </div>
       <p style="font-size:13px;color:#64748b;">Please sign in using the Portal URL above and keep your login credentials secure.</p>
-      <p style="font-size:13px;">Best regards,<br/>Super Admin Team</p>
+      <p style="font-size:13px;">Best regards,<br/>Super Admin</p>
     </div>
   </div>
 </body>
@@ -445,7 +447,7 @@ exports.onAdminMailDispatch = functions.firestore
 
     const mailId = context.params.mailId;
     const to = data.to;
-    const subject = data.subject || 'Your QR Check-in Admin Login Credentials';
+    const subject = data.subject || 'Attendiphi - Your QR Check-in Admin Login Credentials';
     const text = data.bodyText || '';
     const html = data.html || '';
 
@@ -593,7 +595,7 @@ exports.sendAdminCredentials = functions.https.onRequest(async (req, res) => {
         recipientAdminId: recipientDoc.id,
         senderAdminId: sender.id,
         senderEmail: sender.email,
-        subject: 'Your QR Check-in Admin Login Credentials',
+        subject: 'Attendiphi - Your QR Check-in Admin Login Credentials',
         status: 'sending',
         source: 'https',
         createdAt: admin.firestore.FieldValue.serverTimestamp(),

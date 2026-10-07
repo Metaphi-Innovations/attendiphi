@@ -49,7 +49,11 @@ class EmailCredentialsService {
   /// Prefer the host the Super Admin is currently using (web.app or metaphi.in).
   static String resolvePortalUrl() => '${AppUrl.portalOrigin}/';
   static const String credentialsSubject =
-      'Your QR Check-in Admin Login Credentials';
+      'Attendiphi - Your QR Check-in Admin Login Credentials';
+
+  /// Public logo used in HTML email headers (must be hosted, not a local path).
+  static const String credentialsLogoUrl =
+      'https://attendiphi-by-metaphi.web.app/email/attendiphi_logo.png';
 
   /// Deletes the admin user from Firebase Authentication.
   Future<({bool success, String userMessage})> deleteAuthAdmin({
@@ -82,7 +86,7 @@ Your Login Credentials:
 Please sign in using the Portal URL above and keep your login credentials secure.
 
 Best regards,
-Super Admin Team
+Super Admin
 ''';
   }
 

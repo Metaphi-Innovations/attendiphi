@@ -30,6 +30,7 @@ class AppTextField extends StatelessWidget {
     this.autofillHints,
     this.autocorrect = true,
     this.textCapitalization = TextCapitalization.none,
+    this.autovalidateMode = AutovalidateMode.onUserInteraction,
   });
 
   final String? label;
@@ -54,6 +55,7 @@ class AppTextField extends StatelessWidget {
   final Iterable<String>? autofillHints;
   final bool autocorrect;
   final TextCapitalization textCapitalization;
+  final AutovalidateMode autovalidateMode;
 
   @override
   Widget build(BuildContext context) {
@@ -77,6 +79,7 @@ class AppTextField extends StatelessWidget {
         textCapitalization: textCapitalization,
         inputFormatters: inputFormatters,
         autofillHints: autofillHints,
+        autovalidateMode: autovalidateMode,
         decoration: InputDecoration(
           labelText: showFloatingLabel ? label : null,
           hintText: hint,

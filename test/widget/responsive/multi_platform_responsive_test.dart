@@ -25,7 +25,7 @@ void main() {
   const testAdmin1 = AdminUser(
     id: 'adm-1',
     name: 'Omkar Anarse 2',
-    email: 'omkaranarse.metaphi@gmail.com',
+    email: 'attendiphi.metaphi@gmail.com',
     phone: '8356011246',
     role: AdminRole.admin,
     isActive: true,

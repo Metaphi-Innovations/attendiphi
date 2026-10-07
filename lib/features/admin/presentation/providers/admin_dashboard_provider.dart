@@ -3,12 +3,39 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_constants.dart';
+import '../../../app_config/presentation/providers/check_in_restrictions_provider.dart';
 import '../../../checkin/domain/entities/check_in_submission.dart';
 import '../../../checkin/domain/entities/check_in_type.dart';
 import '../../../checkin/domain/repositories/check_in_repository.dart';
 import '../../../checkin/presentation/providers/checkin_providers.dart';
 import '../../../employee/domain/employee_lookup.dart';
 import '../../../employee/presentation/providers/employee_providers.dart';
+
+/// Default session day for Daily Attendance.
+///
+/// Restrictions ON: current or previous Thursday (session stays open until the
+/// next Thursday starts).
+/// Restrictions OFF: current or next Thursday so QR-session check-ins (stamped
+/// with the upcoming meeting date) appear on Daily Attendance without changing
+/// the date picker.
+DateTime defaultAttendanceSessionDate(
+  DateTime now, {
+  required bool restrictionsEnabled,
+}) {
+  final today = DateTime(now.year, now.month, now.day);
+  if (today.weekday == DateTime.thursday) return today;
+
+  if (restrictionsEnabled) {
+    var daysSinceThursday = (today.weekday - DateTime.thursday) % 7;
+    if (daysSinceThursday <= 0) daysSinceThursday += 7;
+    return today.subtract(Duration(days: daysSinceThursday));
+  }
+
+  var daysUntilThursday = (DateTime.thursday - today.weekday) % 7;
+  if (daysUntilThursday <= 0) daysUntilThursday += 7;
+  return today.add(Duration(days: daysUntilThursday));
+}
+
 /// Filter selection for the admin dashboard.
 enum AdminFilterType {
   all('All Records'),
@@ -280,25 +307,14 @@ final baseDashboardRecordsProvider =
   final records = checkInsAsync.value ?? [];
   final employees = employeesAsync.value ?? [];
   final activeEmployees = employees.where((e) => e.isActive).toList();
+  final restrictionsEnabled = ref.watch(restrictionsEnabledProvider);
 
   final now = DateTime.now();
-
-  // Active Thursday: if today is Thursday, today is the active session.
-  // If today is Friday through Wednesday (e.g. Wednesday 9 Sep 2026),
-  // show the previous Thursday (3 Sep 2026) till 11:59 PM before the next Thursday starts.
-  // When next Thursday (10 Sep 2026) starts at 00:00, it automatically switches to that Thursday.
-  DateTime getActiveThursday(DateTime n) {
-    if (n.weekday == DateTime.thursday) {
-      return DateTime(n.year, n.month, n.day);
-    }
-    int daysSinceThursday = (n.weekday - DateTime.thursday) % 7;
-    if (daysSinceThursday <= 0) daysSinceThursday += 7;
-    return DateTime(n.year, n.month, n.day)
-        .subtract(Duration(days: daysSinceThursday));
-  }
-
-  final activeThursday = getActiveThursday(now);
-  final DateTime targetDate = filters.selectedDate ?? activeThursday;
+  final DateTime targetDate = filters.selectedDate ??
+      defaultAttendanceSessionDate(
+        now,
+        restrictionsEnabled: restrictionsEnabled,
+      );
 
   final daySubmissions = records.where((r) {
     final rec = r.timestamp;

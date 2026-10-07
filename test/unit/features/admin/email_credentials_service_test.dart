@@ -108,8 +108,9 @@ void main() {
     );
     expect(body, contains('Login Email (ID): omkaranarse1906@gmail.com'));
     expect(body, contains('Access Role: Admin'));
-    expect(body, contains('Super Admin Team'));
+    expect(body, contains('Super Admin'));
+    expect(body, isNot(contains('Super Admin Team')));
     expect(EmailCredentialsService.credentialsSubject,
-        'Your QR Check-in Admin Login Credentials');
+        'Attendiphi - Your QR Check-in Admin Login Credentials');
   });
 }
