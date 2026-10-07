@@ -20,6 +20,7 @@ import '../../../checkin/data/datasources/device_checkin_service.dart';
 import '../../../checkin/domain/entities/check_in_submission.dart';
 import '../../../checkin/presentation/screens/checkin_result_screen.dart';
 import '../../domain/entities/location_config.dart';
+import '../../domain/usecases/validate_user_proximity.dart';
 import '../providers/location_validation_provider.dart';
 import '../providers/location_validation_state.dart';
 
@@ -127,9 +128,28 @@ class _LocationPermissionScreenState
         .validateLocation();
   }
 
+  void _goToCheckInForm(ProximityResult proximity) {
+    if (!mounted) return;
+    // Widget tests may mount without GoRouter; skip navigation then.
+    if (GoRouter.maybeOf(context) == null) return;
+
+    final queryParams = [
+      if (widget.adminId != null && widget.adminId!.isNotEmpty)
+        'adminId=${widget.adminId}',
+      if (_effectiveSessionDateStr != null &&
+          _effectiveSessionDateStr!.isNotEmpty)
+        'date=$_effectiveSessionDateStr',
+    ].join('&');
+    final fullQuery = queryParams.isNotEmpty ? '?$queryParams' : '';
+    context.go(
+      '${RouteNames.checkinFormPath(widget.location.id)}$fullQuery',
+      extra: {'proximity': proximity, 'location': widget.location},
+    );
+  }
+
   Future<void> _applyRestrictionsGate({required bool restrictionsEnabled}) async {
     if (!restrictionsEnabled) {
-      // Test mode: any QR date, multi check-in per device.
+      // Test mode: any QR date, multi check-in, no GPS/location gate.
       if (_hasCheckedIn || _existingSubmission != null) {
         setState(() {
           _hasCheckedIn = false;
@@ -143,6 +163,7 @@ class _LocationPermissionScreenState
           _gateApplied = true;
         });
       }
+      // Still attempt GPS for audit; radius/permission never block when OFF.
       _startLocationIfNeeded();
       return;
     }
@@ -271,18 +292,7 @@ class _LocationPermissionScreenState
         if (next is LocationValidationSuccess) {
           Future.delayed(const Duration(milliseconds: 300), () {
             if (!context.mounted) return;
-            final queryParams = [
-              if (widget.adminId != null && widget.adminId!.isNotEmpty)
-                'adminId=${widget.adminId}',
-              if (_effectiveSessionDateStr != null &&
-                  _effectiveSessionDateStr!.isNotEmpty)
-                'date=$_effectiveSessionDateStr',
-            ].join('&');
-            final fullQuery = queryParams.isNotEmpty ? '?$queryParams' : '';
-            context.go(
-              '${RouteNames.checkinFormPath(widget.location.id)}$fullQuery',
-              extra: {'proximity': next.result, 'location': widget.location},
-            );
+            _goToCheckInForm(next.result);
           });
         }
       },
@@ -926,19 +936,7 @@ class _LocationPermissionScreenState
       return AppButton.primary(
         label: 'Continue to Check-In',
         icon: Icons.arrow_forward_rounded,
-        onPressed: () {
-          final queryParams = [
-            if (widget.adminId != null && widget.adminId!.isNotEmpty)
-              'adminId=${widget.adminId}',
-            if (widget.sessionDateStr != null && widget.sessionDateStr!.isNotEmpty)
-              'date=${widget.sessionDateStr}',
-          ].join('&');
-          final queryStr = queryParams.isNotEmpty ? '?$queryParams' : '';
-          context.go(
-            '${RouteNames.checkinFormPath(widget.location.id)}$queryStr',
-            extra: {'proximity': state.result, 'location': widget.location},
-          );
-        },
+        onPressed: () => _goToCheckInForm(state.result),
       );
     }
 

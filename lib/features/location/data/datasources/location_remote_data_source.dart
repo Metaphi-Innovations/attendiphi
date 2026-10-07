@@ -26,16 +26,16 @@ class LocationRemoteDataSourceImpl implements LocationRemoteDataSource {
           .get();
 
       if (!doc.exists) {
-        // Built-in fallback for location_x (Excel Plaza, Ghatkopar East, Mumbai)
+        // Built-in fallback for location_x (Jade Luxury Banquets, Mumbai)
         if (locationId == 'location_x') {
           return const LocationConfigModel(
             id: 'location_x',
-            name: 'Excel Plaza, Ghatkopar',
-            latitude: 19.083462,
-            longitude: 72.914026,
+            name: 'Jade Luxury Banquets, Mumbai',
+            latitude: 18.9888622,
+            longitude: 72.8152475,
             radiusMeters: 500.0,
             isActive: true,
-            address: 'EXCEL PLAZA, Pant Nagar, Ghatkopar East, Mumbai, Maharashtra 400075',
+            address: 'Jade Luxury Banquets, Nehru Centre, Dr Annie Besant Rd, Worli, Mumbai, Maharashtra 400018',
           );
         }
         return null;
@@ -50,12 +50,12 @@ class LocationRemoteDataSourceImpl implements LocationRemoteDataSource {
       if (locationId == 'location_x') {
         return const LocationConfigModel(
           id: 'location_x',
-          name: 'Excel Plaza, Ghatkopar',
-          latitude: 19.083462,
-          longitude: 72.914026,
+          name: 'Jade Luxury Banquets, Mumbai',
+          latitude: 18.9888622,
+          longitude: 72.8152475,
           radiusMeters: 500.0,
           isActive: true,
-          address: 'EXCEL PLAZA, Pant Nagar, Ghatkopar East, Mumbai, Maharashtra 400075',
+          address: 'Jade Luxury Banquets, Nehru Centre, Dr Annie Besant Rd, Worli, Mumbai, Maharashtra 400018',
         );
       }
       throw ServerException(
@@ -67,12 +67,12 @@ class LocationRemoteDataSourceImpl implements LocationRemoteDataSource {
       if (locationId == 'location_x') {
         return const LocationConfigModel(
           id: 'location_x',
-          name: 'Excel Plaza, Ghatkopar',
-          latitude: 19.083462,
-          longitude: 72.914026,
+          name: 'Jade Luxury Banquets, Mumbai',
+          latitude: 18.9888622,
+          longitude: 72.8152475,
           radiusMeters: 500.0,
           isActive: true,
-          address: 'EXCEL PLAZA, Pant Nagar, Ghatkopar East, Mumbai, Maharashtra 400075',
+          address: 'Jade Luxury Banquets, Nehru Centre, Dr Annie Besant Rd, Worli, Mumbai, Maharashtra 400018',
         );
       }
       throw ServerException(

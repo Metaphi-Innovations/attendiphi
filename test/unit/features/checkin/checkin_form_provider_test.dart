@@ -77,12 +77,13 @@ void main() {
   });
 
   group('CheckInFormNotifier', () {
-    test('initial state has empty fields and unselected attendance type', () {
+    test('initial state has empty fields and Member selected by default', () {
       final state = container.read(checkInFormProvider);
       expect(state.name, isEmpty);
       expect(state.phone, isEmpty);
-      expect(state.type, isNull);
-      expect(state.hasSelectedType, isFalse);
+      expect(state.type, CheckInType.member);
+      expect(state.hasSelectedType, isTrue);
+      expect(state.isMember, isTrue);
       expect(state.isSubmitting, isFalse);
     });
 

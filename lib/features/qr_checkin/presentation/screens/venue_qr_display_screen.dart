@@ -29,16 +29,18 @@ class VenueQrDisplayScreen extends ConsumerStatefulWidget {
     super.key,
     this.location = const LocationConfig(
       id: 'location_x',
-      name: 'Excel Plaza, Ghatkopar',
-      latitude: 19.083462,
-      longitude: 72.914026,
+      name: 'Jade Luxury Banquets, Mumbai',
+      latitude: 18.9888622,
+      longitude: 72.8152475,
       radiusMeters: 500.0,
       address:
-          'EXCEL PLAZA, Pant Nagar, Ghatkopar East, Mumbai, Maharashtra 400075',
+          'Jade Luxury Banquets, Nehru Centre, Dr Annie Besant Rd, Worli, Mumbai, Maharashtra 400018',
     ),
+    this.initialDate,
   });
 
   final LocationConfig location;
+  final DateTime? initialDate;
 
   @override
   ConsumerState<VenueQrDisplayScreen> createState() =>
@@ -53,11 +55,13 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
   late DateTime _selectedThursday;
   bool _isDownloading = false;
 
+  DateTime get _now => widget.initialDate ?? DateTime.now();
+
   @override
   void initState() {
     super.initState();
     _availableMonths = _generateMonthRange();
-    final now = DateTime.now();
+    final now = _now;
     final today = DateTime(now.year, now.month, now.day);
     // Select the current month if in available months range, otherwise default to first
     final matchingMonth = _availableMonths.firstWhere(
@@ -91,7 +95,7 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
   /// Automatically determines if QR codes and downloads are active for the given month.
   /// Automatically unlocks once the date reaches that month (i.e. on or after the 1st of that month).
   bool _isMonthActive(DateTime month) {
-    final now = DateTime.now();
+    final now = _now;
     if (now.year > month.year) return true;
     if (now.year == month.year && now.month >= month.month) return true;
     return false;
@@ -127,7 +131,7 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
       _selectedMonth = newMonth;
       final thursdays = _getThursdaysForMonth(newMonth);
       if (thursdays.isNotEmpty) {
-        final now = DateTime.now();
+        final now = _now;
         final today = DateTime(now.year, now.month, now.day);
         _selectedThursday = thursdays.firstWhere(
           (t) =>
@@ -724,7 +728,7 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
           t.day == thursdayDate.day,
     );
     final sessionNum = selectedIndex >= 0 ? selectedIndex + 1 : 1;
-    final now = DateTime.now();
+    final now = _now;
     final today = DateTime(now.year, now.month, now.day);
     final selectedDay = DateTime(thursdayDate.year, thursdayDate.month, thursdayDate.day);
     final isSelectedToday = selectedDay.isAtSameMomentAs(today);
@@ -1339,7 +1343,7 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
   ) {
     if (thursdays.isEmpty) return const SizedBox.shrink();
 
-    final now = DateTime.now();
+    final now = _now;
     final today = DateTime(now.year, now.month, now.day);
     final isCurrentMonthActive = _isMonthActive(_selectedMonth);
 
@@ -1495,7 +1499,7 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                     thursday.month == _selectedThursday.month &&
                     thursday.day == _selectedThursday.day;
 
-                final now = DateTime.now();
+                final now = _now;
                 final today = DateTime(now.year, now.month, now.day);
                 final thursdayDay =
                     DateTime(thursday.year, thursday.month, thursday.day);
@@ -1725,7 +1729,7 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
     final isCurrentMonthActive = _isMonthActive(_selectedMonth);
     final payload = _buildQrPayload(_selectedThursday);
 
-    final now = DateTime.now();
+    final now = _now;
     final today = DateTime(now.year, now.month, now.day);
     final selectedDay = DateTime(
       _selectedThursday.year,

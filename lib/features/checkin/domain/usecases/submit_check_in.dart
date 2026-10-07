@@ -40,8 +40,8 @@ class SubmitCheckIn {
     String? sessionDateStr,
     String? deviceId,
     String? recognizedMemberId,
-    /// When false, skips Thursday / QR-date / one-device lock enforcement.
-    /// Phone uniqueness, GPS, and required fields still apply.
+    /// When false, skips Thursday / QR-date / one-device / GPS enforcement.
+    /// Phone uniqueness and required fields still apply.
     bool restrictionsEnabled = true,
   }) async {
     // 1. Validate Form Fields

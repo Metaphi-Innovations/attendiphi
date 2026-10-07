@@ -3,13 +3,13 @@ import '../../domain/entities/check_in_submission.dart';
 import '../../domain/entities/check_in_type.dart';
 
 /// Form state for attendance check-in.
-/// [type] is null by default so no option is pre-selected until set.
+/// [type] defaults to [CheckInType.member] so the Member tab starts selected.
 class CheckInFormState {
   const CheckInFormState({
     this.name = '',
     this.phone = '',
     this.email = '',
-    this.type,
+    this.type = CheckInType.member,
     this.substituteForMember,
     this.companyName = '',
     this.category = '',

@@ -174,14 +174,46 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      ref.read(checkInFormProvider.notifier).reset();
-      ref.read(checkInFormProvider.notifier).clearIdentity();
+      final notifier = ref.read(checkInFormProvider.notifier);
+      notifier.reset();
+      notifier.clearIdentity();
+      // Member is the default check-in type on every fresh QR session.
+      notifier.setType(CheckInType.member);
       if (widget.adminId != null && widget.adminId!.isNotEmpty) {
-        ref.read(checkInFormProvider.notifier).setAdminId(widget.adminId);
+        notifier.setAdminId(widget.adminId);
       }
       setState(_clearLocalIdentity);
       // Device gate runs from build once restrictions config is ready.
     });
+  }
+
+  /// True when required fields for the active type are complete.
+  bool _canSubmit(CheckInFormState formState) {
+    if (formState.isSubmitting) return false;
+    final type = formState.type;
+    if (type == null) return false;
+
+    switch (type) {
+      case CheckInType.member:
+        return _manuallySelectedMember != null &&
+            Validators.validatePhone(_phoneController.text) == null;
+      case CheckInType.substitute:
+        return Validators.validateName(_nameController.text) == null &&
+            Validators.validatePhone(_phoneController.text) == null &&
+            (_selectedSubstituteForMember?.trim().isNotEmpty ?? false) &&
+            formState.hasPhoto;
+      case CheckInType.visitor:
+        final category = _categoryController.text.trim();
+        return Validators.validateName(_nameController.text) == null &&
+            Validators.validatePhone(_phoneController.text) == null &&
+            Validators.validateEmail(_emailController.text) == null &&
+            _companyController.text.trim().isNotEmpty &&
+            category.length >= 4 &&
+            (_selectedInvitedByMember?.trim().isNotEmpty ?? false);
+      case CheckInType.absent:
+      case CheckInType.notCheckedIn:
+        return false;
+    }
   }
 
   Future<void> _applyDeviceGate({required bool restrictionsEnabled}) async {
@@ -697,12 +729,12 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
 
     const defaultLocation = LocationConfig(
       id: 'location_x',
-      name: 'Excel Plaza, Ghatkopar',
-      latitude: 19.083462,
-      longitude: 72.914026,
+      name: 'Jade Luxury Banquets, Mumbai',
+      latitude: 18.9888622,
+      longitude: 72.8152475,
       radiusMeters: 500.0,
       isActive: true,
-      address: 'EXCEL PLAZA, Pant Nagar, Ghatkopar East, Mumbai, Maharashtra 400075',
+      address: 'Jade Luxury Banquets, Nehru Centre, Dr Annie Besant Rd, Worli, Mumbai, Maharashtra 400018',
     );
     final location = widget.initialLocation ??
         locationAsync.asData?.value ??
@@ -717,6 +749,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
           userLongitude: location.longitude,
           gpsAccuracy: 5.0,
         );
+    final canSubmit = _canSubmit(formState);
 
     return AppScaffold(
       title: AppStrings.checkInFormTitle,
@@ -756,20 +789,6 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                               onChanged: _onTypeChanged,
                             ),
                             const SizedBox(height: 20),
-
-                            if (currentType == null)
-                              const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 28),
-                                child: Text(
-                                  'Select Member, Substitute, or Visitor to continue.',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF64748B),
-                                  ),
-                                ),
-                              ),
 
                             // 3. Dynamic Form Fields based on Type
                             if (currentType == CheckInType.member) ...[
@@ -852,7 +871,10 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                           : 'Check-In',
                       icon: Icons.how_to_reg_rounded,
                       isLoading: formState.isSubmitting,
-                      onPressed: () => _onSubmit(location, proximity),
+                      enabled: canSubmit,
+                      onPressed: canSubmit
+                          ? () => _onSubmit(location, proximity)
+                          : null,
                     ),
                   ),
                 ),

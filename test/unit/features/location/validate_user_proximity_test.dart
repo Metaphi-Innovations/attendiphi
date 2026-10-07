@@ -57,5 +57,20 @@ void main() {
         throwsA(isA<OutsideAllowedRadiusException>()),
       );
     });
+
+    test('does not throw when outside radius if enforceProximity is false', () {
+      final result = usecase(
+        userLat: 19.10295,
+        userLon: 72.9129274,
+        accuracy: 10.0,
+        location: excelPlaza,
+        enforceProximity: false,
+      );
+
+      expect(result.isWithinRadius, isFalse);
+      expect(result.distanceMeters, greaterThan(500.0));
+      expect(result.userLatitude, 19.10295);
+      expect(result.userLongitude, 72.9129274);
+    });
   });
 }

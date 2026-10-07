@@ -21,8 +21,8 @@ class CheckInRestrictionsToggle extends ConsumerWidget {
     final isSaving = writeAsync.isLoading;
 
     final tooltip = enabled
-        ? 'Restrictions ON — Thursday + QR date + one device'
-        : 'Restrictions OFF — test mode (any day / multi check-in)';
+        ? 'Restrictions ON — Thursday + QR date + one device + GPS'
+        : 'Restrictions OFF — test mode (any day / multi check-in / no GPS)';
 
     return configAsync.when(
       loading: () => const SizedBox(
@@ -104,8 +104,9 @@ class CheckInRestrictionsToggle extends ConsumerWidget {
             'This weakens production controls:\n'
             '• Check-in works any day of the week\n'
             '• Any QR session date is accepted\n'
-            '• Same device can check in multiple times\n\n'
-            'Phone uniqueness and GPS stay on.\n'
+            '• Same device can check in multiple times\n'
+            '• Location / GPS proximity is not required\n\n'
+            'Phone uniqueness stays on.\n'
             'Use only for testing. Turn restrictions back ON afterward.',
           ),
           actions: [
@@ -147,7 +148,7 @@ class CheckInRestrictionsToggle extends ConsumerWidget {
         content: Text(
           nextEnabled
               ? 'Check-in restrictions are ON'
-              : 'Check-in restrictions are OFF (test mode)',
+              : 'Check-in restrictions are OFF (any day / multi check-in / no GPS)',
         ),
       ),
     );

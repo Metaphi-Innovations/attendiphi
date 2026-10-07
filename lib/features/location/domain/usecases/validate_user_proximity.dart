@@ -31,6 +31,8 @@ class ValidateUserProximity {
     required double userLon,
     required double accuracy,
     required LocationConfig location,
+    /// When false (restrictions OFF), never reject for being outside the radius.
+    bool enforceProximity = true,
   }) {
     final rawDistance = GeoUtils.calculateDistance(
       lat1: userLat,
@@ -41,7 +43,7 @@ class ValidateUserProximity {
 
     final isInside = rawDistance <= location.radiusMeters;
 
-    if (!isInside) {
+    if (!isInside && enforceProximity) {
       throw OutsideAllowedRadiusException(
         distanceMeters: rawDistance,
         allowedRadiusMeters: location.radiusMeters,
@@ -63,7 +65,7 @@ class ValidateUserProximity {
 
     return ProximityResult(
       distanceMeters: finalDistance,
-      isWithinRadius: true,
+      isWithinRadius: isInside,
       allowedRadiusMeters: location.radiusMeters,
       userLatitude: userLat,
       userLongitude: userLon,

@@ -14,12 +14,12 @@ void main() {
 
   const testLocation = LocationConfig(
     id: 'test_venue',
-    name: 'Excel Plaza, Ghatkopar',
-    latitude: 19.083462,
-    longitude: 72.914026,
+    name: 'Jade Luxury Banquets, Mumbai',
+    latitude: 18.9888622,
+    longitude: 72.8152475,
     radiusMeters: 500.0,
     address:
-        'EXCEL PLAZA, Pant Nagar, Ghatkopar East, Mumbai, Maharashtra 400075',
+        'Jade Luxury Banquets, Nehru Centre, Dr Annie Besant Rd, Worli, Mumbai, Maharashtra 400018',
   );
 
   Widget createWidgetUnderTest({
@@ -138,7 +138,9 @@ void main() {
 
       expect(find.text('THURSDAY ONLY'), findsNothing);
       expect(find.text('SESSION EXPIRED'), findsNothing);
+      // Location UI still shown; GPS radius is not enforced when OFF.
       expect(find.text('Allowed Perimeter:'), findsOneWidget);
+      expect(find.text('Outside Allowed Radius'), findsNothing);
     });
 
     testWidgets('allows upcoming QR date when restrictions are OFF',
@@ -156,6 +158,7 @@ void main() {
       expect(find.text('UPCOMING SESSION'), findsNothing);
       expect(find.text('THURSDAY ONLY'), findsNothing);
       expect(find.text('Allowed Perimeter:'), findsOneWidget);
+      expect(find.text('Outside Allowed Radius'), findsNothing);
     });
   });
 }

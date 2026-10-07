@@ -8,19 +8,20 @@ import 'package:qr_checkin/features/qr_checkin/presentation/screens/venue_qr_dis
 void main() {
   const testLocation = LocationConfig(
     id: 'test_venue',
-    name: 'Excel Plaza, Ghatkopar',
-    latitude: 19.083462,
-    longitude: 72.914026,
+    name: 'Jade Luxury Banquets, Mumbai',
+    latitude: 18.9888622,
+    longitude: 72.8152475,
     radiusMeters: 500.0,
-    address: 'EXCEL PLAZA, Pant Nagar, Ghatkopar East, Mumbai, Maharashtra 400075',
+    address: 'Jade Luxury Banquets, Nehru Centre, Dr Annie Besant Rd, Worli, Mumbai, Maharashtra 400018',
   );
 
   Widget createWidgetUnderTest() {
-    return const ProviderScope(
+    return ProviderScope(
       child: MaterialApp(
         home: Scaffold(
           body: VenueQrDisplayScreen(
             location: testLocation,
+            initialDate: DateTime(2026, 9, 3),
           ),
         ),
       ),

@@ -141,9 +141,11 @@ String _formatTime(DateTime? dt) {
 /// Formats GPS distance for list tiles.
 /// Shows 'On-site' with clean status representation (no redundant checkmark icon inside string).
 String _formatGpsDistance(CheckInSubmission record) {
+  final latPrefix = record.userLatitude.toStringAsFixed(2);
+  final lonPrefix = record.userLongitude.toStringAsFixed(2);
   final isSameCoord =
-      record.userLatitude.toStringAsFixed(2) == '19.08' &&
-      record.userLongitude.toStringAsFixed(2) == '72.91';
+      (latPrefix == '18.99' && lonPrefix == '72.82') ||
+      (latPrefix == '19.08' && lonPrefix == '72.91');
 
   if (record.distanceMeters == 0 ||
       (isSameCoord && record.distanceMeters <= 150)) {
@@ -169,9 +171,11 @@ String _formatPhoneNumber(String phone) {
 
 /// Formats GPS distance for detail modal.
 String _formatGpsDistanceDetail(CheckInSubmission record) {
+  final latPrefix = record.userLatitude.toStringAsFixed(2);
+  final lonPrefix = record.userLongitude.toStringAsFixed(2);
   final isSameCoord =
-      record.userLatitude.toStringAsFixed(2) == '19.08' &&
-      record.userLongitude.toStringAsFixed(2) == '72.91';
+      (latPrefix == '18.99' && lonPrefix == '72.82') ||
+      (latPrefix == '19.08' && lonPrefix == '72.91');
 
   if (record.distanceMeters == 0 ||
       (isSameCoord && record.distanceMeters <= 150)) {

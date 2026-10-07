@@ -19,19 +19,19 @@ void main() {
   });
   const testLocation = LocationConfig(
     id: 'test_venue',
-    name: 'Excel Plaza, Ghatkopar',
-    latitude: 19.083462,
-    longitude: 72.914026,
+    name: 'Jade Luxury Banquets, Mumbai',
+    latitude: 18.9888622,
+    longitude: 72.8152475,
     radiusMeters: 500.0,
-    address: 'EXCEL PLAZA, Pant Nagar, Ghatkopar East, Mumbai, Maharashtra 400075',
+    address: 'Jade Luxury Banquets, Nehru Centre, Dr Annie Besant Rd, Worli, Mumbai, Maharashtra 400018',
   );
 
   const testProximity = ProximityResult(
     distanceMeters: 10.0,
     isWithinRadius: true,
     allowedRadiusMeters: 500.0,
-    userLatitude: 19.083462,
-    userLongitude: 72.914026,
+    userLatitude: 18.9888622,
+    userLongitude: 72.8152475,
     gpsAccuracy: 5.0,
   );
 
@@ -99,7 +99,7 @@ void main() {
       expect(find.text('Check-In Available on Thursday Only'), findsOneWidget);
     });
 
-    testWidgets('renders top Check-in Type options: Member, Substitute, Visitor', (tester) async {
+    testWidgets('renders top Check-in Type options with Member selected by default', (tester) async {
       await tester.pumpWidget(createWidgetUnderTest());
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
@@ -109,16 +109,7 @@ void main() {
       expect(find.text('Substitute'), findsOneWidget);
       expect(find.text('Visitor'), findsOneWidget);
 
-      // After QR scan no type is selected.
-      expect(find.text('Member Face Verification'), findsNothing);
-      expect(find.text('Select Member Name *'), findsNothing);
-      expect(find.widgetWithText(AppButton, 'Check-In'), findsNothing);
-
-      await tester.tap(find.text('Member'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
-
-      // Member uses manual dropdown only — no face camera UI.
+      // Member is selected by default — dropdown UI, no face camera.
       expect(find.text('Member Face Verification'), findsNothing);
       expect(find.text('Take Live Selfie'), findsNothing);
       expect(find.text('Start Camera'), findsNothing);
@@ -126,9 +117,16 @@ void main() {
       expect(find.text('Select Member Name *'), findsOneWidget);
       expect(find.text('Phone Number * (Auto-filled)'), findsOneWidget);
       expect(find.widgetWithText(AppButton, 'Check-In'), findsOneWidget);
+
+      // Check-In is present but disabled until a member is selected.
+      final disabledButton = tester.widget<AppButton>(
+        find.widgetWithText(AppButton, 'Check-In'),
+      );
+      expect(disabledButton.enabled, isFalse);
+      expect(disabledButton.onPressed, isNull);
     });
 
-    testWidgets('selecting a member from dropdown auto-fills name and phone', (tester) async {
+    testWidgets('selecting a member autofills fields and enables Check-In', (tester) async {
       tester.view.physicalSize = const Size(1000, 1600);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() {
@@ -140,9 +138,6 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      await tester.tap(find.text('Member'));
-      await tester.pump(const Duration(milliseconds: 200));
-
       // Open searchable member dropdown via the arrow button.
       await tester.tap(find.byIcon(Icons.arrow_drop_down_rounded));
       await tester.pump(const Duration(milliseconds: 200));
@@ -153,7 +148,12 @@ void main() {
 
       expect(find.text('Rohan Mehta'), findsOneWidget);
       expect(find.text('9876543210'), findsOneWidget);
-      expect(find.widgetWithText(AppButton, 'Check-In'), findsOneWidget);
+
+      final enabledButton = tester.widget<AppButton>(
+        find.widgetWithText(AppButton, 'Check-In'),
+      );
+      expect(enabledButton.enabled, isTrue);
+      expect(enabledButton.onPressed, isNotNull);
     });
 
     testWidgets('switching to Substitute displays substitute form with member dropdown and photo card', (tester) async {

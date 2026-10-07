@@ -42,12 +42,12 @@ void main() {
 
   const testLocation = LocationConfig(
     id: 'loc-1',
-    name: 'Excel Plaza, Ghatkopar',
-    latitude: 19.083462,
-    longitude: 72.914026,
+    name: 'Jade Luxury Banquets, Mumbai',
+    latitude: 18.9888622,
+    longitude: 72.8152475,
     radiusMeters: 500.0,
     isActive: true,
-    address: 'EXCEL PLAZA, Pant Nagar, Ghatkopar East, Mumbai, Maharashtra 400075',
+    address: 'Jade Luxury Banquets, Nehru Centre, Dr Annie Besant Rd, Worli, Mumbai, Maharashtra 400018',
   );
 
   group('Multi-Platform Viewport & Orientation Tests', () {
@@ -153,7 +153,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
-      expect(find.text('Excel Plaza, Ghatkopar'), findsOneWidget);
+      expect(find.text('Jade Luxury Banquets, Mumbai'), findsOneWidget);
       expect(find.textContaining('Allowed Perimeter:'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
