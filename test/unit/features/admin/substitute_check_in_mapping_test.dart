@@ -98,7 +98,34 @@ void main() {
       expect(mapped.substituteName, isNull);
     });
 
-    test('admin flip with empty substituteForMember keeps attendee name', () {
+    test(
+        'persisted substituteName is preserved from Firestore',
+        () {
+      final raw = _raw(
+        userName: 'Tejashree Vinayak Sane',
+        phone: '9919055132',
+        substituteForMember: 'Tejashree Vinayak Sane',
+        substituteName: 'Tejashree Vinayak Sane',
+        memberId: 'emp_member',
+        photoBase64: 'selfie_of_other_person',
+      );
+
+      final mapped = mapSubstituteCheckInForMember(raw: raw, member: member);
+
+      expect(mapped.userName, 'Tejashree Vinayak Sane');
+      expect(mapped.substituteName, 'Tejashree Vinayak Sane');
+      expect(mapped.photoBase64, 'selfie_of_other_person');
+      expect(
+        distinctSubstituteAttendeeName(
+          substituteName: mapped.substituteName,
+          memberName: mapped.userName,
+        ),
+        'Tejashree Vinayak Sane',
+      );
+    });
+
+    test('admin flip with empty substituteForMember does not invent member as sub',
+        () {
       final raw = _raw(
         userName: 'Tejashree Vinayak Sane',
         phone: '9919055132',
@@ -110,7 +137,8 @@ void main() {
       final mapped = mapSubstituteCheckInForMember(raw: raw, member: member);
 
       expect(mapped.userName, 'Tejashree Vinayak Sane');
-      expect(mapped.substituteName, 'Tejashree Vinayak Sane');
+      // No distinct attendee name available — leave null (UI shows "—").
+      expect(mapped.substituteName, isNull);
       expect(mapped.substituteForMember, 'Tejashree Vinayak Sane');
     });
   });
@@ -193,7 +221,7 @@ void main() {
       final updated = prepareAdminEditedCheckIn(
         original: original,
         selectedType: CheckInType.substitute,
-        nameField: 'Omkar Anarse',
+        nameField: 'Ravi Kumar',
         phoneField: '9976543215',
         venueField: 'Jade Luxury Banquets, Mumbai',
         coveredMemberName: omkar.name,
@@ -203,7 +231,7 @@ void main() {
       expect(updated.type, CheckInType.substitute);
       expect(updated.memberId, 'emp_omkar');
       expect(updated.substituteForMember, 'Omkar Anarse');
-      expect(updated.substituteName, 'Omkar Anarse');
+      expect(updated.substituteName, 'Ravi Kumar');
       expect(updated.userName, 'Omkar Anarse');
       expect(
         substituteCheckInCoversMember(raw: updated, member: omkar),
@@ -212,7 +240,7 @@ void main() {
 
       final mapped = mapSubstituteCheckInForMember(raw: updated, member: omkar);
       expect(mapped.type, CheckInType.substitute);
-      expect(mapped.substituteName, 'Omkar Anarse');
+      expect(mapped.substituteName, 'Ravi Kumar');
       expect(mapped.memberId, 'emp_omkar');
     });
 
@@ -384,6 +412,142 @@ void main() {
       expect(asMember.type, CheckInType.member);
       expect(asMember.toFirestoreMap()['type'], 'member');
       expect(asMember.toFirestoreMap().values.every((v) => v != null), isTrue);
+    });
+  });
+
+  group('resolveSubstituteAttendeeFields', () {
+    test('uses substituteName + userPhone from check-in text fields', () {
+      final raw = _raw(
+        userName: 'Amit Patel',
+        phone: '9819055132',
+        substituteForMember: 'Tejashree Vinayak Sane',
+        substituteName: 'Amit Patel',
+        memberId: 'emp_member',
+      );
+      // Dashboard remapped row: userName already the covered member.
+      final displayed = raw.copyWith(
+        userName: 'Tejashree Vinayak Sane',
+        substituteName: 'Amit Patel',
+      );
+
+      final fields = resolveSubstituteAttendeeFields(
+        displayed: displayed,
+        raw: raw,
+        coveredMemberName: 'Tejashree Vinayak Sane',
+      );
+
+      expect(fields.name, 'Amit Patel');
+      expect(fields.phone, '9819055132');
+      expect(fields.displayLabel, 'Amit Patel');
+    });
+
+    test('falls back to raw userName when substituteName missing', () {
+      final raw = _raw(
+        userName: 'Amit Patel',
+        phone: '9819055132',
+        substituteForMember: 'Tejashree Vinayak Sane',
+        substituteName: null,
+        memberId: 'emp_member',
+      );
+      final displayed = mapSubstituteCheckInForMember(raw: raw, member: member);
+
+      final fields = resolveSubstituteAttendeeFields(
+        displayed: displayed,
+        raw: raw,
+        coveredMemberName: member.name,
+      );
+
+      expect(fields.name, 'Amit Patel');
+      expect(fields.phone, '9819055132');
+      expect(fields.displayLabel, 'Amit Patel');
+    });
+
+    test('preserves substitute name and phone from check-in text fields', () {
+      final raw = _raw(
+        userName: 'Tejashree Vinayak Sane',
+        phone: '9819055132',
+        substituteForMember: 'Tejashree Vinayak Sane',
+        substituteName: 'Tejashree Vinayak Sane',
+        memberId: 'emp_member',
+        photoBase64: 'selfie',
+      );
+      final displayed = mapSubstituteCheckInForMember(raw: raw, member: member);
+
+      final fields = resolveSubstituteAttendeeFields(
+        displayed: displayed,
+        raw: raw,
+        coveredMemberName: member.name,
+      );
+
+      expect(fields.name, 'Tejashree Vinayak Sane');
+      expect(fields.phone, '9819055132');
+      expect(fields.displayLabel, 'Tejashree Vinayak Sane');
+    });
+
+    test('preserves userPhone from Firestore as substitute phone', () {
+      final raw = _raw(
+        userName: 'Vishwatmika Jadhav',
+        phone: '9920734142',
+        substituteForMember: 'Vishwatmika Jadhav',
+        substituteName: 'Alzaba Feroz',
+        memberId: 'emp_member',
+        photoBase64: 'selfie',
+      );
+      const covered = Employee(
+        id: 'emp_member',
+        name: 'Vishwatmika Jadhav',
+        phone: '9920734142',
+        email: 'v@example.com',
+      );
+      final displayed =
+          mapSubstituteCheckInForMember(raw: raw, member: covered);
+
+      final fields = resolveSubstituteAttendeeFields(
+        displayed: displayed,
+        raw: raw,
+        coveredMemberName: covered.name,
+        coveredMemberPhone: covered.phone,
+      );
+
+      expect(fields.name, 'Alzaba Feroz');
+      expect(fields.phone, '9920734142');
+      expect(fields.displayLabel, 'Alzaba Feroz');
+    });
+
+    test('prefers dedicated substitutePhone over corrupted userPhone', () {
+      final raw = CheckInSubmission(
+        id: 'sub-1',
+        locationId: 'loc',
+        locationName: 'Venue',
+        userName: 'Vishwatmika Jadhav',
+        userPhone: '9920734142',
+        type: CheckInType.substitute,
+        userLatitude: 0,
+        userLongitude: 0,
+        gpsAccuracy: 5,
+        distanceMeters: 10,
+        timestamp: DateTime(2026, 10, 8, 10, 0),
+        substituteForMember: 'Vishwatmika Jadhav',
+        substituteName: 'Alzaba Feroz',
+        substitutePhone: '9876543210',
+        memberId: 'emp_member',
+      );
+      const covered = Employee(
+        id: 'emp_member',
+        name: 'Vishwatmika Jadhav',
+        phone: '9920734142',
+        email: 'v@example.com',
+      );
+
+      final fields = resolveSubstituteAttendeeFields(
+        displayed: raw,
+        raw: raw,
+        coveredMemberName: covered.name,
+        coveredMemberPhone: covered.phone,
+      );
+
+      expect(fields.phone, '9876543210');
+      expect(fields.displayLabel, 'Alzaba Feroz');
     });
   });
 

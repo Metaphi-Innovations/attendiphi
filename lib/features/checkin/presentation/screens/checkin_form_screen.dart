@@ -590,11 +590,19 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
 
     // Sync controllers and type to provider state. Member identity is taken
     // from the selected member dropdown, not from typed or cached names.
+    // Substitute / visitor: name + phone MUST come from the text fields the
+    // user typed (never from the covered member roster).
     final notifier = ref.read(checkInFormProvider.notifier);
     notifier.setType(currentType);
     final selectedMember =
         currentType == CheckInType.member ? _manuallySelectedMember : null;
-    if (selectedMember != null &&
+    if (currentType == CheckInType.substitute ||
+        currentType == CheckInType.visitor) {
+      notifier.setName(_nameController.text.trim());
+      notifier.setPhone(_phoneController.text.trim());
+      notifier.setEmail(_emailController.text.trim());
+      notifier.setRecognizedMember(null);
+    } else if (selectedMember != null &&
         (formState.recognizedMemberId ?? '') != selectedMember.id) {
       final live = await _authoritativeMember(selectedMember);
       if (!mounted) return;

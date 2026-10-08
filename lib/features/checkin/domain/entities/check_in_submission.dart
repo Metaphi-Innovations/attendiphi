@@ -17,6 +17,7 @@ class CheckInSubmission {
     this.userEmail,
     this.substituteForMember,
     this.substituteName,
+    this.substitutePhone,
     this.companyName,
     this.category,
     this.invitedByMember,
@@ -84,6 +85,11 @@ class CheckInSubmission {
   /// Full name of the substitute person (when type is substitute).
   final String? substituteName;
 
+  /// Phone typed by the substitute at check-in (never the covered member roster).
+  ///
+  /// Kept separate from [userPhone] so member-profile sync cannot overwrite it.
+  final String? substitutePhone;
+
   /// Company or organization name (for visitors).
   final String? companyName;
 
@@ -144,6 +150,7 @@ class CheckInSubmission {
     String? userEmail,
     String? substituteForMember,
     String? substituteName,
+    String? substitutePhone,
     String? companyName,
     String? category,
     String? invitedByMember,
@@ -162,6 +169,8 @@ class CheckInSubmission {
     String? verificationMethod,
     bool? faceVerified,
     bool clearSubstituteFields = false,
+    bool clearSubstituteName = false,
+    bool clearSubstitutePhone = false,
     bool clearVerificationMeta = false,
   }) {
     return CheckInSubmission(
@@ -180,9 +189,12 @@ class CheckInSubmission {
       substituteForMember: clearSubstituteFields
           ? null
           : (substituteForMember ?? this.substituteForMember),
-      substituteName: clearSubstituteFields
+      substituteName: (clearSubstituteFields || clearSubstituteName)
           ? null
           : (substituteName ?? this.substituteName),
+      substitutePhone: (clearSubstituteFields || clearSubstitutePhone)
+          ? null
+          : (substitutePhone ?? this.substitutePhone),
       companyName: companyName ?? this.companyName,
       category: category ?? this.category,
       invitedByMember: invitedByMember ?? this.invitedByMember,
@@ -223,6 +235,7 @@ class CheckInSubmission {
       'userEmail': userEmail,
       'substituteForMember': substituteForMember,
       'substituteName': substituteName,
+      'substitutePhone': substitutePhone,
       'companyName': companyName,
       'category': category,
       'invitedByMember': invitedByMember,
@@ -281,6 +294,7 @@ class CheckInSubmission {
       userEmail: map['userEmail']?.toString(),
       substituteForMember: map['substituteForMember']?.toString(),
       substituteName: map['substituteName']?.toString(),
+      substitutePhone: map['substitutePhone']?.toString(),
       companyName: map['companyName']?.toString(),
       category: map['category']?.toString(),
       invitedByMember: map['invitedByMember']?.toString(),

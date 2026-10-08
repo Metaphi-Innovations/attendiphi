@@ -200,6 +200,26 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   final _searchController = TextEditingController();
   final _scrollController = ScrollController();
 
+  /// Unmapped Firestore check-in for [id], when present in the live stream.
+  CheckInSubmission? _rawCheckInById(String id) {
+    final all = ref.read(checkInsStreamProvider).value;
+    if (all == null || id.isEmpty) return null;
+    for (final row in all) {
+      if (row.id == id) return row;
+    }
+    return null;
+  }
+
+  /// Covered member roster phone for a dashboard row (never substitute phone).
+  String? _coveredMemberPhone(CheckInSubmission record) {
+    final employees = ref.read(employeesStreamProvider).value ?? const [];
+    final emp = EmployeeLookup.byId(employees, record.memberId) ??
+        EmployeeLookup.byName(employees, record.userName) ??
+        EmployeeLookup.forNamedMember(employees, record.substituteForMember);
+    final phone = emp?.phone.trim() ?? '';
+    return phone.isNotEmpty ? phone : null;
+  }
+
   /// Prefer a real location from today's dashboard rows, else the app default.
   (String, String) _fallbackLocationFromDashboard() {
     final filterLoc =
@@ -304,6 +324,18 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
 
     final fallback = _fallbackLocationFromDashboard();
     final stamped = DateTime.now();
+    // Preserve substitute name/phone from the original check-in text fields
+    // (raw Firestore doc), not a collapsed remapped dashboard row.
+    final raw = _rawCheckInById(record.id);
+    final memberPhone = _coveredMemberPhone(record);
+    final attendee = record.type.isSubstitute
+        ? resolveSubstituteAttendeeFields(
+            displayed: record,
+            raw: raw,
+            coveredMemberName: record.userName,
+            coveredMemberPhone: memberPhone,
+          )
+        : null;
     final updatedRecord = materializeAdminCheckInForWrite(
       record.copyWith(
         type: isNotCheckedIn ? CheckInType.member : record.type,
@@ -311,6 +343,22 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
         clearVerificationMeta: !newVerified,
         verifiedAt: newVerified ? stamped : null,
         verifiedBy: newVerified ? 'Admin' : null,
+        substituteName: (attendee?.name?.trim().isNotEmpty ?? false)
+            ? attendee!.name!.trim()
+            : record.substituteName,
+        clearSubstituteName: record.type.isSubstitute &&
+            (attendee?.name == null || attendee!.name!.trim().isEmpty) &&
+            (record.substituteName == null || record.substituteName!.trim().isEmpty),
+        userPhone: (attendee != null && attendee.phone.isNotEmpty)
+            ? attendee.phone
+            : record.userPhone,
+        substitutePhone: (attendee != null && attendee.phone.isNotEmpty)
+            ? attendee.phone
+            : (record.substitutePhone ?? record.userPhone),
+        clearSubstitutePhone: record.type.isSubstitute &&
+            (attendee == null || attendee.phone.isEmpty) &&
+            record.userPhone.isEmpty &&
+            (record.substitutePhone == null || record.substitutePhone!.isEmpty),
       ),
       newCheckInId: const Uuid().v4(),
       fallbackLocationId: fallback.$1,
@@ -388,14 +436,32 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                 : record.userName.trim()
             : record.userName.trim());
 
+    // Prefill from original check-in text fields (raw doc), never the covered
+    // member roster name/phone.
+    final substituteAttendee = record.type.isSubstitute
+        ? resolveSubstituteAttendeeFields(
+            displayed: record,
+            raw: _rawCheckInById(record.id),
+            coveredMemberName: coveredMemberName,
+            coveredMemberPhone: coveredEmployee?.phone,
+          )
+        : null;
     final nameController = TextEditingController(
       text: record.type.isSubstitute
-          ? ((record.substituteName?.trim().isNotEmpty ?? false)
-              ? record.substituteName!.trim()
-              : record.userName)
+          ? ((substituteAttendee?.name?.trim().isNotEmpty ?? false)
+              ? substituteAttendee!.name!.trim()
+              : (record.substituteName?.trim() ?? ''))
           : record.userName,
     );
-    final phoneController = TextEditingController(text: record.userPhone);
+    final phoneController = TextEditingController(
+      text: record.type.isSubstitute
+          ? ((substituteAttendee?.phone.isNotEmpty ?? false)
+              ? substituteAttendee!.phone
+              : (record.substitutePhone?.trim().isNotEmpty == true
+                  ? record.substitutePhone!.trim()
+                  : record.userPhone.trim()))
+          : record.userPhone,
+    );
     final venueController = TextEditingController(text: record.locationName);
     var selectedType = record.type == CheckInType.notCheckedIn
         ? CheckInType.member
@@ -791,6 +857,16 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     final photoBytes = ImageUtils.base64ToBytes(record.photoBase64);
     final theme = Theme.of(context);
     final isWide = context.screenWidth >= 600;
+    final raw = _rawCheckInById(record.id);
+    final memberPhone = _coveredMemberPhone(record);
+    final substituteAttendee = record.type.isSubstitute
+        ? resolveSubstituteAttendeeFields(
+            displayed: record,
+            raw: raw,
+            coveredMemberName: record.userName,
+            coveredMemberPhone: memberPhone,
+          )
+        : null;
 
     Widget buildDetailContent(BuildContext modalCtx) {
       return Column(
@@ -902,15 +978,25 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
           if (record.type.isSubstitute)
             _DetailItem(
               label: 'Substitute Name',
-              value: (record.substituteName?.trim().isNotEmpty ?? false)
-                  ? record.substituteName!.trim()
-                  : '—',
+              value: (substituteAttendee?.name?.trim().isNotEmpty ?? false)
+                  ? substituteAttendee!.name!.trim()
+                  : ((record.substituteName?.trim().isNotEmpty ?? false)
+                      ? record.substituteName!.trim()
+                      : '—'),
             ),
           _DetailItem(
             label: record.type.isSubstitute
                 ? 'Substitute Phone'
                 : 'Phone Number',
-            value: record.userPhone,
+            value: record.type.isSubstitute
+                ? ((substituteAttendee?.phone.isNotEmpty ?? false)
+                    ? _formatPhoneNumber(substituteAttendee!.phone)
+                    : ((record.substitutePhone?.trim().isNotEmpty ?? false)
+                        ? _formatPhoneNumber(record.substitutePhone!)
+                        : (record.userPhone.trim().isNotEmpty
+                            ? _formatPhoneNumber(record.userPhone)
+                            : '—')))
+                : _formatPhoneNumber(record.userPhone),
           ),
           _DetailItem(label: 'Attendance Type', value: record.type.displayName),
           _DetailItem(label: 'Venue', value: record.locationName),
@@ -1315,6 +1401,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                   isDark: isDark,
                   theme: theme,
                   employees: ref.watch(employeesStreamProvider).value,
+                  rawCheckIn: _rawCheckInById(record.id),
                   onRecordTap: () => _showDetailModal(context, record),
                   onEditTap: () => _showEditCheckInDialog(context, record),
                   onVerifyTap: () => _toggleVerifyCheckIn(record),
@@ -1904,6 +1991,12 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       );
     }
 
+    // Snapshot raw check-ins for substitute name/phone resolution during build.
+    final rawCheckIns = ref.watch(checkInsStreamProvider).value ?? const [];
+    final rawById = <String, CheckInSubmission>{
+      for (final row in rawCheckIns) row.id: row,
+    };
+
     // Spreadsheet / Table data view (Fixed Table Header, Only Data Rows scroll vertically)
     return _CheckInTableView(
       records: filteredRecords,
@@ -1912,6 +2005,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       onRecordTap: (record) => _showDetailModal(context, record),
       onEditTap: (record) => _showEditCheckInDialog(context, record),
       onVerifyTap: _toggleVerifyCheckIn,
+      rawCheckInById: (id) => rawById[id],
       scrollController: _scrollController,
       isEmbeddedInScroll: false,
     );
@@ -2204,6 +2298,7 @@ class _MobileCheckInRow extends StatelessWidget {
     required this.onEditTap,
     required this.onVerifyTap,
     this.employees,
+    this.rawCheckIn,
   });
 
   final int index;
@@ -2214,10 +2309,33 @@ class _MobileCheckInRow extends StatelessWidget {
   final VoidCallback onEditTap;
   final VoidCallback onVerifyTap;
   final List<Employee>? employees;
+  final CheckInSubmission? rawCheckIn;
 
   @override
   Widget build(BuildContext context) {
     final photoBytes = ImageUtils.base64ToBytes(record.photoBase64);
+    final coveredEmp =
+        EmployeeLookup.byId(employees ?? const [], record.memberId) ??
+            EmployeeLookup.byName(employees ?? const [], record.userName);
+    final rosterPhone = coveredEmp?.phone.trim() ?? '';
+    final substituteAttendee = record.type.isSubstitute
+        ? resolveSubstituteAttendeeFields(
+            displayed: record,
+            raw: rawCheckIn,
+            coveredMemberName: record.userName,
+            coveredMemberPhone:
+                rosterPhone.isNotEmpty ? rosterPhone : null,
+          )
+        : null;
+    final subLabel = (substituteAttendee?.displayLabel?.trim().isNotEmpty ?? false)
+        ? substituteAttendee!.displayLabel!.trim()
+        : ((record.substituteName?.trim().isNotEmpty ?? false)
+            ? record.substituteName!.trim()
+            : record.userPhone.trim());
+    final memberPhone = () {
+      if (!record.type.isSubstitute) return record.userPhone;
+      return rosterPhone.isNotEmpty ? rosterPhone : record.userPhone;
+    }();
 
     return InkWell(
       onTap: onRecordTap,
@@ -2275,7 +2393,7 @@ class _MobileCheckInRow extends StatelessWidget {
                           ),
                           const SizedBox(width: 3),
                           Text(
-                            _formatPhoneNumber(record.userPhone),
+                            _formatPhoneNumber(memberPhone),
                             style: TextStyle(
                               fontSize: 11.5,
                               color: theme.colorScheme.onSurfaceVariant,
@@ -2285,7 +2403,7 @@ class _MobileCheckInRow extends StatelessWidget {
                         ],
                       ),
                       if (record.type.isSubstitute &&
-                          (record.substituteName?.isNotEmpty ?? false)) ...[
+                          (subLabel.isNotEmpty || photoBytes != null)) ...[
                         const SizedBox(height: 3),
                         Container(
                           padding: const EdgeInsets.fromLTRB(4, 2, 8, 2),
@@ -2309,7 +2427,9 @@ class _MobileCheckInRow extends StatelessWidget {
                                   onTap: () => _showAttendeePhotoDialog(
                                     context: context,
                                     photoBytes: photoBytes,
-                                    title: record.substituteName!,
+                                    title: subLabel.isNotEmpty
+                                        ? subLabel
+                                        : 'Substitute',
                                     subtitle:
                                         'Substitute for ${record.userName}',
                                     badgeLabel: 'Substitute Live Photo',
@@ -2343,7 +2463,7 @@ class _MobileCheckInRow extends StatelessWidget {
                               const SizedBox(width: 4),
                               Flexible(
                                 child: Text(
-                                  'Sub: ${record.substituteName}',
+                                  'Sub: ${subLabel.isNotEmpty ? (substituteAttendee?.name != null ? subLabel : _formatPhoneNumber(subLabel)) : 'Attendee'}',
                                   style: TextStyle(
                                     fontSize: 11,
                                     color: isDark
@@ -2541,6 +2661,7 @@ class _CheckInTableView extends StatelessWidget {
     required this.onRecordTap,
     required this.onEditTap,
     required this.onVerifyTap,
+    required this.rawCheckInById,
     this.scrollController,
     this.isEmbeddedInScroll = false,
     this.employees,
@@ -2550,6 +2671,7 @@ class _CheckInTableView extends StatelessWidget {
   final void Function(CheckInSubmission) onRecordTap;
   final void Function(CheckInSubmission) onEditTap;
   final void Function(CheckInSubmission) onVerifyTap;
+  final CheckInSubmission? Function(String id) rawCheckInById;
   final ScrollController? scrollController;
   final bool isEmbeddedInScroll;
   final List<Employee>? employees;
@@ -2616,9 +2738,33 @@ class _CheckInTableView extends StatelessWidget {
       final rowNumber = index + 1;
       final isZebra = index.isOdd;
       final photoBytes = ImageUtils.base64ToBytes(record.photoBase64);
+      final raw = rawCheckInById(record.id);
+      final coveredEmp =
+          EmployeeLookup.byId(employees ?? const [], record.memberId) ??
+              EmployeeLookup.byName(employees ?? const [], record.userName);
+      final rosterPhone = coveredEmp?.phone.trim() ?? '';
+      final substituteAttendee = record.type.isSubstitute
+          ? resolveSubstituteAttendeeFields(
+              displayed: record,
+              raw: raw,
+              coveredMemberName: record.userName,
+              coveredMemberPhone:
+                  rosterPhone.isNotEmpty ? rosterPhone : null,
+            )
+          : null;
+      // Name from text field, else phone from text field — never hide both.
+      final subName = (substituteAttendee?.displayLabel?.trim().isNotEmpty ?? false)
+          ? substituteAttendee!.displayLabel!.trim()
+          : ((record.substituteName?.trim().isNotEmpty ?? false)
+              ? record.substituteName!.trim()
+              : record.userPhone.trim());
       final hasSubstitute = record.type.isSubstitute &&
-          record.substituteName != null &&
-          record.substituteName!.trim().isNotEmpty;
+          (subName.isNotEmpty || photoBytes != null);
+      // Member column phone = roster phone; substitute phone lives in SUBSTITUTE.
+      final memberPhone = () {
+        if (!record.type.isSubstitute) return record.userPhone;
+        return rosterPhone.isNotEmpty ? rosterPhone : record.userPhone;
+      }();
 
       return InkWell(
         onTap: () => onRecordTap(record),
@@ -2697,11 +2843,11 @@ class _CheckInTableView extends StatelessWidget {
                 ),
               ),
 
-              // Phone
+              // Phone (member roster for substitute rows)
               Expanded(
                 flex: 2,
                 child: Text(
-                  _formatPhoneNumber(record.userPhone),
+                  _formatPhoneNumber(memberPhone),
                   style: TextStyle(
                     fontSize: 12,
                     color: theme.colorScheme.onSurfaceVariant,
@@ -2720,7 +2866,7 @@ class _CheckInTableView extends StatelessWidget {
                 ),
               ),
 
-              // Substitute Column
+              // Substitute Column — name/phone from check-in text fields + selfie
               Expanded(
                 flex: 2,
                 child: Padding(
@@ -2754,7 +2900,9 @@ class _CheckInTableView extends StatelessWidget {
                                         ? () => _showAttendeePhotoDialog(
                                               context: context,
                                               photoBytes: photoBytes,
-                                              title: record.substituteName!,
+                                              title: subName.isNotEmpty
+                                                  ? subName
+                                                  : 'Substitute',
                                               subtitle:
                                                   'Substitute for ${record.userName}',
                                               badgeLabel:
@@ -2799,9 +2947,10 @@ class _CheckInTableView extends StatelessWidget {
                                             ),
                                             child: Center(
                                               child: Text(
-                                                record.substituteName!
-                                                    .trim()[0]
-                                                    .toUpperCase(),
+                                                subName.isNotEmpty
+                                                    ? subName.trim()[0]
+                                                        .toUpperCase()
+                                                    : 'S',
                                                 style: const TextStyle(
                                                   fontWeight: FontWeight.bold,
                                                   fontSize: 10,
@@ -2815,7 +2964,11 @@ class _CheckInTableView extends StatelessWidget {
                                 const SizedBox(width: 5),
                                 Expanded(
                                   child: Text(
-                                    record.substituteName!,
+                                    subName.isNotEmpty
+                                        ? (substituteAttendee?.name != null
+                                            ? subName
+                                            : _formatPhoneNumber(subName))
+                                        : 'Substitute',
                                     style: TextStyle(
                                       fontWeight: FontWeight.w500,
                                       fontSize: 11,

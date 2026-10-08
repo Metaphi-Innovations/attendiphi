@@ -173,6 +173,10 @@ class SubmitCheckIn {
       // Persist attending substitute identity so dashboard remap cannot
       // collapse Member Name == Substitute Name after verify write-back.
       substituteName: type.isSubstitute ? trimmedName : null,
+      // Dedicated phone field so member-roster sync cannot overwrite it.
+      substitutePhone: type.isSubstitute
+          ? Validators.formatPhoneWithCountryCode(phone)
+          : null,
       companyName: companyName?.trim(),
       category: category?.trim(),
       invitedByMember: invitedByMember?.trim(),

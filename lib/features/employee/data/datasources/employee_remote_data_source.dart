@@ -426,13 +426,20 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
         for (var j = i; j < end; j++) {
           final data = docs[j].data();
           final updates = <String, dynamic>{};
-          if (data['memberId']?.toString() == employeeId) {
-            if (nameChanged) updates['userName'] = newName.trim();
-            if (phoneChanged) updates['userPhone'] = newPhone.trim();
-          } else if ((data['userName']?.toString() ?? '').trim() ==
-              oldName.trim()) {
-            if (nameChanged) updates['userName'] = newName.trim();
-            if (phoneChanged) updates['userPhone'] = newPhone.trim();
+          final docType = (data['type']?.toString() ?? '').trim();
+          final isSubstitute = docType == 'substitute';
+          // Substitute docs: memberId / userName remap point at the covered
+          // member, but userPhone / substitutePhone / substituteName belong to
+          // the attending substitute — never overwrite those with roster edits.
+          if (!isSubstitute) {
+            if (data['memberId']?.toString() == employeeId) {
+              if (nameChanged) updates['userName'] = newName.trim();
+              if (phoneChanged) updates['userPhone'] = newPhone.trim();
+            } else if ((data['userName']?.toString() ?? '').trim() ==
+                oldName.trim()) {
+              if (nameChanged) updates['userName'] = newName.trim();
+              if (phoneChanged) updates['userPhone'] = newPhone.trim();
+            }
           }
           if (nameChanged &&
               (data['substituteForMember']?.toString() ?? '').trim() ==

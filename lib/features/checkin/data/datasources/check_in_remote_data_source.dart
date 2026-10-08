@@ -297,9 +297,13 @@ class CheckInRemoteDataSourceImpl implements CheckInRemoteDataSource {
   /// Null-safe update payload; deletes cleared substitute / verification fields.
   Map<String, dynamic> _adminUpdateMap(CheckInSubmission submission) {
     final map = submission.toFirestoreMap();
+    // Only wipe substitute fields when leaving substitute type. Never delete
+    // substituteName while still a substitute — omitting it preserves the
+    // original check-in text-field value in Firestore.
     if (!submission.type.isSubstitute) {
       map['substituteForMember'] = FieldValue.delete();
       map['substituteName'] = FieldValue.delete();
+      map['substitutePhone'] = FieldValue.delete();
     }
     if (!submission.isVerified) {
       map['verifiedAt'] = FieldValue.delete();

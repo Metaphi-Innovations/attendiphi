@@ -7,13 +7,112 @@ import '../../employee/domain/entities/employee.dart';
 const String kDefaultAdminLocationId = 'location_x';
 const String kDefaultAdminLocationName = 'Jade Luxury Banquets, Mumbai';
 
+/// True when [name] is empty or matches [memberName] (same person label).
+bool isSamePersonName(String? name, String memberName) {
+  final left = name?.trim() ?? '';
+  final right = memberName.trim();
+  if (left.isEmpty || right.isEmpty) return left.isEmpty;
+  return EmployeeLookup.normalizeName(left) ==
+      EmployeeLookup.normalizeName(right);
+}
+
+/// Substitute display name that is distinct from the covered member.
+///
+/// If [substituteName] is present, it is preserved. If missing, falls back
+/// to [fallbackAttendeeName] when distinct from the covered member.
+String? distinctSubstituteAttendeeName({
+  required String? substituteName,
+  required String memberName,
+  String? fallbackAttendeeName,
+}) {
+  final primary = substituteName?.trim() ?? '';
+  if (primary.isNotEmpty) {
+    return primary;
+  }
+  final fallback = fallbackAttendeeName?.trim() ?? '';
+  if (fallback.isNotEmpty && !isSamePersonName(fallback, memberName)) {
+    return fallback;
+  }
+  return null;
+}
+
+/// Resolves substitute attendee name + phone from check-in text-field data.
+///
+/// Source of truth (QR / form):
+/// - name → [CheckInSubmission.substituteName], else original [userName]
+///   when that value is not the covered member
+/// - phone → [CheckInSubmission.substitutePhone], else [userPhone] from Firestore
+/// - [displayLabel] → name if present, otherwise phone (so the SUBSTITUTE
+///   column is never empty when the attendee typed a phone)
+///
+/// [raw] is the unmapped Firestore document when available (preferred over a
+/// remapped dashboard row that already replaced userName with the member).
+({String? name, String phone, String? displayLabel})
+    resolveSubstituteAttendeeFields({
+  required CheckInSubmission displayed,
+  CheckInSubmission? raw,
+  String? coveredMemberName,
+  String? coveredMemberPhone,
+}) {
+  final memberName = (coveredMemberName ?? displayed.userName).trim();
+  // Prefer raw Firestore doc; also try displayed substituteName when raw was
+  // already remapped in-memory without a separate raw copy.
+  final primary = raw ?? displayed;
+  final secondary = identical(primary, displayed) ? null : displayed;
+
+  final name = distinctSubstituteAttendeeName(
+        substituteName: primary.substituteName,
+        memberName: memberName,
+        fallbackAttendeeName: primary.userName,
+      ) ??
+      (secondary == null
+          ? null
+          : distinctSubstituteAttendeeName(
+              substituteName: secondary.substituteName,
+              memberName: memberName,
+              fallbackAttendeeName: secondary.userName,
+            ));
+
+  final phone = _resolveSubstitutePhone(
+    primary: primary,
+    secondary: secondary,
+    displayed: displayed,
+    coveredMemberPhone: coveredMemberPhone,
+  );
+
+  final displayLabel =
+      (name != null && name.isNotEmpty) ? name : (phone.isNotEmpty ? phone : null);
+
+  return (name: name, phone: phone, displayLabel: displayLabel);
+}
+
+String _resolveSubstitutePhone({
+  required CheckInSubmission primary,
+  CheckInSubmission? secondary,
+  required CheckInSubmission displayed,
+  String? coveredMemberPhone,
+}) {
+  String? pick(CheckInSubmission source) {
+    final dedicated = source.substitutePhone?.trim() ?? '';
+    if (dedicated.isNotEmpty) return dedicated;
+    final fallback = source.userPhone.trim();
+    if (fallback.isNotEmpty) return fallback;
+    return null;
+  }
+
+  return pick(primary) ??
+      (secondary != null ? pick(secondary) : null) ??
+      pick(displayed) ??
+      '';
+}
+
 /// Maps a raw substitute Firestore check-in onto a Daily Attendance member row.
 ///
 /// Dashboard convention for substitute rows:
 /// - [CheckInSubmission.userName] / [CheckInSubmission.memberId] → member covered
 /// - [CheckInSubmission.substituteName] → person who attended
 /// - [CheckInSubmission.photoBase64] → substitute selfie
-/// - [CheckInSubmission.userPhone] → attending substitute phone (not member phone)
+/// - [CheckInSubmission.userPhone] → attending substitute phone
 ///
 /// Important: after verify/edit write-back, Firestore may already have
 /// `userName == member` and a populated `substituteName`. Remapping must
@@ -27,29 +126,28 @@ CheckInSubmission mapSubstituteCheckInForMember({
   final rawUser = raw.userName.trim();
   final memberName = member.name.trim();
 
-  final String attendingName;
-  if (persistedSub.isNotEmpty) {
-    attendingName = persistedSub;
-  } else if (rawUser.isNotEmpty &&
-      EmployeeLookup.normalizeName(rawUser) !=
-          EmployeeLookup.normalizeName(memberName)) {
-    // Fresh QR write: userName is the attending substitute.
-    attendingName = rawUser;
-  } else if (rawUser.isNotEmpty &&
-      (raw.substituteForMember ?? '').trim().isEmpty) {
-    // Admin flipped Member → Substitute without a separate substitute name.
-    attendingName = rawUser;
-  } else {
-    // Remapped write-back without substituteName — identity lost.
-    attendingName = persistedSub;
-  }
+  final attendingName = persistedSub.isNotEmpty
+      ? persistedSub
+      : (rawUser.isNotEmpty && !isSamePersonName(rawUser, memberName)
+          ? rawUser
+          : null);
+
+  final dedicatedPhone = raw.substitutePhone?.trim() ?? '';
+  final rawPhone = raw.userPhone.trim();
+  final attendingPhone = dedicatedPhone.isNotEmpty
+      ? dedicatedPhone
+      : rawPhone;
 
   return raw.copyWith(
     userName: memberName,
-    // Prefer attending substitute phone (raw QR). Do not overwrite with member.
-    userPhone: raw.userPhone,
+    // Attending substitute phone (form text field), never member roster.
+    userPhone: attendingPhone.isNotEmpty ? attendingPhone : raw.userPhone,
     userEmail: raw.userEmail ?? member.email,
-    substituteName: attendingName.isEmpty ? null : attendingName,
+    substituteName: attendingName,
+    // copyWith cannot null-out via `substituteName: null` alone.
+    clearSubstituteName: attendingName == null,
+    substitutePhone: attendingPhone.isNotEmpty ? attendingPhone : null,
+    clearSubstitutePhone: attendingPhone.isEmpty,
     substituteForMember: memberName,
     photoBase64: raw.photoBase64,
     type: CheckInType.substitute,
@@ -134,12 +232,20 @@ CheckInSubmission prepareAdminEditedCheckIn({
 
   late CheckInSubmission edited;
   if (effectiveType.isSubstitute) {
-    final substituteName =
-        attendingName.isNotEmpty ? attendingName : coveredName;
+    // Explicit form input wins. If empty, recover a distinct name from the
+    // existing record — never fall back to covered member name.
+    final resolvedSubName = attendingName.isNotEmpty
+        ? attendingName
+        : distinctSubstituteAttendeeName(
+            substituteName: original.substituteName,
+            memberName: coveredName,
+          );
+    final resolvedPhone =
+        phone.isNotEmpty ? phone : (original.substitutePhone ?? original.userPhone);
     edited = original.copyWith(
       // Dashboard remap convention: userName = covered member.
       userName: coveredName,
-      userPhone: phone.isNotEmpty ? phone : original.userPhone,
+      userPhone: resolvedPhone,
       locationName: _resolvedVenueName(
         venueField: venue,
         original: original,
@@ -147,7 +253,10 @@ CheckInSubmission prepareAdminEditedCheckIn({
       ),
       type: CheckInType.substitute,
       substituteForMember: coveredName,
-      substituteName: substituteName,
+      substituteName: resolvedSubName,
+      clearSubstituteName: resolvedSubName == null,
+      substitutePhone: resolvedPhone.isNotEmpty ? resolvedPhone : null,
+      clearSubstitutePhone: resolvedPhone.isEmpty,
       memberId: (coveredId != null && coveredId.isNotEmpty) ? coveredId : null,
       isVerified: keepVerified,
       clearVerificationMeta: !keepVerified,
