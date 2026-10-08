@@ -64,6 +64,17 @@ void main() {
     expect(EmployeeLookup.forCheckIn(employees, record)?.id, 'emp_1');
   });
 
+  test('resolves substitute target by memberId before name', () {
+    final record = _checkIn(
+      name: 'Temp Sub',
+      phone: '9000000000',
+      type: CheckInType.substitute,
+      memberId: 'emp_1',
+      substituteForMember: 'Pooja Nair',
+    );
+    expect(EmployeeLookup.forCheckIn(employees, record)?.id, 'emp_1');
+  });
+
   test('scoped list can hide inactive members', () {
     final active = EmployeeLookup.scoped(
       employees: employees,

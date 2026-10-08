@@ -50,6 +50,15 @@ class LocationValidationNotifier
     );
   }
 
+  /// Clears any prior deny/error and re-runs permission + GPS validation.
+  ///
+  /// Call this on every fresh QR visit so an accidental Deny does not leave
+  /// the user stuck on a stale "location denied" state.
+  Future<void> resetAndValidate() async {
+    state = const LocationValidationInitial();
+    await validateLocation();
+  }
+
   /// Initiates location permission check and proximity validation against the target venue.
   /// When Super Admin restrictions are OFF, GPS/radius never blocks check-in.
   Future<void> validateLocation() async {
@@ -65,7 +74,7 @@ class LocationValidationNotifier
     );
 
     try {
-      // 1. Request location permission
+      // 1. Request location permission (re-prompts after a prior Deny when possible)
       state = const LocationValidationRequestingPermission();
       final permissionService = ref.read(permissionServiceProvider);
       await permissionService.requestLocationPermission();

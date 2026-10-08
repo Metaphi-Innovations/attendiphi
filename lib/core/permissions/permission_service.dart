@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart'
     hide LocationServiceDisabledException;
 import 'package:permission_handler/permission_handler.dart'
@@ -14,6 +15,12 @@ class PermissionService {
 
   /// Request location permission.
   ///
+  /// Always invokes the platform prompt path when location is not already
+  /// granted. On web, a previous Deny is reported as [LocationPermission.deniedForever];
+  /// calling [Geolocator.requestPermission] again still runs `getCurrentPosition`,
+  /// which re-shows the browser dialog when the user later sets the site back
+  /// to Ask/Allow (e.g. after an accidental Deny + re-scan).
+  ///
   /// Throws:
   /// - [LocationServiceDisabledException] if location services are off
   /// - [LocationPermissionDeniedException] if permission denied
@@ -25,19 +32,29 @@ class PermissionService {
       throw const LocationServiceDisabledException();
     }
 
-    // Check current permission status
     var permission = await Geolocator.checkPermission();
 
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
+    final alreadyGranted = permission == LocationPermission.always ||
+        permission == LocationPermission.whileInUse;
 
-      if (permission == LocationPermission.denied) {
-        AppLogger.info(
-          'Location permission denied by user',
-          tag: 'PermissionService',
-        );
-        throw const LocationPermissionDeniedException();
-      }
+    if (!alreadyGranted) {
+      AppLogger.info(
+        'Requesting location permission (current=$permission, web=$kIsWeb)',
+        tag: 'PermissionService',
+      );
+      // Re-prompt even when status is deniedForever so a fresh QR scan / Allow
+      // tap can surface the system dialog again after the user resets site
+      // permission, or succeed immediately if they already chose Allow.
+      permission = await Geolocator.requestPermission();
+    }
+
+    if (permission == LocationPermission.always ||
+        permission == LocationPermission.whileInUse) {
+      AppLogger.debug(
+        'Location permission granted: $permission',
+        tag: 'PermissionService',
+      );
+      return;
     }
 
     if (permission == LocationPermission.deniedForever) {
@@ -48,10 +65,11 @@ class PermissionService {
       throw const LocationPermissionPermanentlyDeniedException();
     }
 
-    AppLogger.debug(
-      'Location permission granted: $permission',
+    AppLogger.info(
+      'Location permission denied by user',
       tag: 'PermissionService',
     );
+    throw const LocationPermissionDeniedException();
   }
 
   /// Check if location permission is currently granted.
@@ -82,7 +100,7 @@ class PermissionService {
     );
   }
 
-  /// Open device settings for the user to manually grant permissions.
+  /// Open the device / browser settings page for manual permission changes.
   Future<bool> openAppSettings() async {
     return permission_handler.openAppSettings();
   }

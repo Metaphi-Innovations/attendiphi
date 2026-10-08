@@ -85,12 +85,10 @@ class CheckInRemoteDataSourceImpl implements CheckInRemoteDataSource {
       }
 
       final checkInPayload = <String, dynamic>{
-        ...submission.toMap(),
+        ...submission.toFirestoreMap(),
         'sessionDate': date,
         'createdAt': FieldValue.serverTimestamp(),
       };
-      // Drop null optional fields so rules allowlist stays tight.
-      checkInPayload.removeWhere((_, v) => v == null);
 
       final docRef = _firestore
           .collection(AppConstants.checkInsCollection)
@@ -242,17 +240,37 @@ class CheckInRemoteDataSourceImpl implements CheckInRemoteDataSource {
   @override
   Future<void> updateCheckIn(CheckInSubmission submission) async {
     try {
+      if (CheckInSubmission.isPlaceholderId(submission.id) ||
+          submission.type.isNotCheckedIn) {
+        throw const ServerException(
+          technicalMessage:
+              'Cannot write placeholder check-in id; materialize with a real UUID first.',
+        );
+      }
+      if (submission.locationId.trim().isEmpty) {
+        throw const ServerException(
+          technicalMessage:
+              'Cannot write check-in without locationId (Firestore create/update requires a non-empty location).',
+        );
+      }
+
       final docRef = _firestore
           .collection(AppConstants.checkInsCollection)
           .doc(submission.id);
-          
+
       final docSnap = await docRef.get();
       if (docSnap.exists) {
-        await docRef.update(submission.toMap());
+        await docRef.update(_adminUpdateMap(submission));
       } else {
-        // Upsert dummy 'absent' records that are being manually checked in
+        // Upsert admin-created records (e.g. Absent from Not Checked In).
+        final ts = submission.timestamp;
+        final sessionDate =
+            '${ts.year.toString().padLeft(4, '0')}-'
+            '${ts.month.toString().padLeft(2, '0')}-'
+            '${ts.day.toString().padLeft(2, '0')}';
         await docRef.set({
-          ...submission.toMap(),
+          ...submission.toFirestoreMap(),
+          'sessionDate': sessionDate,
           'createdAt': FieldValue.serverTimestamp(),
         });
       }
@@ -274,6 +292,20 @@ class CheckInRemoteDataSourceImpl implements CheckInRemoteDataSource {
         stackTrace: st,
       );
     }
+  }
+
+  /// Null-safe update payload; deletes cleared substitute / verification fields.
+  Map<String, dynamic> _adminUpdateMap(CheckInSubmission submission) {
+    final map = submission.toFirestoreMap();
+    if (!submission.type.isSubstitute) {
+      map['substituteForMember'] = FieldValue.delete();
+      map['substituteName'] = FieldValue.delete();
+    }
+    if (!submission.isVerified) {
+      map['verifiedAt'] = FieldValue.delete();
+      map['verifiedBy'] = FieldValue.delete();
+    }
+    return map;
   }
 
   @override

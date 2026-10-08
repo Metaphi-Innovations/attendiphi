@@ -113,25 +113,19 @@ class CheckInFormNotifier extends Notifier<CheckInFormState> {
     try {
       // One device = one check-in only while production restrictions are ON.
       if (restrictionsEnabled) {
-        final hasCheckedIn = await deviceService.hasCheckedInForSession(
+        final existingSubmission = await deviceService.getSubmissionForSession(
           sessionDateStr: sessionDateStr,
           locationId: location.id,
           probeServer: true,
         );
 
-        if (hasCheckedIn) {
-          final existingSubmission = await deviceService.getSubmissionForSession(
-            sessionDateStr: sessionDateStr,
-            locationId: location.id,
-            probeServer: false,
-          );
-
+        if (existingSubmission != null) {
           state = state.copyWith(
             isSubmitting: false,
             error: DuplicateCheckInException(
               userMessage:
                   'This device has already recorded attendance for today.',
-              existingSubmissionData: existingSubmission?.toMap(),
+              existingSubmissionData: existingSubmission.toMap(),
             ),
             submissionResult: existingSubmission,
           );

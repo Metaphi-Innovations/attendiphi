@@ -49,13 +49,16 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
     }
 
     var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
+    final alreadyGranted = permission == LocationPermission.always ||
+        permission == LocationPermission.whileInUse;
+    // Always re-invoke the platform prompt path when not granted so an
+    // accidental Deny + later Allow (or site Ask) can recover on re-scan.
+    if (!alreadyGranted) {
       permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        throw const LocationPermissionDeniedException();
-      }
     }
-
+    if (permission == LocationPermission.denied) {
+      throw const LocationPermissionDeniedException();
+    }
     if (permission == LocationPermission.deniedForever) {
       throw const LocationPermissionPermanentlyDeniedException();
     }

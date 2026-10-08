@@ -53,6 +53,7 @@ dependencies:
   tflite_flutter: ^0.12.1
   camera: ^0.12.1
   image: ^4.10.1
+  two_dimensional_scrollables: ^0.5.5
 
 dev_dependencies:
   flutter_test:

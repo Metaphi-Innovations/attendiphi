@@ -161,6 +161,8 @@ class CheckInSubmission {
     String? memberId,
     String? verificationMethod,
     bool? faceVerified,
+    bool clearSubstituteFields = false,
+    bool clearVerificationMeta = false,
   }) {
     return CheckInSubmission(
       id: id ?? this.id,
@@ -175,8 +177,12 @@ class CheckInSubmission {
       distanceMeters: distanceMeters ?? this.distanceMeters,
       timestamp: timestamp ?? this.timestamp,
       userEmail: userEmail ?? this.userEmail,
-      substituteForMember: substituteForMember ?? this.substituteForMember,
-      substituteName: substituteName ?? this.substituteName,
+      substituteForMember: clearSubstituteFields
+          ? null
+          : (substituteForMember ?? this.substituteForMember),
+      substituteName: clearSubstituteFields
+          ? null
+          : (substituteName ?? this.substituteName),
       companyName: companyName ?? this.companyName,
       category: category ?? this.category,
       invitedByMember: invitedByMember ?? this.invitedByMember,
@@ -184,8 +190,12 @@ class CheckInSubmission {
       adminId: adminId ?? this.adminId,
       deviceId: deviceId ?? this.deviceId,
       isVerified: isVerified ?? this.isVerified,
-      verifiedAt: verifiedAt ?? this.verifiedAt,
-      verifiedBy: verifiedBy ?? this.verifiedBy,
+      verifiedAt: clearVerificationMeta
+          ? null
+          : (verifiedAt ?? this.verifiedAt),
+      verifiedBy: clearVerificationMeta
+          ? null
+          : (verifiedBy ?? this.verifiedBy),
       isEdited: isEdited ?? this.isEdited,
       editedAt: editedAt ?? this.editedAt,
       createdAt: createdAt ?? this.createdAt,
@@ -232,6 +242,18 @@ class CheckInSubmission {
       'faceVerified': faceVerified,
     };
   }
+
+  /// Firestore-safe payload: omits null optional fields.
+  ///
+  /// Use this (not [toMap]) for `set` / `update` — Firestore rejects nulls on
+  /// `update`, and public create rules use a tight allowlist.
+  Map<String, dynamic> toFirestoreMap() {
+    final map = toMap()..removeWhere((_, value) => value == null);
+    return map;
+  }
+
+  /// Whether this id is a Daily Attendance placeholder (not a Firestore doc).
+  static bool isPlaceholderId(String id) => id.startsWith('not_checked_in_');
 
   factory CheckInSubmission.fromMap(Map<String, dynamic> map) {
     CheckInType parseType(dynamic val) {

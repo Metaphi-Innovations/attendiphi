@@ -10,6 +10,7 @@ import '../../../checkin/domain/repositories/check_in_repository.dart';
 import '../../../checkin/presentation/providers/checkin_providers.dart';
 import '../../../employee/domain/employee_lookup.dart';
 import '../../../employee/presentation/providers/employee_providers.dart';
+import '../../domain/substitute_check_in_mapping.dart';
 
 /// Default session day for Daily Attendance.
 ///
@@ -242,9 +243,25 @@ class PaginatedCheckInsNotifier extends Notifier<PaginatedCheckInsState> {
   }
 
   /// Optimistically updates an item in the list.
-  void updateCheckInItem(CheckInSubmission updated) {
+  ///
+  /// [replaceId] swaps a placeholder / previous id when admin materializes a
+  /// new Firestore document (e.g. Not Checked In → Absent).
+  void updateCheckInItem(CheckInSubmission updated, {String? replaceId}) {
+    final fromId = replaceId ?? updated.id;
+    var replaced = false;
+    final items = state.items.map((item) {
+      final match = item.id == fromId ||
+          item.id == updated.id ||
+          (updated.memberId != null &&
+              updated.memberId!.isNotEmpty &&
+              item.memberId == updated.memberId &&
+              item.type.isNotCheckedIn);
+      if (!match) return item;
+      replaced = true;
+      return updated;
+    }).toList();
     state = state.copyWith(
-      items: state.items.map((i) => i.id == updated.id ? updated : i).toList(),
+      items: replaced ? items : [...items, updated],
     );
   }
 
@@ -317,28 +334,18 @@ final baseDashboardRecordsProvider =
 
     if (daySubmissions.isNotEmpty) {
       // 1. Check if a substitute checked in for this member
-      final subMatches = daySubmissions.where((r) {
-        if (!r.type.isSubstitute) return false;
-        final target = EmployeeLookup.forNamedMember(
-          [emp],
-          r.substituteForMember,
-        );
-        return target != null;
-      }).toList();
+      final subMatches = daySubmissions
+          .where(
+            (r) => substituteCheckInCoversMember(raw: r, member: emp),
+          )
+          .toList();
 
       if (subMatches.isNotEmpty) {
         subMatches.sort((a, b) => (b.createdAt ?? b.timestamp)
             .compareTo(a.createdAt ?? a.timestamp));
-        final subCheckIn = subMatches.first;
-        matchedSubmission = subCheckIn.copyWith(
-          userName: emp.name,
-          userPhone: emp.phone,
-          userEmail: emp.email,
-          substituteName: subCheckIn.userName,
-          substituteForMember: emp.name,
-          photoBase64: subCheckIn.photoBase64,
-          type: CheckInType.substitute,
-          memberId: emp.id,
+        matchedSubmission = mapSubstituteCheckInForMember(
+          raw: subMatches.first,
+          member: emp,
         );
       } else {
         // 2. Check if member checked in directly or was marked absent

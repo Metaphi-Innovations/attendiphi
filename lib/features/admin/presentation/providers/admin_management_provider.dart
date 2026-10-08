@@ -64,7 +64,10 @@ final allAdminsStreamProvider = StreamProvider<List<AdminUser>>((ref) {
   if (auth.currentAdmin!.isSuperAdmin) {
     return repo.watchAdmins();
   }
-  final currentUid = (FirebaseAuth.instance.currentUser?.uid ?? '').trim();
+  String currentUid = '';
+  try {
+    currentUid = (FirebaseAuth.instance.currentUser?.uid ?? '').trim();
+  } catch (_) {}
   final creatorId = currentUid.isNotEmpty
       ? currentUid
       : (auth.currentAdmin!.uid.isNotEmpty
@@ -93,8 +96,11 @@ final visibleAdminsProvider = Provider<AsyncValue<List<AdminUser>>>((ref) {
 
     final currentId = (currentAdmin?.id ?? '').trim().toLowerCase();
     final currentUid = (currentAdmin?.uid ?? '').trim().toLowerCase();
-    final currentAuthUid =
-        (FirebaseAuth.instance.currentUser?.uid ?? '').trim().toLowerCase();
+    String currentAuthUid = '';
+    try {
+      currentAuthUid =
+          (FirebaseAuth.instance.currentUser?.uid ?? '').trim().toLowerCase();
+    } catch (_) {}
     final currentEmail = (currentAdmin?.email ?? '').trim().toLowerCase();
     final currentName = (currentAdmin?.name ?? '').trim().toLowerCase();
 

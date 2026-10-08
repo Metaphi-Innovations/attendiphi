@@ -147,11 +147,20 @@ class SubmitCheckIn {
 
     final docId = _uuid.v4();
 
+    final trimmedName = name.trim();
+    final trimmedSubstituteFor = substituteForMember?.trim();
+    final coveredMemberId = type.isSubstitute
+        ? (substituteForMemberId?.trim().isNotEmpty == true
+            ? substituteForMemberId!.trim()
+            : null)
+        : recognizedMemberId;
+
     final submission = CheckInSubmission(
       id: docId,
       locationId: location.id,
       locationName: location.name,
-      userName: name.trim(),
+      // Attending person (member self, or the substitute attendee).
+      userName: trimmedName,
       userPhone: Validators.formatPhoneWithCountryCode(phone),
       type: type,
       userLatitude: proximityResult.userLatitude,
@@ -160,14 +169,18 @@ class SubmitCheckIn {
       distanceMeters: proximityResult.distanceMeters,
       timestamp: submissionTimestamp,
       userEmail: email?.trim(),
-      substituteForMember: substituteForMember?.trim(),
+      substituteForMember: trimmedSubstituteFor,
+      // Persist attending substitute identity so dashboard remap cannot
+      // collapse Member Name == Substitute Name after verify write-back.
+      substituteName: type.isSubstitute ? trimmedName : null,
       companyName: companyName?.trim(),
       category: category?.trim(),
       invitedByMember: invitedByMember?.trim(),
       photoBase64: photoBase64,
       adminId: adminId,
       deviceId: deviceId,
-      memberId: recognizedMemberId,
+      // Member self-check-in: own id. Substitute: covered member id.
+      memberId: coveredMemberId,
       // Member check-in is manual dropdown selection only (no face verify).
       verificationMethod: recognizedMemberId != null ? 'manual' : null,
       faceVerified: false,

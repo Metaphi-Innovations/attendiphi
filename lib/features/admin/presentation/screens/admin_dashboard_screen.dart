@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_radius.dart';
@@ -24,6 +25,7 @@ import '../../../checkin/presentation/providers/checkin_providers.dart';
 import '../../../employee/domain/employee_lookup.dart';
 import '../../../employee/domain/entities/employee.dart';
 import '../../../employee/presentation/providers/employee_providers.dart';
+import '../../domain/substitute_check_in_mapping.dart';
 import '../providers/admin_dashboard_provider.dart';
 import '../providers/attendance_overview_provider.dart';
 import '../widgets/searchable_thursday_date_dialog.dart';
@@ -36,7 +38,15 @@ Widget _buildAttendanceRecordAvatar({
   final liveMember = employees == null || employees.isEmpty
       ? null
       : EmployeeLookup.forCheckIn(employees, record) ??
-          EmployeeLookup.byPhone(employees, record.userPhone) ??
+          (record.type.isSubstitute
+              ? EmployeeLookup.forNamedMember(
+                  employees,
+                  record.substituteForMember,
+                )
+              : null) ??
+          (record.type.isSubstitute
+              ? null
+              : EmployeeLookup.byPhone(employees, record.userPhone)) ??
           EmployeeLookup.byName(employees, record.userName);
 
   Widget fallback() => _buildFallbackRecordInitials(
@@ -44,13 +54,29 @@ Widget _buildAttendanceRecordAvatar({
         size,
       );
 
-  // Member identity displays use the live profile photo so admin edits
-  // appear immediately. Selfies remain for substitutes/visitors.
+  // MEMBER column: member profile photo / initials only.
+  // Never use substitute selfie (photoBase64) here.
+  if (record.type.isSubstitute) {
+    final photo = liveMember?.photoUrl?.trim() ?? '';
+    if (liveMember != null && photo.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: AppRadius.xsAll,
+        child: MemberPhoto(
+          member: liveMember,
+          width: size,
+          height: size,
+          errorBuilder: (ctx, err, stack) => fallback(),
+        ),
+      );
+    }
+    return fallback();
+  }
+
+  // Member / absent / not-checked-in: live profile photo when enrolled.
   if (liveMember != null &&
       (record.type.isMember ||
           record.type.isAbsent ||
-          record.type.isNotCheckedIn ||
-          record.type.isSubstitute)) {
+          record.type.isNotCheckedIn)) {
     final photo = liveMember.photoUrl?.trim() ?? '';
     if (photo.isNotEmpty) {
       return ClipRRect(
@@ -65,6 +91,7 @@ Widget _buildAttendanceRecordAvatar({
     }
   }
 
+  // Visitors (and members without profile photo): optional selfie payload.
   final photoBytes = ImageUtils.base64ToBytes(record.photoBase64);
   if (photoBytes != null) {
     return ClipRRect(
@@ -173,6 +200,36 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   final _searchController = TextEditingController();
   final _scrollController = ScrollController();
 
+  /// Prefer a real location from today's dashboard rows, else the app default.
+  (String, String) _fallbackLocationFromDashboard() {
+    final filterLoc =
+        ref.read(adminDashboardFilterProvider).selectedLocationId?.trim();
+    final rows = ref.read(baseDashboardRecordsProvider).value ?? const [];
+    for (final row in rows) {
+      final id = row.locationId.trim();
+      final name = row.locationName.trim();
+      if (id.isNotEmpty && name.isNotEmpty && name != '—') {
+        if (filterLoc == null || filterLoc.isEmpty || id == filterLoc) {
+          return (id, name);
+        }
+      }
+    }
+    for (final row in rows) {
+      final id = row.locationId.trim();
+      if (id.isNotEmpty) {
+        final name = row.locationName.trim();
+        return (
+          id,
+          name.isNotEmpty && name != '—' ? name : kDefaultAdminLocationName,
+        );
+      }
+    }
+    if (filterLoc != null && filterLoc.isNotEmpty) {
+      return (filterLoc, kDefaultAdminLocationName);
+    }
+    return (kDefaultAdminLocationId, kDefaultAdminLocationName);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -245,19 +302,28 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
 
     if (shouldProceed != true) return;
 
-    final updatedRecord = record.copyWith(
-      type: isNotCheckedIn ? CheckInType.member : record.type,
-      isVerified: newVerified,
-      verifiedAt: newVerified ? DateTime.now() : null,
-      verifiedBy: newVerified ? 'Admin' : null,
+    final fallback = _fallbackLocationFromDashboard();
+    final stamped = DateTime.now();
+    final updatedRecord = materializeAdminCheckInForWrite(
+      record.copyWith(
+        type: isNotCheckedIn ? CheckInType.member : record.type,
+        isVerified: newVerified,
+        clearVerificationMeta: !newVerified,
+        verifiedAt: newVerified ? stamped : null,
+        verifiedBy: newVerified ? 'Admin' : null,
+      ),
+      newCheckInId: const Uuid().v4(),
+      fallbackLocationId: fallback.$1,
+      fallbackLocationName: fallback.$2,
     );
 
     try {
       final repository = ref.read(checkInRepositoryProvider);
       await repository.updateCheckIn(updatedRecord);
-      ref
-          .read(paginatedCheckInsProvider.notifier)
-          .updateCheckInItem(updatedRecord);
+      ref.read(paginatedCheckInsProvider.notifier).updateCheckInItem(
+            updatedRecord,
+            replaceId: record.id,
+          );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -304,7 +370,31 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   }
 
   void _showEditCheckInDialog(BuildContext context, CheckInSubmission record) {
-    final nameController = TextEditingController(text: record.userName);
+    final employees = ref.read(employeesStreamProvider).value ?? const <Employee>[];
+    final coveredEmployee = EmployeeLookup.byId(employees, record.memberId) ??
+        EmployeeLookup.forCheckIn(employees, record) ??
+        EmployeeLookup.byName(
+          employees,
+          record.type.isSubstitute
+              ? record.substituteForMember
+              : record.userName,
+        );
+    final coveredMemberId = coveredEmployee?.id ?? record.memberId;
+    final coveredMemberName = (coveredEmployee?.name.trim().isNotEmpty ?? false)
+        ? coveredEmployee!.name.trim()
+        : (record.type.isSubstitute
+            ? (record.substituteForMember?.trim().isNotEmpty ?? false)
+                ? record.substituteForMember!.trim()
+                : record.userName.trim()
+            : record.userName.trim());
+
+    final nameController = TextEditingController(
+      text: record.type.isSubstitute
+          ? ((record.substituteName?.trim().isNotEmpty ?? false)
+              ? record.substituteName!.trim()
+              : record.userName)
+          : record.userName,
+    );
     final phoneController = TextEditingController(text: record.userPhone);
     final venueController = TextEditingController(text: record.locationName);
     var selectedType = record.type == CheckInType.notCheckedIn
@@ -321,6 +411,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
           final isDark = Theme.of(ctx).brightness == Brightness.dark;
           final screenWidth = MediaQuery.of(ctx).size.width;
           final isMobile = screenWidth < 600;
+          final isSubstituteType = selectedType.isSubstitute;
 
           final fieldBgColor =
               isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC);
@@ -463,9 +554,42 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                       ),
                       const SizedBox(height: 20),
 
-                      // Full Name
+                      if (isSubstituteType) ...[
+                        Text(
+                          'Covered Member',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: labelColor,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        InputDecorator(
+                          decoration: buildDecoration(
+                            hint: coveredMemberName,
+                            prefixIcon: Icon(
+                              Icons.badge_outlined,
+                              size: 20,
+                              color: iconColor,
+                            ),
+                          ),
+                          child: Text(
+                            coveredMemberName.isEmpty ? '—' : coveredMemberName,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: isDark
+                                  ? Colors.white
+                                  : const Color(0xFF0F172A),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
+
+                      // Full Name / Substitute Name
                       Text(
-                        'Full Name',
+                        isSubstituteType ? 'Substitute Name' : 'Full Name',
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
@@ -476,7 +600,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                       TextFormField(
                         controller: nameController,
                         decoration: buildDecoration(
-                          hint: 'Enter attendee name',
+                          hint: isSubstituteType
+                              ? 'Enter substitute attendee name'
+                              : 'Enter attendee name',
                           prefixIcon: Icon(
                             Icons.person_outline_rounded,
                             size: 20,
@@ -485,7 +611,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                         ),
                         validator: (val) {
                           if (val == null || val.trim().isEmpty) {
-                            return 'Please enter name';
+                            return isSubstituteType
+                                ? 'Please enter substitute name'
+                                : 'Please enter name';
                           }
                           return null;
                         },
@@ -494,7 +622,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
 
                       // Phone Number
                       Text(
-                        'Phone Number',
+                        isSubstituteType ? 'Substitute Phone' : 'Phone Number',
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
@@ -527,7 +655,6 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                       ),
                       const SizedBox(height: 6),
 
-
                       // Type options: Member, Substitute, Absent
                       Row(
                         children: [
@@ -559,9 +686,6 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 14),
-
-
                       const SizedBox(height: 22),
 
                       // Buttons
@@ -585,23 +709,20 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                             child: FilledButton(
                               onPressed: () async {
                                 if (!formKey.currentState!.validate()) return;
-                                final isMarkedAbsent = selectedType == CheckInType.absent;
-                                final now = DateTime.now();
-                                final updated = record.copyWith(
-                                  userName: nameController.text.trim(),
-                                  userPhone: phoneController.text.trim(),
-                                  locationName: venueController.text.trim(),
-                                  type: selectedType,
-                                  isVerified: isMarkedAbsent ? false : isVerified,
-                                  isEdited: true,
-                                  editedAt: now,
-                                  timestamp: record.timestamp,
-                                  verifiedAt: (isVerified && !isMarkedAbsent)
-                                      ? (record.verifiedAt ?? now)
-                                      : null,
-                                  verifiedBy: (isVerified && !isMarkedAbsent)
-                                      ? (record.verifiedBy ?? 'Admin')
-                                      : null,
+                                final fallback =
+                                    _fallbackLocationFromDashboard();
+                                final updated = prepareAdminEditedCheckIn(
+                                  original: record,
+                                  selectedType: selectedType,
+                                  nameField: nameController.text,
+                                  phoneField: phoneController.text,
+                                  venueField: venueController.text,
+                                  coveredMemberName: coveredMemberName,
+                                  coveredMemberId: coveredMemberId,
+                                  isVerified: isVerified,
+                                  newCheckInId: const Uuid().v4(),
+                                  fallbackLocationId: fallback.$1,
+                                  fallbackLocationName: fallback.$2,
                                 );
 
                                 Navigator.pop(dialogCtx);
@@ -612,7 +733,10 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                                   await repo.updateCheckIn(updated);
                                   ref
                                       .read(paginatedCheckInsProvider.notifier)
-                                      .updateCheckInItem(updated);
+                                      .updateCheckInItem(
+                                        updated,
+                                        replaceId: record.id,
+                                      );
 
                                   if (mounted) {
                                     ScaffoldMessenger.of(this.context)
@@ -771,14 +895,23 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             },
           ),
 
-          _DetailItem(label: 'Member Name', value: record.userName),
-          if (record.type.isSubstitute &&
-              (record.substituteName?.isNotEmpty ?? false))
+          _DetailItem(
+            label: record.type.isSubstitute ? 'Member Name' : 'Name',
+            value: record.userName,
+          ),
+          if (record.type.isSubstitute)
             _DetailItem(
               label: 'Substitute Name',
-              value: record.substituteName!,
+              value: (record.substituteName?.trim().isNotEmpty ?? false)
+                  ? record.substituteName!.trim()
+                  : '—',
             ),
-          _DetailItem(label: 'Phone Number', value: record.userPhone),
+          _DetailItem(
+            label: record.type.isSubstitute
+                ? 'Substitute Phone'
+                : 'Phone Number',
+            value: record.userPhone,
+          ),
           _DetailItem(label: 'Attendance Type', value: record.type.displayName),
           _DetailItem(label: 'Venue', value: record.locationName),
           _DetailItem(
@@ -2590,120 +2723,125 @@ class _CheckInTableView extends StatelessWidget {
               // Substitute Column
               Expanded(
                 flex: 2,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: hasSubstitute
-                      ? Container(
-                          padding: const EdgeInsets.fromLTRB(4, 3, 10, 3),
-                          decoration: BoxDecoration(
-                            color: isDark
-                                ? AppColors.warning.withAlpha(26)
-                                : const Color(0xFFFFFBEB),
-                            borderRadius: AppRadius.fullAll,
-                            border: Border.all(
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 14),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: hasSubstitute
+                        ? Container(
+                            padding: const EdgeInsets.fromLTRB(3, 2, 8, 2),
+                            decoration: BoxDecoration(
                               color: isDark
-                                  ? AppColors.warning.withAlpha(70)
-                                  : const Color(0xFFFDE68A),
-                              width: 1.0,
+                                  ? AppColors.warning.withAlpha(26)
+                                  : const Color(0xFFFFFBEB),
+                              borderRadius: AppRadius.fullAll,
+                              border: Border.all(
+                                color: isDark
+                                    ? AppColors.warning.withAlpha(70)
+                                    : const Color(0xFFFDE68A),
+                                width: 1.0,
+                              ),
                             ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Tooltip(
-                                message: photoBytes != null
-                                    ? 'Click to preview selfie'
-                                    : 'Substitute attendee',
-                                child: InkWell(
-                                  borderRadius: AppRadius.fullAll,
-                                  onTap: photoBytes != null
-                                      ? () => _showAttendeePhotoDialog(
-                                            context: context,
-                                            photoBytes: photoBytes,
-                                            title: record.substituteName!,
-                                            subtitle:
-                                                'Substitute for ${record.userName}',
-                                            badgeLabel:
-                                                'Substitute Live Photo',
+                            child: Row(
+                              children: [
+                                Tooltip(
+                                  message: photoBytes != null
+                                      ? 'Click to preview selfie'
+                                      : 'Substitute attendee',
+                                  child: InkWell(
+                                    borderRadius: AppRadius.fullAll,
+                                    onTap: photoBytes != null
+                                        ? () => _showAttendeePhotoDialog(
+                                              context: context,
+                                              photoBytes: photoBytes,
+                                              title: record.substituteName!,
+                                              subtitle:
+                                                  'Substitute for ${record.userName}',
+                                              badgeLabel:
+                                                  'Substitute Live Photo',
+                                            )
+                                        : null,
+                                    child: photoBytes != null
+                                        ? Container(
+                                            width: 22,
+                                            height: 22,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              border: Border.all(
+                                                color: AppColors.warning
+                                                    .withAlpha(120),
+                                                width: 1.2,
+                                              ),
+                                            ),
+                                            child: ClipOval(
+                                              child: Image.memory(
+                                                photoBytes,
+                                                width: 22,
+                                                height: 22,
+                                                cacheWidth: 44,
+                                                cacheHeight: 44,
+                                                fit: BoxFit.cover,
+                                              ),
+                                            ),
                                           )
-                                      : null,
-                                  child: photoBytes != null
-                                      ? Container(
-                                          width: 26,
-                                          height: 26,
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            border: Border.all(
+                                        : Container(
+                                            width: 22,
+                                            height: 22,
+                                            decoration: BoxDecoration(
                                               color: AppColors.warning
-                                                  .withAlpha(120),
-                                              width: 1.2,
+                                                  .withAlpha(40),
+                                              shape: BoxShape.circle,
+                                              border: Border.all(
+                                                color: AppColors.warning
+                                                    .withAlpha(90),
+                                                width: 1.0,
+                                              ),
                                             ),
-                                          ),
-                                          child: ClipOval(
-                                            child: Image.memory(
-                                              photoBytes,
-                                              width: 26,
-                                              height: 26,
-                                              cacheWidth: 52,
-                                              cacheHeight: 52,
-                                              fit: BoxFit.cover,
-                                            ),
-                                          ),
-                                        )
-                                      : Container(
-                                          width: 26,
-                                          height: 26,
-                                          decoration: BoxDecoration(
-                                            color: AppColors.warning
-                                                .withAlpha(40),
-                                            shape: BoxShape.circle,
-                                            border: Border.all(
-                                              color: AppColors.warning
-                                                  .withAlpha(90),
-                                              width: 1.0,
-                                            ),
-                                          ),
-                                          child: Center(
-                                            child: Text(
-                                              record.substituteName!.trim()[0]
-                                                  .toUpperCase(),
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 11.5,
-                                                color: AppColors.warning,
+                                            child: Center(
+                                              child: Text(
+                                                record.substituteName!
+                                                    .trim()[0]
+                                                    .toUpperCase(),
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 10,
+                                                  color: AppColors.warning,
+                                                ),
                                               ),
                                             ),
                                           ),
-                                        ),
-                                ),
-                              ),
-                              const SizedBox(width: 7),
-                              Flexible(
-                                child: Text(
-                                  record.substituteName!,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 12,
-                                    color: isDark
-                                        ? const Color(0xFFFDE68A)
-                                        : const Color(0xFF92400E),
                                   ),
-                                  overflow: TextOverflow.ellipsis,
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 5),
+                                Expanded(
+                                  child: Text(
+                                    record.substituteName!,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: 11,
+                                      height: 1.15,
+                                      color: isDark
+                                          ? const Color(0xFFFDE68A)
+                                          : const Color(0xFF92400E),
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : Text(
+                            '—',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w500,
+                              fontSize: 13,
+                              color: isDark
+                                  ? const Color(0xFF475569)
+                                  : const Color(0xFFCBD5E1),
+                            ),
                           ),
-                        )
-                      : Text(
-                          '—',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w500,
-                            fontSize: 13,
-                            color: isDark
-                                ? const Color(0xFF475569)
-                                : const Color(0xFFCBD5E1),
-                          ),
-                        ),
+                  ),
                 ),
               ),
 

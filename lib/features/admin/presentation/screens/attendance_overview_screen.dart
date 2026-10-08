@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:two_dimensional_scrollables/two_dimensional_scrollables.dart';
 
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_radius.dart';
@@ -591,13 +592,58 @@ class _AttendanceOverviewScreenState
 
     final borderColor =
         isDark ? AppColors.outlineDark : const Color(0xFFE2E8F0);
+    final headerBg =
+        isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9);
+    final zebraBg = isDark
+        ? const Color(0xFF1E293B).withAlpha(50)
+        : const Color(0xFFF8FAFC);
 
-    final double totalTableWidth = memberColumnWidth +
-        (thursdays.length * dateColumnWidth) +
-        (3 * summaryColumnWidth) +
-        rateColumnWidth;
+    // col 0 = MEMBER (pinned), then dates, then P / S / A / RATE
+    final dateCount = thursdays.length;
+    final columnCount = 1 + dateCount + 4;
+    final rowCount = 1 + rows.length;
+    final now = DateTime.now();
 
     final isMobile = MediaQuery.of(context).size.width < 600;
+
+    TableSpan columnSpan(int column) {
+      final double extent;
+      if (column == 0) {
+        extent = memberColumnWidth;
+      } else if (column <= dateCount) {
+        extent = dateColumnWidth;
+      } else if (column < columnCount - 1) {
+        extent = summaryColumnWidth;
+      } else {
+        extent = rateColumnWidth;
+      }
+      return TableSpan(
+        extent: FixedTableSpanExtent(extent),
+        foregroundDecoration: TableSpanDecoration(
+          border: TableSpanBorder(
+            trailing: BorderSide(color: borderColor.withAlpha(80)),
+          ),
+        ),
+      );
+    }
+
+    TableSpan rowSpan(int row) {
+      final isHeader = row == 0;
+      return TableSpan(
+        extent: FixedTableSpanExtent(isHeader ? headerHeight : rowHeight),
+        backgroundDecoration: TableSpanDecoration(
+          color: isHeader
+              ? headerBg
+              : (row.isOdd ? zebraBg : Colors.transparent),
+          border: TableSpanBorder(
+            trailing: BorderSide(
+              color: borderColor.withAlpha(isHeader ? 160 : 60),
+              width: isHeader ? 1.5 : 1,
+            ),
+          ),
+        ),
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -610,7 +656,9 @@ class _AttendanceOverviewScreenState
                 Icon(
                   Icons.swipe_rounded,
                   size: 13,
-                  color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                  color: isDark
+                      ? const Color(0xFF94A3B8)
+                      : const Color(0xFF64748B),
                 ),
                 const SizedBox(width: 4),
                 Text(
@@ -618,7 +666,9 @@ class _AttendanceOverviewScreenState
                   style: TextStyle(
                     fontSize: 10.5,
                     fontWeight: FontWeight.w500,
-                    color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                    color: isDark
+                        ? const Color(0xFF94A3B8)
+                        : const Color(0xFF64748B),
                   ),
                 ),
               ],
@@ -634,332 +684,268 @@ class _AttendanceOverviewScreenState
             ),
             clipBehavior: Clip.antiAlias,
             child: Scrollbar(
-              controller: _horizontalScrollController,
+              controller: _verticalScrollController,
               thumbVisibility: true,
-              child: ShaderMask(
-                shaderCallback: (Rect bounds) {
-                  return const LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    colors: [Colors.white, Colors.white, Colors.transparent],
-                    stops: [0.0, 0.94, 1.0],
-                  ).createShader(bounds);
-                },
-                blendMode: BlendMode.dstIn,
-                child: SingleChildScrollView(
-                  controller: _horizontalScrollController,
-                  scrollDirection: Axis.horizontal,
-                  child: SizedBox(
-                    width: totalTableWidth,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                // 1. Sticky Header Row (MEMBER & all dates - pinned at top, does NOT scroll vertically)
-                Container(
-                  height: headerHeight,
-                  decoration: BoxDecoration(
-                    color: isDark
-                        ? const Color(0xFF0F172A)
-                        : const Color(0xFFF1F5F9),
-                    border: Border(
-                      bottom: BorderSide(color: borderColor, width: 1.5),
-                    ),
+              child: Scrollbar(
+                controller: _horizontalScrollController,
+                thumbVisibility: true,
+                notificationPredicate: (notification) =>
+                    notification.metrics.axis == Axis.horizontal,
+                child: TableView.builder(
+                  pinnedRowCount: 1,
+                  pinnedColumnCount: 1,
+                  trailingPinnedColumnCount: 4,
+                  // Package still exposes cacheExtent; SDK deprecates the name.
+                  // ignore: deprecated_member_use
+                  cacheExtent: 320,
+                  diagonalDragBehavior: DiagonalDragBehavior.free,
+                  verticalDetails: ScrollableDetails.vertical(
+                    controller: _verticalScrollController,
                   ),
-                  child: Row(
-                    children: [
-                      // 1st Column: Member Name
-                      Container(
-                        width: memberColumnWidth,
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'MEMBER (${rows.length})',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 11,
-                            letterSpacing: 0.5,
-                            color: isDark
-                                ? const Color(0xFF94A3B8)
-                                : const Color(0xFF475569),
-                          ),
+                  horizontalDetails: ScrollableDetails.horizontal(
+                    controller: _horizontalScrollController,
+                  ),
+                  columnCount: columnCount,
+                  rowCount: rowCount,
+                  columnBuilder: columnSpan,
+                  rowBuilder: rowSpan,
+                  cellBuilder: (context, vicinity) {
+                    final col = vicinity.column;
+                    final rowIndex = vicinity.row;
+
+                    if (rowIndex == 0) {
+                      return TableViewCell(
+                        child: _buildVirtualHeaderCell(
+                          column: col,
+                          dateCount: dateCount,
+                          rowsLength: rows.length,
+                          thursdays: thursdays,
+                          now: now,
+                          isDark: isDark,
+                          borderColor: borderColor,
+                        ),
+                      );
+                    }
+
+                    final memberRow = rows[rowIndex - 1];
+                    return TableViewCell(
+                      child: RepaintBoundary(
+                        child: _buildVirtualBodyCell(
+                          context: context,
+                          column: col,
+                          dateCount: dateCount,
+                          memberRow: memberRow,
+                          thursdays: thursdays,
+                          isDark: isDark,
+                          borderColor: borderColor,
                         ),
                       ),
-
-                      // Date Columns
-                      ...thursdays.map((date) {
-                        final isCurrentWeek =
-                            DateTime.now().difference(date).inDays.abs() < 4;
-                        return Container(
-                          width: dateColumnWidth,
-                          decoration: BoxDecoration(
-                            color: isCurrentWeek
-                                ? AppColors.primary.withAlpha(20)
-                                : null,
-                            border: Border(
-                              left: BorderSide(
-                                color: borderColor.withAlpha(80),
-                              ),
-                            ),
-                          ),
-                          alignment: Alignment.center,
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                DateFormat('dd MMM').format(date),
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 11,
-                                  color: isCurrentWeek
-                                      ? AppColors.primary
-                                      : (isDark
-                                          ? Colors.white
-                                          : const Color(0xFF0F172A)),
-                                ),
-                              ),
-                              Text(
-                                DateFormat('yyyy').format(date),
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  color: isDark
-                                      ? const Color(0xFF64748B)
-                                      : const Color(0xFF94A3B8),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }),
-
-                      // Summary Columns
-                      _buildSummaryHeader(
-                        'P',
-                        summaryColumnWidth,
-                        const Color(0xFF10B981),
-                        borderColor,
-                      ),
-                      _buildSummaryHeader(
-                        'S',
-                        summaryColumnWidth,
-                        const Color(0xFFF59E0B),
-                        borderColor,
-                      ),
-                      _buildSummaryHeader(
-                        'A',
-                        summaryColumnWidth,
-                        const Color(0xFFEF4444),
-                        borderColor,
-                      ),
-                      _buildSummaryHeader(
-                        'RATE',
-                        rateColumnWidth,
-                        AppColors.primary,
-                        borderColor,
-                      ),
-                    ],
-                  ),
+                    );
+                  },
                 ),
-
-                // 2. ONLY Member Data Rows are vertically scrollable
-                Expanded(
-                  child: Scrollbar(
-                    controller: _verticalScrollController,
-                    thumbVisibility: true,
-                    child: SingleChildScrollView(
-                      controller: _verticalScrollController,
-                      scrollDirection: Axis.vertical,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          ...rows.asMap().entries.map((entry) {
-                            final index = entry.key;
-                            final row = entry.value;
-                            final isEven = index % 2 == 0;
-                            final rowBg = isEven
-                                ? Colors.transparent
-                                : (isDark
-                                    ? const Color(0xFF1E293B).withAlpha(50)
-                                    : const Color(0xFFF8FAFC));
-
-                            return Container(
-                              height: rowHeight,
-                              decoration: BoxDecoration(
-                                color: rowBg,
-                                border: Border(
-                                  bottom: BorderSide(
-                                    color: borderColor.withAlpha(60),
-                                  ),
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  // Member Name Column
-                                  Container(
-                                    width: memberColumnWidth,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        // Avatar circle
-                                        Container(
-                                          width: 28,
-                                          height: 28,
-                                          decoration: BoxDecoration(
-                                            color: AppColors.primary
-                                                .withAlpha(25),
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: Center(
-                                            child: Text(
-                                              row.member.name.isNotEmpty
-                                                  ? row.member.name[0]
-                                                      .toUpperCase()
-                                                  : 'M',
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 12,
-                                                color: AppColors.primary,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 10),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            children: [
-                                              Text(
-                                                row.member.name,
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.w600,
-                                                  fontSize: 13,
-                                                  color: isDark
-                                                      ? Colors.white
-                                                      : const Color(0xFF0F172A),
-                                                ),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                              if (row.member.phone.isNotEmpty)
-                                                Text(
-                                                  row.member.phone,
-                                                  style: TextStyle(
-                                                    fontSize: 11,
-                                                    color: isDark
-                                                        ? const Color(0xFF64748B)
-                                                        : const Color(0xFF94A3B8),
-                                                  ),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-
-                                  // Date Cells
-                                  ...thursdays.map((date) {
-                                    final attendance =
-                                        row.getAttendanceForDate(date);
-                                    return Container(
-                                      width: dateColumnWidth,
-                                      decoration: BoxDecoration(
-                                        border: Border(
-                                          left: BorderSide(
-                                            color: borderColor.withAlpha(60),
-                                          ),
-                                        ),
-                                      ),
-                                      alignment: Alignment.center,
-                                      child: _buildMatrixCellBadge(
-                                        context,
-                                        row,
-                                        date,
-                                        attendance,
-                                        isDark,
-                                      ),
-                                    );
-                                  }),
-
-                                  // Summary Data Cells
-                                  _buildSummaryCell(
-                                    '${row.presentCount}',
-                                    summaryColumnWidth,
-                                    const Color(0xFF10B981),
-                                    borderColor,
-                                    isDark,
-                                  ),
-                                  _buildSummaryCell(
-                                    '${row.substituteCount}',
-                                    summaryColumnWidth,
-                                    const Color(0xFFF59E0B),
-                                    borderColor,
-                                    isDark,
-                                  ),
-                                  _buildSummaryCell(
-                                    '${row.absentCount}',
-                                    summaryColumnWidth,
-                                    const Color(0xFFEF4444),
-                                    borderColor,
-                                    isDark,
-                                  ),
-                                   _buildRateCell(
-                                     row.attendanceRate,
-                                     rateColumnWidth,
-                                     borderColor,
-                                     isDark,
-                                     completedMeetings: row.presentCount +
-                                         row.substituteCount +
-                                         row.absentCount,
-                                   ),
-                                ],
-                              ),
-                            );
-                          }),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
-      ),
-    ),
-  ),
-),
-],
-);
-}
+      ],
+    );
+  }
 
-  Widget _buildSummaryHeader(
-    String title,
-    double width,
-    Color color,
-    Color borderColor,
-  ) {
-    return Container(
-      width: width,
-      decoration: BoxDecoration(
-        border: Border(left: BorderSide(color: borderColor, width: 1.5)),
-      ),
-      alignment: Alignment.center,
+  Widget _buildVirtualHeaderCell({
+    required int column,
+    required int dateCount,
+    required int rowsLength,
+    required List<DateTime> thursdays,
+    required DateTime now,
+    required bool isDark,
+    required Color borderColor,
+  }) {
+    if (column == 0) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            'MEMBER ($rowsLength)',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 11,
+              letterSpacing: 0.5,
+              color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (column <= dateCount) {
+      final date = thursdays[column - 1];
+      final isCurrentWeek = now.difference(date).inDays.abs() < 4;
+      return ColoredBox(
+        color: isCurrentWeek ? AppColors.primary.withAlpha(20) : Colors.transparent,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              DateFormat('dd MMM').format(date),
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 11,
+                color: isCurrentWeek
+                    ? AppColors.primary
+                    : (isDark ? Colors.white : const Color(0xFF0F172A)),
+              ),
+            ),
+            Text(
+              DateFormat('yyyy').format(date),
+              style: TextStyle(
+                fontSize: 9,
+                color: isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final summaryIndex = column - dateCount - 1;
+    const labels = ['P', 'S', 'A', 'RATE'];
+    final colors = <Color>[
+      const Color(0xFF10B981),
+      const Color(0xFFF59E0B),
+      const Color(0xFFEF4444),
+      AppColors.primary,
+    ];
+    return Center(
       child: Text(
-        title,
+        labels[summaryIndex],
         style: TextStyle(
           fontWeight: FontWeight.w800,
           fontSize: 11,
-          color: color,
+          color: colors[summaryIndex],
         ),
       ),
     );
+  }
+
+  Widget _buildVirtualBodyCell({
+    required BuildContext context,
+    required int column,
+    required int dateCount,
+    required MemberAttendanceRow memberRow,
+    required List<DateTime> thursdays,
+    required bool isDark,
+    required Color borderColor,
+  }) {
+    if (column == 0) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withAlpha(25),
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Text(
+                  memberRow.member.name.isNotEmpty
+                      ? memberRow.member.name[0].toUpperCase()
+                      : 'M',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    memberRow.member.name,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (memberRow.member.phone.isNotEmpty)
+                    Text(
+                      memberRow.member.phone,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isDark
+                            ? const Color(0xFF64748B)
+                            : const Color(0xFF94A3B8),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (column <= dateCount) {
+      final date = thursdays[column - 1];
+      final attendance = memberRow.getAttendanceForDate(date);
+      return _MatrixStatusCell(
+        attendance: attendance,
+        isDark: isDark,
+        onTap: () =>
+            _showCellDetailsDialog(context, memberRow, date, attendance),
+      );
+    }
+
+    final summaryIndex = column - dateCount - 1;
+    switch (summaryIndex) {
+      case 0:
+        return _buildSummaryCell(
+          '${memberRow.presentCount}',
+          58,
+          const Color(0xFF10B981),
+          borderColor,
+          isDark,
+        );
+      case 1:
+        return _buildSummaryCell(
+          '${memberRow.substituteCount}',
+          58,
+          const Color(0xFFF59E0B),
+          borderColor,
+          isDark,
+        );
+      case 2:
+        return _buildSummaryCell(
+          '${memberRow.absentCount}',
+          58,
+          const Color(0xFFEF4444),
+          borderColor,
+          isDark,
+        );
+      default:
+        return _buildRateCell(
+          memberRow.attendanceRate,
+          84,
+          borderColor,
+          isDark,
+          completedMeetings: memberRow.presentCount +
+              memberRow.substituteCount +
+              memberRow.absentCount,
+        );
+    }
   }
 
   Widget _buildSummaryCell(
@@ -969,12 +955,7 @@ class _AttendanceOverviewScreenState
     Color borderColor,
     bool isDark,
   ) {
-    return Container(
-      width: width,
-      decoration: BoxDecoration(
-        border: Border(left: BorderSide(color: borderColor.withAlpha(60))),
-      ),
-      alignment: Alignment.center,
+    return Center(
       child: Text(
         text,
         style: TextStyle(
@@ -994,12 +975,7 @@ class _AttendanceOverviewScreenState
     int completedMeetings = 1,
   }) {
     if (completedMeetings == 0) {
-      return Container(
-        width: width,
-        decoration: BoxDecoration(
-          border: Border(left: BorderSide(color: borderColor.withAlpha(60))),
-        ),
-        alignment: Alignment.center,
+      return Center(
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(
@@ -1023,12 +999,7 @@ class _AttendanceOverviewScreenState
         ? const Color(0xFF10B981)
         : (rate >= 50 ? const Color(0xFFF59E0B) : const Color(0xFFEF4444));
 
-    return Container(
-      width: width,
-      decoration: BoxDecoration(
-        border: Border(left: BorderSide(color: borderColor.withAlpha(60))),
-      ),
-      alignment: Alignment.center,
+    return Center(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
         decoration: BoxDecoration(
@@ -1046,17 +1017,25 @@ class _AttendanceOverviewScreenState
       ),
     );
   }
+}
 
-  Widget _buildMatrixCellBadge(
-    BuildContext context,
-    MemberAttendanceRow row,
-    DateTime date,
-    MemberDayAttendance attendance,
-    bool isDark,
-  ) {
-    Color bg;
-    Color fg;
-    String label;
+/// Lightweight status chip for the virtualized attendance matrix.
+class _MatrixStatusCell extends StatelessWidget {
+  const _MatrixStatusCell({
+    required this.attendance,
+    required this.isDark,
+    required this.onTap,
+  });
+
+  final MemberDayAttendance attendance;
+  final bool isDark;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    late final Color bg;
+    late final Color fg;
+    late final String label;
 
     switch (attendance.status) {
       case MemberAttendanceStatus.present:
@@ -1065,68 +1044,58 @@ class _AttendanceOverviewScreenState
             : const Color(0xFFD1FAE5);
         fg = isDark ? const Color(0xFF34D399) : const Color(0xFF047857);
         label = 'M';
-        break;
-
       case MemberAttendanceStatus.substitute:
         bg = isDark
             ? const Color(0xFF78350F).withAlpha(120)
             : const Color(0xFFFEF3C7);
         fg = isDark ? const Color(0xFFFBBF24) : const Color(0xFFB45309);
         label = 'S';
-        break;
-
       case MemberAttendanceStatus.absent:
         bg = isDark
             ? const Color(0xFF7F1D1D).withAlpha(80)
             : const Color(0xFFFEE2E2);
         fg = isDark ? const Color(0xFFF87171) : const Color(0xFFB91C1C);
         label = '-';
-        break;
-
       case MemberAttendanceStatus.upcoming:
         bg = Colors.transparent;
         fg = isDark ? const Color(0xFF475569) : const Color(0xFFCBD5E1);
         label = '·';
-        break;
     }
 
-    // Touch Target Accessibility:
-    // The InkWell wraps the full 72x54pt table cell area, providing a comfortable
-    // tap target exceeding the minimum 44x44pt requirement for interactive matrix cells,
-    // while centering the crisp 32x28 visual indicator badge.
+    final tooltip = attendance.status == MemberAttendanceStatus.substitute
+        ? 'Substitute: ${attendance.substituteName ?? "Guest"}'
+        : attendance.status.label;
+
     return Tooltip(
-      message: attendance.status == MemberAttendanceStatus.substitute
-          ? 'Substitute: ${attendance.substituteName ?? "Guest"}'
-          : attendance.status.label,
-      child: InkWell(
-        onTap: () => _showCellDetailsDialog(context, row, date, attendance),
-        borderRadius: BorderRadius.circular(6),
-        child: SizedBox(
-          width: 72.0,
-          height: 54.0,
-          child: Center(
-            child: Container(
+      message: tooltip,
+      waitDuration: const Duration(milliseconds: 400),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Center(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: BorderRadius.circular(6),
+              border: attendance.status.isUpcoming
+                  ? Border.all(
+                      color: isDark
+                          ? const Color(0xFF334155)
+                          : const Color(0xFFE2E8F0),
+                    )
+                  : null,
+            ),
+            child: SizedBox(
               width: 32,
               height: 28,
-              decoration: BoxDecoration(
-                color: bg,
-                borderRadius: BorderRadius.circular(6),
-                border: attendance.status.isUpcoming
-                    ? Border.all(
-                        color: isDark
-                            ? const Color(0xFF334155)
-                            : const Color(0xFFE2E8F0),
-                        style: BorderStyle.solid,
-                      )
-                    : null,
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: fg,
+              child: Center(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: fg,
+                  ),
                 ),
               ),
             ),

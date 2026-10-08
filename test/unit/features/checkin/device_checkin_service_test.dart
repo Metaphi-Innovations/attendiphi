@@ -1,4 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qr_checkin/core/utils/cookie_helper.dart';
+import 'package:qr_checkin/core/utils/cookie_helper_stub.dart'
+    as cookie_stub;
 import 'package:qr_checkin/features/checkin/data/datasources/device_checkin_service.dart';
 import 'package:qr_checkin/features/checkin/domain/entities/check_in_submission.dart';
 import 'package:qr_checkin/features/checkin/domain/entities/check_in_type.dart';
@@ -9,6 +12,7 @@ void main() {
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+    cookie_stub.clearWebCookieMemoryForTests();
   });
 
   test('getOrCreateDeviceId returns a persistent UUID across calls', () async {
@@ -51,6 +55,7 @@ void main() {
       distanceMeters: 12.0,
       timestamp: DateTime(2026, 9, 24, 10, 30),
       adminId: 'adm-1',
+      memberId: 'emp_omkar',
     );
 
     await service.recordSubmission(
@@ -71,6 +76,7 @@ void main() {
     expect(loaded, isNotNull);
     expect(loaded!.id, equals('sub-123'));
     expect(loaded.userName, equals('Omkar Anarse'));
+    expect(loaded.memberId, equals('emp_omkar'));
 
     final last = await service.getLastSubmission();
     expect(last, isNotNull);
@@ -112,6 +118,56 @@ void main() {
       await service.hasCheckedInForSession(
         sessionDateStr: '2026-10-01',
         locationId: 'location_x',
+      ),
+      isFalse,
+    );
+  });
+
+  test('cookie lock-only marker "1" is not treated as checked-in', () async {
+    final prefs = await SharedPreferences.getInstance();
+    service = DeviceCheckInService(prefs);
+    final key = service.getSessionKey(
+      sessionDateStr: '2026-10-08',
+      locationId: 'location_x',
+    );
+
+    // Orphan device-lock cookie from the old false-positive path.
+    CookieHelper.setCookie(key, '1');
+
+    expect(
+      await service.getSubmissionForSession(
+        sessionDateStr: '2026-10-08',
+        locationId: 'location_x',
+        probeServer: false,
+      ),
+      isNull,
+    );
+    expect(
+      await service.hasCheckedInForSession(
+        sessionDateStr: '2026-10-08',
+        locationId: 'location_x',
+        probeServer: false,
+      ),
+      isFalse,
+    );
+    // Stale marker should be cleared so a fresh check-in can proceed.
+    expect(CookieHelper.hasCookie(key), isFalse);
+  });
+
+  test('bare check-in id cookie without prefs JSON is not checked-in', () async {
+    final prefs = await SharedPreferences.getInstance();
+    service = DeviceCheckInService(prefs);
+    final key = service.getSessionKey(
+      sessionDateStr: '2026-10-08',
+      locationId: 'location_x',
+    );
+    CookieHelper.setCookie(key, 'sub-uuid-only');
+
+    expect(
+      await service.hasCheckedInForSession(
+        sessionDateStr: '2026-10-08',
+        locationId: 'location_x',
+        probeServer: false,
       ),
       isFalse,
     );

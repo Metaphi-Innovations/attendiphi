@@ -217,10 +217,16 @@ void main() {
         location: testLocation,
         proximityResult: testProximity,
         photoBase64: 'fake_base64_photo_string',
+        substituteForMember: 'Rahul Sharma',
+        substituteForMemberId: 'emp_rahul',
       );
 
       expect(submission.type, CheckInType.substitute);
       expect(submission.photoBase64, 'fake_base64_photo_string');
+      expect(submission.userName, 'Amit Patel');
+      expect(submission.substituteName, 'Amit Patel');
+      expect(submission.substituteForMember, 'Rahul Sharma');
+      expect(submission.memberId, 'emp_rahul');
       verify(() => mockRepository.submitCheckIn(
           any(),
           enforceThursday: any(named: 'enforceThursday'),

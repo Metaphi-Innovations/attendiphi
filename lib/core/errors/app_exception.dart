@@ -32,7 +32,7 @@ sealed class AppException implements Exception {
 class LocationPermissionDeniedException extends AppException {
   const LocationPermissionDeniedException({
     super.userMessage =
-        'Location permission was denied. Please grant access to continue.',
+        'Location was denied. Tap Allow Location to try again — you need it to verify you are at the venue.',
     super.technicalMessage = 'Location permission denied by user.',
     super.originalError,
     super.stackTrace,
@@ -43,8 +43,7 @@ class LocationPermissionDeniedException extends AppException {
 class LocationPermissionPermanentlyDeniedException extends AppException {
   const LocationPermissionPermanentlyDeniedException({
     super.userMessage =
-        'Location permission has been permanently denied. '
-        'Please enable it in your device settings.',
+        'Location is blocked for this site/app. Enable it, then tap Allow Location to continue check-in.',
     super.technicalMessage =
         'Location permission permanently denied. Requires settings change.',
     super.originalError,

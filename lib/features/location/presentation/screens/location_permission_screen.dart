@@ -8,6 +8,7 @@ import '../../../../app/router/route_names.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_radius.dart';
 import '../../../../app/theme/app_spacing.dart';
+import '../../../../core/errors/app_exception.dart';
 import '../../../../core/errors/error_handler.dart';
 import '../../../../core/l10n/app_strings.dart';
 import '../../../../core/responsive/responsive_breakpoints.dart';
@@ -46,7 +47,7 @@ class LocationPermissionScreen extends ConsumerStatefulWidget {
 
 class _LocationPermissionScreenState
     extends ConsumerState<LocationPermissionScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final AnimationController _pulseController;
   bool _isCheckingDevice = true;
   bool _hasCheckedIn = false;
@@ -113,19 +114,44 @@ class _LocationPermissionScreenState
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
     );
   }
 
-  void _startLocationIfNeeded() {
-    if (_locationStarted || !mounted) return;
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // After Deny → browser/app settings → Allow, retry automatically on return.
+    if (state == AppLifecycleState.resumed && mounted) {
+      final current =
+          ref.read(locationValidationFamilyProvider(widget.location));
+      if (current is LocationValidationError) {
+        _retryLocationPermission();
+      }
+    }
+  }
+
+  void _startLocationIfNeeded({bool force = false}) {
+    if (!force && (_locationStarted || !mounted)) return;
     _locationStarted = true;
-    _pulseController.repeat();
+    if (!_pulseController.isAnimating) {
+      _pulseController.repeat();
+    }
     ref
         .read(locationValidationFamilyProvider(widget.location).notifier)
-        .validateLocation();
+        .resetAndValidate();
+  }
+
+  void _retryLocationPermission() {
+    if (!mounted) return;
+    if (!_pulseController.isAnimating) {
+      _pulseController.repeat();
+    }
+    ref
+        .read(locationValidationFamilyProvider(widget.location).notifier)
+        .resetAndValidate();
   }
 
   void _goToCheckInForm(ProximityResult proximity) {
@@ -174,20 +200,17 @@ class _LocationPermissionScreenState
     }
 
     // Production restrictions ON.
+    // Only shortcut to Approved when a real submission payload exists —
+    // lock-only / cookie-'1' must not open an empty success screen.
     final deviceService = ref.read(deviceCheckInServiceProvider);
-    final hasCheckedIn = await deviceService.hasCheckedInForSession(
+    final existingSubmission = await deviceService.getSubmissionForSession(
       sessionDateStr: _effectiveSessionDateStr,
       locationId: widget.location.id,
     );
 
     if (!mounted) return;
 
-    if (hasCheckedIn) {
-      final existingSubmission = await deviceService.getSubmissionForSession(
-        sessionDateStr: _effectiveSessionDateStr,
-        locationId: widget.location.id,
-      );
-      if (!mounted) return;
+    if (existingSubmission != null) {
       setState(() {
         _hasCheckedIn = true;
         _existingSubmission = existingSubmission;
@@ -196,8 +219,8 @@ class _LocationPermissionScreenState
       });
       context.go(
         RouteNames.checkinResultPath(
-          checkInId: existingSubmission?.id,
-          memberId: existingSubmission?.memberId,
+          checkInId: existingSubmission.id,
+          memberId: existingSubmission.memberId,
         ),
         extra: existingSubmission,
       );
@@ -205,6 +228,8 @@ class _LocationPermissionScreenState
     }
 
     setState(() {
+      _hasCheckedIn = false;
+      _existingSubmission = null;
       _isCheckingDevice = false;
       _gateApplied = true;
     });
@@ -218,6 +243,7 @@ class _LocationPermissionScreenState
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pulseController.dispose();
     super.dispose();
   }
@@ -863,6 +889,8 @@ class _LocationPermissionScreenState
     }
 
     if (state is LocationValidationError) {
+      final isPermissionDeny = state.exception is LocationPermissionDeniedException ||
+          state.exception is LocationPermissionPermanentlyDeniedException;
       return Container(
         padding: const EdgeInsets.all(AppSpacing.md),
         decoration: BoxDecoration(
@@ -870,10 +898,25 @@ class _LocationPermissionScreenState
           borderRadius: AppRadius.mdAll,
           border: Border.all(color: AppColors.error),
         ),
-        child: Text(
-          ErrorHandler.getUserMessage(state.exception),
-          style: const TextStyle(color: AppColors.error),
-          textAlign: TextAlign.center,
+        child: Column(
+          children: [
+            Text(
+              ErrorHandler.getUserMessage(state.exception),
+              style: const TextStyle(color: AppColors.error),
+              textAlign: TextAlign.center,
+            ),
+            if (isPermissionDeny && kIsWeb) ...[
+              const SizedBox(height: 10),
+              Text(
+                AppStrings.locationPermissionWebHelp,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  height: 1.4,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ],
         ),
       );
     }
@@ -894,27 +937,31 @@ class _LocationPermissionScreenState
     LocationValidationState state,
     bool isBusy,
   ) {
-    if (state is LocationValidationError && state.requiresSettings) {
+    if (state is LocationValidationError &&
+        (state.exception is LocationPermissionDeniedException ||
+            state.exception is LocationPermissionPermanentlyDeniedException)) {
+      final errorState = state;
       return Column(
         children: [
           AppButton.primary(
-            label: AppStrings.locationPermissionOpenSettings,
-            icon: Icons.settings_rounded,
-            onPressed: () {
-              ref
-                  .read(locationValidationFamilyProvider(widget.location).notifier)
-                  .openSettings();
-            },
+            label: AppStrings.locationPermissionAllow,
+            icon: Icons.my_location_rounded,
+            onPressed: _retryLocationPermission,
           ),
-          const SizedBox(height: 12),
-          AppButton.secondary(
-            label: 'Retry Check',
-            onPressed: () {
-              ref
-                  .read(locationValidationFamilyProvider(widget.location).notifier)
-                  .validateLocation();
-            },
-          ),
+          if (errorState.requiresSettings) ...[
+            const SizedBox(height: 12),
+            AppButton.secondary(
+              label: AppStrings.locationPermissionOpenSettings,
+              icon: Icons.settings_rounded,
+              onPressed: () {
+                ref
+                    .read(
+                      locationValidationFamilyProvider(widget.location).notifier,
+                    )
+                    .openSettings();
+              },
+            ),
+          ],
         ],
       );
     }
@@ -924,11 +971,7 @@ class _LocationPermissionScreenState
       return AppButton.primary(
         label: AppStrings.locationRetry,
         icon: Icons.refresh_rounded,
-        onPressed: () {
-          ref
-              .read(locationValidationFamilyProvider(widget.location).notifier)
-              .validateLocation();
-        },
+        onPressed: _retryLocationPermission,
       );
     }
 

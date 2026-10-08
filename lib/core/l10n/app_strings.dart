@@ -29,10 +29,13 @@ class AppStrings {
       'Location permission is required to verify that you are at the check-in location.';
   static const locationPermissionGrant = 'Grant Permission';
   static const locationPermissionDenied =
-      'Location permission was denied. Please grant access to continue.';
+      'Location was denied. Tap Allow Location to try again — you need it to verify you are at the venue.';
   static const locationPermissionPermanentlyDenied =
-      'Location permission has been permanently denied. Please enable it in your device settings.';
+      'Location is blocked for this site/app. Enable it, then tap Allow Location to continue check-in.';
   static const locationPermissionOpenSettings = 'Open Settings';
+  static const locationPermissionAllow = 'Allow Location';
+  static const locationPermissionWebHelp =
+      'On web: tap the lock/tune icon next to the URL → Site settings → Location → Allow (or Ask), then tap Allow Location here.';
   static const locationServiceDisabled =
       'Location services are turned off. Please enable them to continue.';
   static const locationFetchingPosition = 'Getting your location...';

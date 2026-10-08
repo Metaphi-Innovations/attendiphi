@@ -313,7 +313,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 isActive: true,
                 address: 'Jade Luxury Banquets, Nehru Centre, Dr Annie Besant Rd, Worli, Mumbai, Maharashtra 400018',
               );
+          // Include full URI so a fresh QR open remounts and re-prompts location
+          // instead of keeping a prior Deny state.
           return LocationPermissionScreen(
+            key: ValueKey(state.uri.toString()),
             location: location,
             adminId: queryAdminId,
             sessionDateStr: queryDate,

@@ -401,19 +401,14 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     }
 
     final deviceService = ref.read(deviceCheckInServiceProvider);
-    final hasCheckedIn = await deviceService.hasCheckedInForSession(
+    final existingSubmission = await deviceService.getSubmissionForSession(
       sessionDateStr: _effectiveSessionDateStr,
       locationId: widget.locationId,
     );
 
     if (!mounted) return;
 
-    if (hasCheckedIn) {
-      final existingSubmission = await deviceService.getSubmissionForSession(
-        sessionDateStr: _effectiveSessionDateStr,
-        locationId: widget.locationId,
-      );
-      if (!mounted) return;
+    if (existingSubmission != null) {
       setState(() {
         _hasCheckedIn = true;
         _existingSubmission = existingSubmission;
@@ -424,6 +419,8 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     }
 
     setState(() {
+      _hasCheckedIn = false;
+      _existingSubmission = null;
       _isCheckingDevice = false;
     });
   }
@@ -490,10 +487,12 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
 
   void _goToCheckInResult(CheckInSubmission? submission) {
     if (!mounted) return;
+    // Never open Approved without a real submission (avoids empty Present gap).
+    if (submission == null) return;
     context.go(
       RouteNames.checkinResultPath(
-        checkInId: submission?.id,
-        memberId: submission?.memberId,
+        checkInId: submission.id,
+        memberId: submission.memberId,
       ),
       extra: submission,
     );
@@ -517,19 +516,13 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     final restrictionsEnabled = ref.read(restrictionsEnabledProvider);
     if (restrictionsEnabled) {
       final deviceService = ref.read(deviceCheckInServiceProvider);
-      final hasCheckedIn = await deviceService.hasCheckedInForSession(
+      final existingSubmission = await deviceService.getSubmissionForSession(
         sessionDateStr: _effectiveSessionDateStr,
         locationId: widget.locationId,
         probeServer: true,
       );
       if (!mounted) return;
-      if (hasCheckedIn) {
-        final existingSubmission = await deviceService.getSubmissionForSession(
-          sessionDateStr: _effectiveSessionDateStr,
-          locationId: widget.locationId,
-          probeServer: false,
-        );
-        if (!mounted) return;
+      if (existingSubmission != null) {
         _goToCheckInResult(existingSubmission);
         return;
       }

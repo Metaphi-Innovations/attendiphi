@@ -158,11 +158,16 @@ void main() {
       // Sep dates are no longer shown
       expect(find.text('03 Sep'), findsNothing);
 
-      // In October 2026 (all upcoming), P, S, A should all be 0
-      // 0 should be found for P, S, A across members
+      // Members remain visible; summary columns stay pinned (P/S/A/RATE).
+      expect(find.text('Atharva Patil'), findsOneWidget);
+      expect(find.text('Rinku Sharma'), findsOneWidget);
+      expect(find.text('P'), findsWidgets);
+      expect(find.text('RATE'), findsWidgets);
+      // Present/Substitute counts are 0 for October (no Oct check-ins in fixtures).
       expect(find.text('0'), findsWidgets);
-      // And rate should display neutral dash
-      expect(find.text('—'), findsWidgets);
+      // Past Oct Thursdays (e.g. 01 Oct when "today" is later) contribute Absents,
+      // so RATE shows a percentage rather than a neutral dash.
+      expect(find.textContaining('%'), findsWidgets);
     });
   });
 }

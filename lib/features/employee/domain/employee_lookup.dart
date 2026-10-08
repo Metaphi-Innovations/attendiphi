@@ -50,16 +50,19 @@ class EmployeeLookup {
   }
 
   /// Resolves the registered member represented by a check-in row.
+  ///
+  /// For substitutes this is the member being covered (not the attending
+  /// substitute). Prefer [CheckInSubmission.memberId] when present.
   static Employee? forCheckIn(
     Iterable<Employee> employees,
     CheckInSubmission record,
   ) {
+    final byMemberId = byId(employees, record.memberId);
+    if (byMemberId != null) return byMemberId;
+
     if (record.type.isSubstitute) {
       return forNamedMember(employees, record.substituteForMember);
     }
-
-    final byMemberId = byId(employees, record.memberId);
-    if (byMemberId != null) return byMemberId;
 
     if (record.type.isVisitor) return null;
 

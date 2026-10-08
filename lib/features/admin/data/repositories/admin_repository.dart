@@ -72,20 +72,25 @@ class AdminRepositoryImpl implements AdminRepository {
   }) async {
     final _ = role;
     final cleanEmail = email.trim().toLowerCase();
-    final currentAuthUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    String currentAuthUid = '';
+    try {
+      currentAuthUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    } catch (_) {}
     final creatorUid = (createdBy != null && createdBy.trim().isNotEmpty)
         ? createdBy.trim()
         : currentAuthUid;
 
     // Fast-path: existing Firestore admin for this email.
+    AdminUser? existingByEmail;
     try {
-      final existingByEmail = await remoteDataSource.getAdminByEmail(cleanEmail);
-      if (existingByEmail != null) {
-        throw Exception('An Admin account already exists for this email.');
-      }
+      existingByEmail = await remoteDataSource.getAdminByEmail(cleanEmail);
     } on FirebaseException {
       // Scoped list may deny email query; Auth + UID checks still apply.
     } catch (_) {}
+
+    if (existingByEmail != null) {
+      throw Exception('An Admin account already exists for this email.');
+    }
 
     String uid;
     try {
@@ -118,14 +123,16 @@ class AdminRepositoryImpl implements AdminRepository {
       throw Exception(AdminAuthEmailClient.publicCreateError(e));
     }
 
+    AdminUser? existingById;
     try {
-      final existingById = await remoteDataSource.getAdminById(uid);
-      if (existingById != null) {
-        throw Exception('An Admin account already exists for this email.');
-      }
+      existingById = await remoteDataSource.getAdminById(uid);
     } on FirebaseException {
       // Scoped admin cannot get uncreated or other-owner document; UID uniqueness is guaranteed by Auth.
     } catch (_) {}
+
+    if (existingById != null) {
+      throw Exception('An Admin account already exists for this email.');
+    }
 
     try {
       return await remoteDataSource.createAdmin(

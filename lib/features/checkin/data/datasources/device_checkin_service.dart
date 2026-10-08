@@ -66,81 +66,69 @@ class DeviceCheckInService {
     }
   }
 
-  /// Checks whether this device has already submitted attendance for the specified session.
-  /// Checks whether this device has already submitted attendance for the specified session.
-  /// First checks local storage/cookies, then checks the server-side deviceSessionLocks collection.
+  String _sessionDateYmd(String? sessionDateStr) {
+    final s = sessionDateStr?.trim();
+    if (s != null && s.length >= 10) return s.substring(0, 10);
+    final now = DateTime.now();
+    final m = now.month.toString().padLeft(2, '0');
+    final d = now.day.toString().padLeft(2, '0');
+    return '${now.year}-$m-$d';
+  }
+
+  /// True only when a resolvable [CheckInSubmission] exists for this session.
+  ///
+  /// Cookie value `'1'` / a device lock alone is **not** attendance — those
+  /// markers previously caused Approved/Success with no Firestore Present row.
   Future<bool> hasCheckedInForSession({
     String? sessionDateStr,
     String? locationId,
     bool probeServer = true,
   }) async {
-    // 1. Fast local check via cookie
-    final key = getSessionKey(sessionDateStr: sessionDateStr, locationId: locationId);
-    if (CookieHelper.hasCookie(key)) {
-      return true;
-    }
-
-    // 2. Check local SharedPreferences
-    final submission = await _getLocalSubmission(
+    final submission = await getSubmissionForSession(
       sessionDateStr: sessionDateStr,
       locationId: locationId,
+      probeServer: probeServer,
     );
     if (submission != null) return true;
 
-    if (!probeServer) return false;
+    await clearIncompleteSessionMarker(
+      sessionDateStr: sessionDateStr,
+      locationId: locationId,
+    );
+    return false;
+  }
 
-    // 3. Server-side check: query Firestore deviceSessionLocks (public read)
-    if (_remoteDataSource != null) {
-      try {
-        final deviceId = await getOrCreateDeviceId();
-        final sessionDateYmd = () {
-          final s = sessionDateStr?.trim();
-          if (s != null && s.length >= 10) return s.substring(0, 10);
-          final now = DateTime.now();
-          final m = now.month.toString().padLeft(2, '0');
-          final d = now.day.toString().padLeft(2, '0');
-          return '${now.year}-$m-$d';
-        }();
+  /// Removes lock-only / non-JSON session cookies that are not real attendance.
+  Future<void> clearIncompleteSessionMarker({
+    String? sessionDateStr,
+    String? locationId,
+  }) async {
+    try {
+      final key =
+          getSessionKey(sessionDateStr: sessionDateStr, locationId: locationId);
+      final prefs = await _getPrefs();
+      final prefsVal = prefs.getString(key);
+      final hasPrefsJson =
+          prefsVal != null && prefsVal.trim().startsWith('{');
+      if (hasPrefsJson) return;
 
-        final isLocked = await _remoteDataSource.isDeviceSessionLocked(
-          deviceId: deviceId,
-          sessionDateYmd: sessionDateYmd,
-        ).timeout(
-          const Duration(milliseconds: 2000),
-          onTimeout: () => false,
-        );
+      final cookie = CookieHelper.getCookie(key);
+      if (cookie == null || cookie.isEmpty) return;
 
-        if (isLocked) {
-          // Re-persist lightweight cookie locally so future checks are instant
-          CookieHelper.setCookie(key, '1');
-          return true;
-        }
-
-        // Secondary fallback for admin accounts capable of reading checkIns
-        final sessionDate = _parseSessionDate(sessionDateStr);
-        final serverSubmission = await _remoteDataSource.getDeviceSubmission(
-          deviceId,
-          sessionDate,
-        ).timeout(
-          const Duration(milliseconds: 1500),
-          onTimeout: () => null,
-        );
-        if (serverSubmission != null) {
-          await recordSubmission(
-            sessionDateStr: sessionDateStr,
-            submission: serverSubmission,
-          );
-          return true;
-        }
-      } catch (e) {
-        AppLogger.warning(
-          'Server-side device check failed: $e',
+      // '1' = lock-only marker; bare UUID = id token without JSON payload.
+      if (cookie == '1' || !cookie.trim().startsWith('{')) {
+        CookieHelper.removeCookie(key);
+        AppLogger.info(
+          'Cleared incomplete session marker for "$key" (was "$cookie")',
           tag: 'DeviceCheckInService',
         );
       }
+    } catch (e) {
+      AppLogger.warning(
+        'Error clearing incomplete session marker: $e',
+        tag: 'DeviceCheckInService',
+      );
     }
-
-    return false;
   }
 
   CheckInSubmission? _parseStoredSubmission(String? jsonStr) {
@@ -163,12 +151,13 @@ class DeviceCheckInService {
   }) async {
     try {
       final prefs = await _getPrefs();
-      final key = getSessionKey(sessionDateStr: sessionDateStr, locationId: locationId);
-      
+      final key =
+          getSessionKey(sessionDateStr: sessionDateStr, locationId: locationId);
+
       // 1. Check SharedPreferences for this specific session key
       String? jsonStr = prefs.getString(key);
 
-      // 2. Fallback to CookieHelper (which checks cookies, window.localStorage, window.sessionStorage)
+      // 2. Fallback to CookieHelper (must be JSON — not '1' / bare id)
       if (jsonStr == null || jsonStr.isEmpty) {
         jsonStr = CookieHelper.getCookie(key);
       }
@@ -178,7 +167,7 @@ class DeviceCheckInService {
 
       // 3. Fallback to last submission if available and matches session date
       jsonStr = prefs.getString(_lastSubmissionKey);
-      if (jsonStr == null || jsonStr.isEmpty) {
+      if (jsonStr == null || jsonStr.isEmpty || jsonStr == '1') {
         jsonStr = CookieHelper.getCookie(_lastSubmissionKey);
       }
 
@@ -196,7 +185,10 @@ class DeviceCheckInService {
         }
       }
     } catch (e) {
-      AppLogger.warning('Error reading session submission from storage: $e', tag: 'DeviceCheckInService');
+      AppLogger.warning(
+        'Error reading session submission from storage: $e',
+        tag: 'DeviceCheckInService',
+      );
     }
     return null;
   }
@@ -232,25 +224,50 @@ class DeviceCheckInService {
 
     if (!probeServer) return null;
 
-    // Server-side fallback
+    // Server-side fallback (works for admin-capable clients; public may be denied)
     if (_remoteDataSource != null) {
       try {
         final deviceId = await getOrCreateDeviceId();
         final sessionDate = _parseSessionDate(sessionDateStr);
-        final serverSubmission = await _remoteDataSource.getDeviceSubmission(
-          deviceId,
-          sessionDate,
-        ).timeout(
-          const Duration(milliseconds: 1500),
-          onTimeout: () => null,
-        );
+        final serverSubmission = await _remoteDataSource
+            .getDeviceSubmission(
+              deviceId,
+              sessionDate,
+            )
+            .timeout(
+              const Duration(milliseconds: 1500),
+              onTimeout: () => null,
+            );
         if (serverSubmission != null) {
-          // Re-persist locally
           await recordSubmission(
             sessionDateStr: sessionDateStr,
             submission: serverSubmission,
           );
           return serverSubmission;
+        }
+
+        // Lock without a readable check-in → incomplete attempt; do not treat
+        // as checked-in. Clear any local '1' marker so the member can retry.
+        final sessionDateYmd = _sessionDateYmd(sessionDateStr);
+        final isLocked = await _remoteDataSource
+            .isDeviceSessionLocked(
+              deviceId: deviceId,
+              sessionDateYmd: sessionDateYmd,
+            )
+            .timeout(
+              const Duration(milliseconds: 2000),
+              onTimeout: () => false,
+            );
+        if (isLocked) {
+          AppLogger.warning(
+            'Device session lock exists without resolvable check-in '
+            '($deviceId / $sessionDateYmd) — treating as incomplete',
+            tag: 'DeviceCheckInService',
+          );
+          await clearIncompleteSessionMarker(
+            sessionDateStr: sessionDateStr,
+            locationId: locationId,
+          );
         }
       } catch (e) {
         AppLogger.warning(
@@ -265,7 +282,6 @@ class DeviceCheckInService {
 
   /// Checks if this device has any attendance submission recorded.
   Future<bool> hasAnySubmission() async {
-    if (CookieHelper.hasCookie(_lastSubmissionKey)) return true;
     final sub = await getLastSubmission();
     return sub != null;
   }
@@ -287,8 +303,9 @@ class DeviceCheckInService {
       // Persist full submission in local SharedPreferences storage
       await prefs.setString(key, jsonStr);
       await prefs.setString(_lastSubmissionKey, jsonStr);
-      
-      // Persist lightweight token in cookies (<50 bytes) to prevent cookie header bloat or truncation
+
+      // Lightweight id token in cookies only — never treat this as a full
+      // submission (see hasCheckedInForSession / _parseStoredSubmission).
       CookieHelper.setCookie(key, submission.id);
       CookieHelper.setCookie(_lastSubmissionKey, submission.id);
 
@@ -297,7 +314,10 @@ class DeviceCheckInService {
         tag: 'DeviceCheckInService',
       );
     } catch (e) {
-      AppLogger.warning('Error saving check-in to device storage: $e', tag: 'DeviceCheckInService');
+      AppLogger.warning(
+        'Error saving check-in to device storage: $e',
+        tag: 'DeviceCheckInService',
+      );
     }
   }
 
@@ -311,7 +331,10 @@ class DeviceCheckInService {
       }
       return _parseStoredSubmission(jsonStr);
     } catch (e) {
-      AppLogger.warning('Error reading last submission: $e', tag: 'DeviceCheckInService');
+      AppLogger.warning(
+        'Error reading last submission: $e',
+        tag: 'DeviceCheckInService',
+      );
     }
     return null;
   }
@@ -320,14 +343,19 @@ class DeviceCheckInService {
   Future<void> clearSessionRecords() async {
     try {
       final prefs = await _getPrefs();
-      final keys = prefs.getKeys().where((k) => k.startsWith(_sessionPrefix) || k == _lastSubmissionKey);
+      final keys = prefs
+          .getKeys()
+          .where((k) => k.startsWith(_sessionPrefix) || k == _lastSubmissionKey);
       for (final key in keys) {
         await prefs.remove(key);
         CookieHelper.removeCookie(key);
       }
       CookieHelper.removeCookie(_lastSubmissionKey);
     } catch (e) {
-      AppLogger.warning('Error clearing device session records: $e', tag: 'DeviceCheckInService');
+      AppLogger.warning(
+        'Error clearing device session records: $e',
+        tag: 'DeviceCheckInService',
+      );
     }
   }
 
