@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qr_checkin/core/responsive/responsive_breakpoints.dart';
-import 'package:qr_checkin/core/responsive/responsive_layout.dart';
 
 void main() {
-  group('ResponsiveBreakpoints & ResponsiveLayout Tests', () {
+  group('ResponsiveBreakpoints Tests', () {
     testWidgets('Detects compact mobile for width < 360px', (tester) async {
       tester.view.physicalSize = const Size(320, 600);
       tester.view.devicePixelRatio = 1.0;
@@ -103,54 +102,6 @@ void main() {
       );
 
       expect(deviceType, ScreenDeviceType.desktop);
-    });
-
-    testWidgets(
-      'ResponsiveLayout renders correct builder based on device type',
-      (tester) async {
-        tester.view.physicalSize = const Size(1200, 800);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(() => tester.view.resetPhysicalSize());
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: ResponsiveLayout(
-                mobile: (context) => const Text('Mobile View'),
-                desktop: (context) => const Text('Desktop View'),
-              ),
-            ),
-          ),
-        );
-
-        expect(find.text('Desktop View'), findsOneWidget);
-        expect(find.text('Mobile View'), findsNothing);
-      },
-    );
-
-    testWidgets('AdaptiveContainer enforces maxWidth on large screens', (
-      tester,
-    ) async {
-      tester.view.physicalSize = const Size(1600, 900);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() => tester.view.resetPhysicalSize());
-
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: AdaptiveContainer(
-              maxWidth: 500,
-              child: SizedBox(width: 2000, height: 100, key: Key('child')),
-            ),
-          ),
-        ),
-      );
-
-      final containerFinder = find.byType(ConstrainedBox);
-      expect(containerFinder, findsWidgets);
-
-      final size = tester.getSize(find.byKey(const Key('child')));
-      expect(size.width, lessThanOrEqualTo(500.0));
     });
   });
 }

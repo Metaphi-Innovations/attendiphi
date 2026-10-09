@@ -15,6 +15,7 @@ import '../../../../core/responsive/responsive_breakpoints.dart';
 import '../../../../core/utils/file_download_helper.dart';
 import '../../../../core/widgets/app_card.dart';
 import '../../../location/domain/entities/location_config.dart';
+import '../../domain/check_in_session_token.dart';
 
 /// Screen displaying Thursday-specific check-in QR standees from September 2026 to September 2027.
 ///
@@ -114,16 +115,16 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
     return thursdays;
   }
 
-  /// Builds the unique QR check-in payload for a given Thursday for the unified database.
+  /// Builds the unique QR check-in payload for a given Thursday.
+  ///
+  /// Public URL is opaque: `/checkin/<v1.…>` (no cleartext date/locationId).
   String _buildQrPayload(DateTime thursdayDate) {
     final dateStr = DateFormat('yyyy-MM-dd').format(thursdayDate);
-    return AppUrl.public(
-      path: RouteNames.locationPermission,
-      queryParameters: {
-        'date': dateStr,
-        'locationId': widget.location.id,
-      },
+    final token = CheckInSessionToken.create(
+      locationId: widget.location.id,
+      sessionDate: dateStr,
     );
+    return AppUrl.public(path: RouteNames.checkinFormPath(token));
   }
 
   void _onMonthChanged(DateTime newMonth) {
@@ -1661,7 +1662,7 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                'Payload: ?date=${DateFormat('yyyy-MM-dd').format(thursday)}',
+                                'Secure /checkin link for ${DateFormat('yyyy-MM-dd').format(thursday)}',
                                 style: TextStyle(
                                   fontSize: 11,
                                   color: theme.colorScheme.onSurfaceVariant,
@@ -1793,13 +1794,17 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                       : const Color(0xFF64748B),
                 ),
                 const SizedBox(width: 5),
-                Text(
-                  '?date=$dateStr',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                    fontFamily: 'monospace',
-                    color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7),
+                Flexible(
+                  child: Text(
+                    'Secure session link',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: isDark
+                          ? const Color(0xFF38BDF8)
+                          : const Color(0xFF0284C7),
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 const SizedBox(width: 2),
@@ -1808,7 +1813,7 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                   padding: const EdgeInsets.all(5),
                   constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
                   splashRadius: 14,
-                  tooltip: 'Copy Payload URL',
+                  tooltip: 'Copy secure check-in URL',
                   color: isDark
                       ? const Color(0xFF94A3B8)
                       : const Color(0xFF64748B),
@@ -1821,7 +1826,9 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                             const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
                             const SizedBox(width: 8),
                             Expanded(
-                              child: Text('Copied payload URL for Session $sessionNum (?date=$dateStr)'),
+                              child: Text(
+                                'Copied secure check-in URL for Session $sessionNum ($dateStr)',
+                              ),
                             ),
                           ],
                         ),

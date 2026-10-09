@@ -15,10 +15,8 @@ class RouteNames {
   static const adminAttendanceOverview = '/attendance-overview';
   static const adminVisitors = '/visitors';
   static const adminMembers = '/members';
-  static const adminUsers = '/members';
   static const venueQr = '/qr-standee';
   static const adminAdmins = '/admins';
-  static const checkinDetail = '/daily-attendance/:checkInId';
 
   // ── Legacy Routes (for seamless backwards compatibility) ──────────────
   static const attendiphiNamespace = '/attendiphi-by-metaphi';
@@ -42,7 +40,9 @@ class RouteNames {
   static const locationPermission = '/checkin-permission';
   static const checkinResult = '/checkin-result';
   static const photoCapture = '/photo-capture';
-  static const checkinForm = '/checkin/:locationId';
+
+  /// Public check-in entry: `/checkin/<opaque-token>` (legacy: `/checkin/<locationId>`).
+  static const checkinForm = '/checkin/:sessionToken';
 
   // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -57,15 +57,13 @@ class RouteNames {
     return Uri(path: checkinResult, queryParameters: params).toString();
   }
 
-  /// Builds the check-in form path for a specific location.
-  static String checkinFormPath(String locationId) =>
-      '/checkin/$locationId';
+  /// Builds the check-in path for an opaque session token (preferred).
+  ///
+  /// Pass a token from `CheckInSessionToken.create(...)`. Legacy call sites
+  /// may still pass a locationId for dual-read (`/checkin/location_x?date=`).
+  static String checkinFormPath(String sessionTokenOrLocationId) =>
+      '/checkin/${sessionTokenOrLocationId.trim()}';
 
   /// Builds the photo capture path.
-  static String photoCapturePath(String locationId) =>
-      RouteNames.photoCapture;
-
-  /// Builds the check-in detail path for a specific check-in.
-  static String checkinDetailPath(String checkInId) =>
-      '/daily-attendance/$checkInId';
+  static String photoCapturePath() => RouteNames.photoCapture;
 }

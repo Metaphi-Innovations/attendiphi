@@ -14,6 +14,7 @@ import '../../../../core/widgets/app_text_field.dart';
 import '../../../../core/widgets/metaphi_loading_indicator.dart';
 import '../../../checkin/data/datasources/device_checkin_service.dart';
 import '../../../employee/presentation/providers/employee_providers.dart';
+import '../../domain/check_in_session_token.dart';
 import '../providers/qr_scanner_provider.dart';
 import '../providers/qr_scanner_state.dart';
 import '../widgets/qr_overlay.dart';
@@ -146,13 +147,30 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
       return;
     }
 
-    // 2. Otherwise navigate to location check with session parameters
+    // 2. Prefer opaque /checkin/<token>; fall back to legacy permission query.
+    final sessionDate = next.payload.sessionDateStr?.trim() ?? '';
+    if (sessionDate.isNotEmpty) {
+      try {
+        final token = CheckInSessionToken.create(
+          locationId: next.location.id,
+          sessionDate: sessionDate,
+          adminId: next.payload.adminId,
+        );
+        context.push(
+          RouteNames.checkinFormPath(token),
+          extra: next.location,
+        );
+        return;
+      } catch (_) {
+        // Fall through to legacy query navigation.
+      }
+    }
+
     final queryParams = [
       'locationId=${next.location.id}',
       if (next.payload.adminId != null && next.payload.adminId!.isNotEmpty)
         'adminId=${next.payload.adminId}',
-      if (next.payload.sessionDateStr != null && next.payload.sessionDateStr!.isNotEmpty)
-        'date=${next.payload.sessionDateStr}',
+      if (sessionDate.isNotEmpty) 'date=$sessionDate',
     ].join('&');
     final queryStr = queryParams.isNotEmpty ? '?$queryParams' : '';
 

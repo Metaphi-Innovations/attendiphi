@@ -1,5 +1,4 @@
 // ignore_for_file: deprecated_member_use, avoid_web_libraries_in_flutter
-import 'dart:convert';
 import 'dart:html' as html;
 import 'dart:typed_data';
 
@@ -19,13 +18,4 @@ Future<void> saveBytesAsFile(
   anchor.click();
   html.document.body?.children.remove(anchor);
   html.Url.revokeObjectUrl(url);
-}
-
-Future<void> saveTextAsFile(
-  String text,
-  String filename, {
-  String mimeType = 'text/csv;charset=utf-8',
-}) async {
-  final bytes = utf8.encode(text);
-  await saveBytesAsFile(Uint8List.fromList(bytes), filename, mimeType: mimeType);
 }

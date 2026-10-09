@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qr_checkin/core/errors/app_exception.dart';
+import 'package:qr_checkin/features/qr_checkin/domain/check_in_session_token.dart';
 import 'package:qr_checkin/features/qr_checkin/domain/usecases/parse_qr_code.dart';
 
 void main() {
@@ -68,6 +69,20 @@ void main() {
 
       expect(payload.locationId, 'location_x');
       expect(payload.sessionDateStr, '2026-09-03');
+    });
+
+    test('parses opaque /checkin/<token> URL', () {
+      final token = CheckInSessionToken.create(
+        locationId: 'location_x',
+        sessionDate: '2026-10-08',
+        adminId: 'admin_a',
+      );
+      final raw = 'https://attendiphi.metaphi.in/checkin/$token';
+      final payload = usecase(raw);
+
+      expect(payload.locationId, 'location_x');
+      expect(payload.sessionDateStr, '2026-10-08');
+      expect(payload.adminId, 'admin_a');
     });
   });
 

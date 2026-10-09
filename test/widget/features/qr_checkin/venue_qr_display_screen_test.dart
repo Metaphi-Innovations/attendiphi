@@ -57,7 +57,7 @@ void main() {
       // Check Standee preview card enriched elements
       expect(find.text('Thursday, 03 Sep 2026'), findsNWidgets(2));
       expect(find.text('Scan with phone camera to check in'), findsOneWidget);
-      expect(find.text('?date=2026-09-03'), findsWidgets);
+      expect(find.text('Secure session link'), findsWidgets);
       expect(find.text('ACTIVE'), findsWidgets);
       expect(find.text('OFFICIAL STANDEE'), findsNothing);
       expect(find.text('OFFICIAL ID PASS'), findsNothing);
@@ -78,7 +78,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Thursday, 10 Sep 2026'), findsNWidgets(2));
-      expect(find.text('?date=2026-09-10'), findsWidgets);
+      expect(find.text('Secure session link'), findsWidgets);
     });
 
     testWidgets('navigates to next month (October 2026 - 5 Thursdays) and shows locked card', (tester) async {

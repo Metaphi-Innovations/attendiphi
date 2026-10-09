@@ -21,6 +21,7 @@ import '../../features/checkin/presentation/screens/checkin_result_screen.dart';
 import '../../features/location/domain/entities/location_config.dart';
 import '../../features/location/domain/usecases/validate_user_proximity.dart';
 import '../../features/location/presentation/screens/location_permission_screen.dart';
+import '../../features/qr_checkin/domain/resolve_check_in_session.dart';
 import '../../features/qr_checkin/presentation/screens/qr_scanner_screen.dart';
 import '../../features/qr_checkin/presentation/screens/venue_qr_display_screen.dart';
 import '../../features/substitute/presentation/screens/photo_capture_screen.dart';
@@ -29,8 +30,8 @@ import 'route_names.dart';
 
 /// Robust helper to extract query parameters on Native and Flutter Web.
 ///
-/// Path URLs (`/checkin-permission?date=`) are the source of truth. Legacy
-/// hash URLs (`#/checkin-permission?date=`) are still parsed for old QR codes.
+/// Path URLs (`/checkin-permission?date=`) are still parsed for legacy QR
+/// codes. Preferred public entry is `/checkin/<opaque-token>`.
 String? _extractQueryParam(GoRouterState state, String key) {
   final val = state.uri.queryParameters[key];
   if (val != null && val.trim().isNotEmpty) return val.trim();
@@ -350,11 +351,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: RouteNames.checkinForm,
         name: 'checkin_form',
         builder: (context, state) {
-          final locationId = state.pathParameters['locationId'] ??
-              _extractQueryParam(state, 'locationId') ??
-              'location_x';
+          final pathSegment = state.pathParameters['sessionToken'];
           final queryAdminId = _extractQueryParam(state, 'adminId');
           final queryDate = _extractQueryParam(state, 'date');
+          final queryLocationId = _extractQueryParam(state, 'locationId');
+
+          final resolved = resolveCheckInSession(
+            pathSegment: pathSegment,
+            queryDate: queryDate,
+            queryAdminId: queryAdminId,
+            queryLocationId: queryLocationId,
+          );
+          if (resolved == null) {
+            return const _InvalidCheckInSessionScreen();
+          }
+
           ProximityResult? proximityResult;
           LocationConfig? initialLocation;
           if (state.extra is ProximityResult) {
@@ -370,13 +381,44 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               initialLocation = map['location'] as LocationConfig;
             }
           }
+
+          final location = initialLocation ??
+              LocationConfig(
+                id: resolved.locationId,
+                name: resolved.locationId == 'location_x'
+                    ? 'Jade Luxury Banquets, Mumbai'
+                    : resolved.locationId,
+                latitude: 18.9888622,
+                longitude: 72.8152475,
+                radiusMeters: 500.0,
+                isActive: true,
+                address: resolved.locationId == 'location_x'
+                    ? 'Jade Luxury Banquets, Nehru Centre, Dr Annie Besant Rd, Worli, Mumbai, Maharashtra 400018'
+                    : '',
+              );
+
+          // Deep link / QR open: run GPS gate first, then form.
+          if (proximityResult == null) {
+            return LocationPermissionScreen(
+              key: ValueKey(
+                'perm-${resolved.sessionToken ?? resolved.locationId}-${resolved.sessionDateStr}',
+              ),
+              location: location,
+              adminId: resolved.adminId,
+              sessionDateStr: resolved.sessionDateStr,
+              sessionToken: resolved.sessionToken,
+            );
+          }
+
           return CheckInFormScreen(
-            key: ValueKey('checkin-$locationId-$queryDate-$queryAdminId'),
-            locationId: locationId,
-            initialLocation: initialLocation,
+            key: ValueKey(
+              'checkin-${resolved.locationId}-${resolved.sessionDateStr}-${resolved.adminId}',
+            ),
+            locationId: resolved.locationId,
+            initialLocation: location,
             proximityResult: proximityResult,
-            adminId: queryAdminId,
-            sessionDateStr: queryDate,
+            adminId: resolved.adminId,
+            sessionDateStr: resolved.sessionDateStr,
           );
         },
       ),
@@ -399,3 +441,25 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     ),
   );
 });
+
+/// Shown when `/checkin/<segment>` is not a valid opaque token or legacy link.
+class _InvalidCheckInSessionScreen extends StatelessWidget {
+  const _InvalidCheckInSessionScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Invalid Check-In Link')),
+      body: const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            'This check-in link is invalid or has been tampered with.\n'
+            'Please scan the official QR standee for today’s session.',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ),
+    );
+  }
+}

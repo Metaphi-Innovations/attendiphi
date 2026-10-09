@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/logger/app_logger.dart';
+import '../check_in_session_token.dart';
 import '../entities/qr_payload.dart';
 
 /// Usecase responsible for parsing, validating, and extracting the [QrPayload]
@@ -68,12 +69,14 @@ class ParseQrCode {
     }
 
     // 2. Try parsing as URI, including path URLs and legacy hash URLs.
-    //    e.g. https://attendiphi.metaphi.in/checkin-permission?date=...&locationId=...
-    //    e.g. https://domain.com/#/checkin-permission?date=...&locationId=...
+    //    New: https://attendiphi.metaphi.in/checkin/<opaque-token>
+    //    Legacy: https://…/checkin-permission?date=…&locationId=…
     final uri = Uri.tryParse(trimmed);
     if (uri != null) {
-      final Map<String, String> params = Map<String, String>.from(uri.queryParameters);
+      final Map<String, String> params =
+          Map<String, String>.from(uri.queryParameters);
 
+      var path = uri.path;
       // Path query parameters plus legacy fragment query parameters.
       if (uri.hasFragment) {
         final fragment = uri.fragment;
@@ -84,6 +87,22 @@ class ParseQrCode {
         );
         if (fragUri != null) {
           params.addAll(fragUri.queryParameters);
+          if (fragUri.path.isNotEmpty) path = fragUri.path;
+        }
+      }
+
+      final segments =
+          path.split('/').where((s) => s.trim().isNotEmpty).toList();
+      if (segments.length >= 2 && segments[segments.length - 2] == 'checkin') {
+        final tokenSegment = segments.last;
+        final claims = CheckInSessionToken.tryParse(tokenSegment);
+        if (claims != null) {
+          return QrPayload(
+            locationId: claims.locationId,
+            sessionDateStr: claims.sessionDateStr,
+            adminId: claims.adminId ?? params['adminId']?.trim(),
+            rawPayload: trimmed,
+          );
         }
       }
 
@@ -100,7 +119,18 @@ class ParseQrCode {
       }
     }
 
-    // 3. Fallback: Treat as direct location identifier if alphanumeric and valid format
+    // 3. Opaque token pasted as bare path segment.
+    final bareClaims = CheckInSessionToken.tryParse(trimmed);
+    if (bareClaims != null) {
+      return QrPayload(
+        locationId: bareClaims.locationId,
+        sessionDateStr: bareClaims.sessionDateStr,
+        adminId: bareClaims.adminId,
+        rawPayload: trimmed,
+      );
+    }
+
+    // 4. Fallback: Treat as direct location identifier if alphanumeric and valid format
     // Valid locationId: 2-64 characters, letters, digits, underscores, dashes
     final validIdRegex = RegExp(r'^[a-zA-Z0-9_\-]{2,64}$');
     if (validIdRegex.hasMatch(trimmed)) {

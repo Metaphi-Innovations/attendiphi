@@ -8,11 +8,3 @@ Future<void> saveBytesAsFile(
 }) async {
   // No-op or mobile implementation fallback
 }
-
-Future<void> saveTextAsFile(
-  String text,
-  String filename, {
-  String mimeType = 'text/csv;charset=utf-8',
-}) async {
-  // No-op or mobile implementation fallback
-}

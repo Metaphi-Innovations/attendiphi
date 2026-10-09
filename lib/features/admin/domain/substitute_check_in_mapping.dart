@@ -18,15 +18,16 @@ bool isSamePersonName(String? name, String memberName) {
 
 /// Substitute display name that is distinct from the covered member.
 ///
-/// If [substituteName] is present, it is preserved. If missing, falls back
-/// to [fallbackAttendeeName] when distinct from the covered member.
+/// Returns null when missing or incorrectly collapsed to the member name
+/// (so UI shows "—" instead of duplicating Member Name). Phone is resolved
+/// separately and is never dropped for that reason.
 String? distinctSubstituteAttendeeName({
   required String? substituteName,
   required String memberName,
   String? fallbackAttendeeName,
 }) {
   final primary = substituteName?.trim() ?? '';
-  if (primary.isNotEmpty) {
+  if (primary.isNotEmpty && !isSamePersonName(primary, memberName)) {
     return primary;
   }
   final fallback = fallbackAttendeeName?.trim() ?? '';
@@ -126,17 +127,19 @@ CheckInSubmission mapSubstituteCheckInForMember({
   final rawUser = raw.userName.trim();
   final memberName = member.name.trim();
 
-  final attendingName = persistedSub.isNotEmpty
-      ? persistedSub
-      : (rawUser.isNotEmpty && !isSamePersonName(rawUser, memberName)
-          ? rawUser
-          : null);
+  // Never surface the covered member name as the substitute attendee label.
+  final attendingName = distinctSubstituteAttendeeName(
+    substituteName: persistedSub,
+    memberName: memberName,
+    fallbackAttendeeName: rawUser,
+  );
 
+  // Always keep the check-in phone (substitutePhone / userPhone). Do not drop
+  // it when it happens to match the member roster number.
   final dedicatedPhone = raw.substitutePhone?.trim() ?? '';
   final rawPhone = raw.userPhone.trim();
-  final attendingPhone = dedicatedPhone.isNotEmpty
-      ? dedicatedPhone
-      : rawPhone;
+  final attendingPhone =
+      dedicatedPhone.isNotEmpty ? dedicatedPhone : rawPhone;
 
   return raw.copyWith(
     userName: memberName,

@@ -99,29 +99,25 @@ void main() {
     });
 
     test(
-        'persisted substituteName is preserved from Firestore',
+        'collapsed substituteName equal to member is cleared; phone kept',
         () {
       final raw = _raw(
         userName: 'Tejashree Vinayak Sane',
-        phone: '9919055132',
+        phone: '9819055132',
         substituteForMember: 'Tejashree Vinayak Sane',
         substituteName: 'Tejashree Vinayak Sane',
         memberId: 'emp_member',
         photoBase64: 'selfie_of_other_person',
-      );
+      ).copyWith(substitutePhone: '9819055132');
 
       final mapped = mapSubstituteCheckInForMember(raw: raw, member: member);
 
       expect(mapped.userName, 'Tejashree Vinayak Sane');
-      expect(mapped.substituteName, 'Tejashree Vinayak Sane');
+      // Do not duplicate Member Name into Substitute Name.
+      expect(mapped.substituteName, isNull);
+      expect(mapped.substitutePhone, '9819055132');
+      expect(mapped.userPhone, '9819055132');
       expect(mapped.photoBase64, 'selfie_of_other_person');
-      expect(
-        distinctSubstituteAttendeeName(
-          substituteName: mapped.substituteName,
-          memberName: mapped.userName,
-        ),
-        'Tejashree Vinayak Sane',
-      );
     });
 
     test('admin flip with empty substituteForMember does not invent member as sub',
@@ -462,7 +458,7 @@ void main() {
       expect(fields.displayLabel, 'Amit Patel');
     });
 
-    test('preserves substitute name and phone from check-in text fields', () {
+    test('collapsed substituteName shows null name but keeps phone', () {
       final raw = _raw(
         userName: 'Tejashree Vinayak Sane',
         phone: '9819055132',
@@ -470,18 +466,20 @@ void main() {
         substituteName: 'Tejashree Vinayak Sane',
         memberId: 'emp_member',
         photoBase64: 'selfie',
-      );
+      ).copyWith(substitutePhone: '9819055132');
       final displayed = mapSubstituteCheckInForMember(raw: raw, member: member);
 
       final fields = resolveSubstituteAttendeeFields(
         displayed: displayed,
         raw: raw,
         coveredMemberName: member.name,
+        coveredMemberPhone: member.phone,
       );
 
-      expect(fields.name, 'Tejashree Vinayak Sane');
+      // Name collapsed to member → hide duplicate; phone from check-in remains.
+      expect(fields.name, isNull);
       expect(fields.phone, '9819055132');
-      expect(fields.displayLabel, 'Tejashree Vinayak Sane');
+      expect(fields.displayLabel, '9819055132');
     });
 
     test('preserves userPhone from Firestore as substitute phone', () {

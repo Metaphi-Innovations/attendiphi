@@ -20,6 +20,7 @@ import '../../../app_config/presentation/providers/check_in_restrictions_provide
 import '../../../checkin/data/datasources/device_checkin_service.dart';
 import '../../../checkin/domain/entities/check_in_submission.dart';
 import '../../../checkin/presentation/screens/checkin_result_screen.dart';
+import '../../../qr_checkin/domain/check_in_session_token.dart';
 import '../../domain/entities/location_config.dart';
 import '../../domain/usecases/validate_user_proximity.dart';
 import '../providers/location_validation_provider.dart';
@@ -32,12 +33,16 @@ class LocationPermissionScreen extends ConsumerStatefulWidget {
     required this.location,
     this.adminId,
     this.sessionDateStr,
+    this.sessionToken,
     this.nowProvider,
   });
 
   final LocationConfig location;
   final String? adminId;
   final String? sessionDateStr;
+
+  /// Opaque `/checkin/<token>` segment when opened via the secure URL.
+  final String? sessionToken;
   final DateTime Function()? nowProvider;
 
   @override
@@ -159,12 +164,34 @@ class _LocationPermissionScreenState
     // Widget tests may mount without GoRouter; skip navigation then.
     if (GoRouter.maybeOf(context) == null) return;
 
+    final date = _effectiveSessionDateStr;
+    var token = widget.sessionToken?.trim() ?? '';
+    if (token.isEmpty && date != null && date.isNotEmpty) {
+      try {
+        token = CheckInSessionToken.create(
+          locationId: widget.location.id,
+          sessionDate: date,
+          adminId: widget.adminId,
+        );
+      } catch (_) {
+        token = '';
+      }
+    }
+
+    if (token.isNotEmpty) {
+      // Preferred: opaque path, no cleartext date/location in the URL.
+      context.go(
+        RouteNames.checkinFormPath(token),
+        extra: {'proximity': proximity, 'location': widget.location},
+      );
+      return;
+    }
+
+    // Legacy fallback (no session date / token): keep locationId path.
     final queryParams = [
       if (widget.adminId != null && widget.adminId!.isNotEmpty)
         'adminId=${widget.adminId}',
-      if (_effectiveSessionDateStr != null &&
-          _effectiveSessionDateStr!.isNotEmpty)
-        'date=$_effectiveSessionDateStr',
+      if (date != null && date.isNotEmpty) 'date=$date',
     ].join('&');
     final fullQuery = queryParams.isNotEmpty ? '?$queryParams' : '';
     context.go(

@@ -505,7 +505,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   }
 
   void _openCamera() {
-    context.push(RouteNames.photoCapturePath(widget.locationId));
+    context.push(RouteNames.photoCapturePath());
   }
 
   Future<void> _onSubmit(LocationConfig location, ProximityResult proximity) async {
