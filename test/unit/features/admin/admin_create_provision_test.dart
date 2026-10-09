@@ -303,22 +303,43 @@ void main() {
       },
     );
 
+    const email = 'orphan@example.com';
     try {
       await repo.createAdmin(
         name: 'Orphan',
-        email: 'orphan@example.com',
+        email: email,
         phone: '9876543210',
         password: 'TempPass1!',
       );
       fail('expected throw');
     } catch (e) {
+      final raw = e.toString();
+      expect(raw, contains('orphaned'));
+      expect(raw, contains('Authentication → Users'));
+      expect(raw, isNot(contains(email)));
+      expect(raw, isNot(contains('@')));
+
       final message = AdminAuthEmailClient.publicCreateError(e);
       expect(message, contains('Authentication → Users'));
-      expect(message, contains('orphan@example.com'));
+      expect(message, contains('orphaned'));
+      expect(message, isNot(contains(email)));
+      expect(message, isNot(contains('@')));
     }
   });
 
   test('secondary app name is used for provisioning', () {
     expect(AdminAuthEmailClient.secondaryAppName, 'attendiphiAdminProvision');
+  });
+
+  test('redactEmail hides local-part beyond first character', () {
+    expect(
+      AdminAuthEmailClient.redactEmail('jane.doe@example.com'),
+      'j***@example.com',
+    );
+    expect(
+      AdminAuthEmailClient.redactEmail('  Admin@Metaphi.in '),
+      'a***@metaphi.in',
+    );
+    expect(AdminAuthEmailClient.redactEmail('not-an-email'), '[redacted-email]');
   });
 }

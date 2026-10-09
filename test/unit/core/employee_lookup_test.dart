@@ -30,11 +30,7 @@ CheckInSubmission _checkIn({
 }
 
 void main() {
-  const rohan = Employee(
-    id: 'emp_1',
-    name: 'Rohan Mehta',
-    phone: '9876543210',
-  );
+  const rohan = Employee(id: 'emp_1', name: 'Rohan Mehta', phone: '9876543210');
   const pooja = Employee(
     id: 'emp_2',
     name: 'Pooja Nair',
@@ -44,10 +40,13 @@ void main() {
 
   final employees = [rohan, pooja];
 
-  test('resolves renamed member by id even when check-in still has old name', () {
-    final record = _checkIn(name: 'Old Name', memberId: 'emp_1');
-    expect(EmployeeLookup.forCheckIn(employees, record)?.name, 'Rohan Mehta');
-  });
+  test(
+    'resolves renamed member by id even when check-in still has old name',
+    () {
+      final record = _checkIn(name: 'Old Name', memberId: 'emp_1');
+      expect(EmployeeLookup.forCheckIn(employees, record)?.name, 'Rohan Mehta');
+    },
+  );
 
   test('resolves member by phone when names differ', () {
     final record = _checkIn(name: 'Rohan M', phone: '+91 9876543210');
@@ -83,6 +82,22 @@ void main() {
     expect(active.map((e) => e.id), ['emp_1']);
   });
 
+  test('QR typeahead roster excludes inactive when activeOnly is true', () {
+    // Matches check-in form: EmployeeLookup.scoped(..., activeOnly: true).
+    final typeahead = EmployeeLookup.scoped(
+      employees: employees,
+      activeOnly: true,
+    );
+    expect(typeahead, hasLength(1));
+    expect(typeahead.single.id, 'emp_1');
+    expect(typeahead.any((e) => e.id == 'emp_2'), isFalse);
+  });
+
+  test('scoped without activeOnly keeps inactive for admin-style lists', () {
+    final all = EmployeeLookup.scoped(employees: employees, activeOnly: false);
+    expect(all.map((e) => e.id), ['emp_1', 'emp_2']);
+  });
+
   test('cache-busts http photo urls with version stamp', () {
     final url = ImageUtils.cacheBustedUrl(
       'https://cdn.example.com/photo.jpg',
@@ -110,7 +125,10 @@ void main() {
       memberId: 'member_omkar',
     );
 
-    expect(EmployeeLookup.bySubmittedMemberId(roster, record)?.id, 'member_omkar');
+    expect(
+      EmployeeLookup.bySubmittedMemberId(roster, record)?.id,
+      'member_omkar',
+    );
     expect(
       EmployeeLookup.successDisplayName(submission: record, employees: roster),
       'Omkar Anarse',
@@ -121,27 +139,39 @@ void main() {
     );
   });
 
-  test('success display keeps the exact submitted member among similar names', () {
-    const memberB = Employee(id: 'member_b', name: 'Omkar A');
-    const memberC = Employee(id: 'member_c', name: 'Omkar Anarse');
-    final roster = [memberB, memberC];
-    final recordB = _checkIn(name: 'wrong cache', memberId: 'member_b');
-    final recordC = _checkIn(name: 'wrong cache', memberId: 'member_c');
+  test(
+    'success display keeps the exact submitted member among similar names',
+    () {
+      const memberB = Employee(id: 'member_b', name: 'Omkar A');
+      const memberC = Employee(id: 'member_c', name: 'Omkar Anarse');
+      final roster = [memberB, memberC];
+      final recordB = _checkIn(name: 'wrong cache', memberId: 'member_b');
+      final recordC = _checkIn(name: 'wrong cache', memberId: 'member_c');
 
-    expect(
-      EmployeeLookup.successDisplayName(submission: recordB, employees: roster),
-      'Omkar A',
-    );
-    expect(
-      EmployeeLookup.successDisplayName(submission: recordC, employees: roster),
-      'Omkar Anarse',
-    );
-  });
+      expect(
+        EmployeeLookup.successDisplayName(
+          submission: recordB,
+          employees: roster,
+        ),
+        'Omkar A',
+      );
+      expect(
+        EmployeeLookup.successDisplayName(
+          submission: recordC,
+          employees: roster,
+        ),
+        'Omkar Anarse',
+      );
+    },
+  );
 
   test('success display falls back to submission userName when memberId is missing', () {
     final record = _checkIn(name: 'Visitor Name');
     expect(
-      EmployeeLookup.successDisplayName(submission: record, employees: employees),
+      EmployeeLookup.successDisplayName(
+        submission: record,
+        employees: employees,
+      ),
       'Visitor Name',
     );
   });

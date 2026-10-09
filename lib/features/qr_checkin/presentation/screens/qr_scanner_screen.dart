@@ -36,8 +36,8 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // Pre-warm employee list in background while scanning QR code for instant dropdown loading
-    ref.read(employeesStreamProvider);
+    // Pre-warm public member directory for QR typeahead.
+    ref.read(publicMembersStreamProvider);
     _scannerController = MobileScannerController(
       detectionSpeed: DetectionSpeed.normal,
       facing: CameraFacing.back,

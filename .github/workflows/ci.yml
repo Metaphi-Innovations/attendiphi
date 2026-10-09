@@ -1,0 +1,99 @@
+# Attendiphi continuous integration — no deploy, no production secrets.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flutter:
+    name: Flutter analyze & test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.6'
+          channel: stable
+          cache: true
+
+      - name: Pub get
+        run: flutter pub get
+
+      # Pre-existing repo-wide format drift exists; do not mass-rewrite in CI.
+      # Failures are reported as warnings until a dedicated format pass is approved.
+      - name: Format check
+        continue-on-error: true
+        run: dart format --output=none --set-exit-if-changed lib test
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+  firestore-rules:
+    name: Firestore rules (emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: test/rules
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # firebase-tools ≥13 requires JDK 21+ for the Firestore emulator.
+      - name: Verify Java 21+
+        run: |
+          java -version
+          python3 - <<'PY'
+          import re, subprocess, sys
+          out = subprocess.check_output(
+              ["java", "-XshowSettings:properties", "-version"],
+              stderr=subprocess.STDOUT,
+              text=True,
+          )
+          match = re.search(r"java\.specification\.version = (\d+)", out)
+          if not match:
+              sys.exit("Could not parse java.specification.version")
+          version = int(match.group(1))
+          print(f"java.specification.version={version}")
+          if version < 21:
+              sys.exit(f"JDK {version} is too old; need 21+")
+          PY
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: test/rules/package-lock.json
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools@13
+
+      - name: Install rules test deps
+        run: npm ci
+
+      # emulators:exec tears down the emulator; non-zero on test or emulator failure.
+      - name: Emulator rules tests
+        run: npm test
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME }}

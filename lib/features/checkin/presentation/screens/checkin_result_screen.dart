@@ -112,7 +112,8 @@ class _CheckInResultScreenState extends ConsumerState<CheckInResultScreen>
           ref.watch(employeeByIdProvider(memberId)).asData?.value;
     }
     final employees =
-        ref.watch(employeesStreamProvider).asData?.value ?? const <Employee>[];
+        ref.watch(publicMembersStreamProvider).asData?.value ??
+            const <Employee>[];
     final displayName = EmployeeLookup.successDisplayName(
           submission: submission,
           employees: employees,

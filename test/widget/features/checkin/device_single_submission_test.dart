@@ -41,7 +41,7 @@ void main() {
 
   List<Override> memberOverrides(List<Employee> employees) {
     return [
-      employeesStreamProvider.overrideWith(
+      publicMembersStreamProvider.overrideWith(
         (ref) => Stream<List<Employee>>.value(employees),
       ),
       employeeByIdProvider.overrideWith((ref, id) async {

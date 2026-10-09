@@ -335,7 +335,7 @@ void main() {
     expect(hashedAdmin.matchesPassword(hash), isFalse);
   });
 
-  test('legacy plaintext admin passwords still match', () {
+  test('legacy plaintext admin passwords no longer match', () {
     const admin = AdminUser(
       id: 'adm-2',
       name: 'Legacy',
@@ -344,7 +344,7 @@ void main() {
       plainPassword: 'TempPass@123',
       passwordHash: 'TempPass@123',
     );
-    expect(admin.matchesPassword('TempPass@123'), isTrue);
+    expect(admin.matchesPassword('TempPass@123'), isFalse);
     expect(admin.matchesPassword('nope'), isFalse);
   });
 }

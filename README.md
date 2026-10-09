@@ -128,12 +128,29 @@ lib/
 
 ## 📦 Build & Deployment
 
-### Build Web Release Bundle
-Path URLs require Flutter to be served from the site root (`<base href="/">`):
+### Check-in session token secret (required for production)
+
+Public check-in URLs use HMAC-signed opaque tokens (`/checkin/<token>`).  
+**Release builds must set a secret** via dart-define (minimum 16 characters). Without it, token create/parse throws in release mode. Short non-empty secrets are rejected (same rule as `scripts/build_web_release.sh`).
+
+**Client extractability:** `--dart-define` values are compiled into the Flutter **Web JavaScript bundle**. Anyone who can download the site assets can extract the HMAC signing secret. Treat it as a **client-embedded integrity key**, not a confidential server-side credential. Using a long random define still raises the bar versus the known debug bootstrap secret; it does not make the value secret from end users. If the define is rotated or believed leaked, rebuild, redeploy, and regenerate QR standees.
 
 ```bash
-flutter build web --release --base-href /
+export CHECKIN_SESSION_TOKEN_SECRET="$(openssl rand -hex 32)"
+./scripts/build_web_release.sh
 ```
+
+Or manually:
+
+```bash
+flutter build web --release --base-href / \
+  --dart-define=CHECKIN_SESSION_TOKEN_SECRET="$CHECKIN_SESSION_TOKEN_SECRET"
+```
+
+After rotating the secret, regenerate venue QR standees so printed codes match the new signing key. Debug/local runs may omit the define (bootstrap secret only).
+
+### Build Web Release Bundle
+Path URLs require Flutter to be served from the site root (`<base href="/">`). Prefer `scripts/build_web_release.sh` for production.
 
 Firebase Hosting already rewrites unknown paths to `index.html` (SPA fallback) so `/members`, `/daily-attendance`, and other routes work on refresh and direct open.
 

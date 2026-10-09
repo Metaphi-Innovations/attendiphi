@@ -56,6 +56,8 @@ class AppConstants {
   static const String faceTemplatesCollection = 'faceTemplates';
   static const String adminsCollection = 'admins';
   static const String employeesCollection = 'employees';
+  /// Minimal public directory for QR typeahead (id, name, phone, isActive only).
+  static const String publicMembersCollection = 'publicMembers';
   static const String adminDevicesCollection = 'admin_devices';
   static const String adminNotificationsCollection = 'admin_notifications';
   static const String adminMailDispatchCollection = 'admin_mail_dispatch';

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qr_checkin/core/l10n/app_strings.dart';
 import 'package:qr_checkin/core/widgets/app_button.dart';
 import 'package:qr_checkin/features/app_config/domain/entities/check_in_restrictions_config.dart';
 import 'package:qr_checkin/features/app_config/presentation/providers/check_in_restrictions_provider.dart';
@@ -63,7 +64,7 @@ void main() {
         locationConfigFamilyProvider('test_venue').overrideWith(
           (ref) => Future.value(testLocation),
         ),
-        employeesStreamProvider.overrideWith(
+        publicMembersStreamProvider.overrideWith(
           (ref) => Stream.value(testEmployees),
         ),
         liveCheckInsStreamProvider.overrideWith(
@@ -169,12 +170,53 @@ void main() {
 
       expect(find.text('Rohan Mehta'), findsOneWidget);
       expect(find.text('9876543210'), findsOneWidget);
+      expect(find.text(AppStrings.validationPhoneRequired), findsNothing);
 
       final enabledButton = tester.widget<AppButton>(
         find.widgetWithText(AppButton, 'Check-In'),
       );
       expect(enabledButton.enabled, isTrue);
       expect(enabledButton.onPressed, isNotNull);
+    });
+
+    testWidgets('opening and closing member dropdown does not trigger phone required error, and selecting autofills without error',
+        (tester) async {
+      tester.view.physicalSize = const Size(1000, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      await tester.pumpWidget(createWidgetUnderTest());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Open dropdown via dropdown arrow icon
+      await tester.tap(find.byIcon(Icons.arrow_drop_down_rounded));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Close dropdown via chevron
+      await tester.tap(find.byIcon(Icons.keyboard_arrow_up_rounded));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+
+      // Ensure phone required error was not triggered
+      expect(find.text(AppStrings.validationPhoneRequired), findsNothing);
+
+      // Now select a member
+      await tester.enterText(find.byType(TextFormField).first, 'Pooja');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      await tester.tap(find.text('Pooja Nair'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+
+      expect(find.text('Pooja Nair'), findsOneWidget);
+      expect(find.text('9876543211'), findsOneWidget);
+      expect(find.text(AppStrings.validationPhoneRequired), findsNothing);
     });
 
     testWidgets('switching to Substitute displays substitute form with member typeahead and photo card', (tester) async {

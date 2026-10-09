@@ -287,15 +287,6 @@ class AdminAuthNotifier extends Notifier<AdminAuthState> {
     return true;
   }
 
-  /// Kept for API compatibility. Hardcoded Super Admin login is removed.
-  Future<bool> superAdminAutoLogin() async {
-    AppLogger.warning(
-      'superAdminAutoLogin is disabled; use Firebase Auth',
-      tag: 'AdminAuth',
-    );
-    return false;
-  }
-
   /// Resets the logged-in admin's password in Firestore and updates the session.
   Future<bool> resetPassword({required String newPassword}) async {
     final current = state.currentAdmin;

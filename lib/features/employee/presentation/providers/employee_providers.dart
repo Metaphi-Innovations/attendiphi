@@ -17,11 +17,18 @@ final employeeRepositoryProvider = Provider<EmployeeRepository>((ref) {
   return EmployeeRepositoryImpl(ref.watch(employeeRemoteDataSourceProvider));
 });
 
-/// Stream provider for the list of employees / members across the unified database.
+/// Stream provider for the full employee roster (admin-authenticated reads).
 final employeesStreamProvider = StreamProvider<List<Employee>>((ref) {
   ref.keepAlive();
   final repository = ref.watch(employeeRepositoryProvider);
   return repository.streamEmployees();
+});
+
+/// Public QR typeahead directory (id / name / phone / isActive only).
+final publicMembersStreamProvider = StreamProvider<List<Employee>>((ref) {
+  ref.keepAlive();
+  final repository = ref.watch(employeeRepositoryProvider);
+  return repository.streamPublicMembers();
 });
 
 /// Server-first fetch of one member document by id. Used by the Successful

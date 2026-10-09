@@ -65,15 +65,16 @@ class AdminUser {
 
   bool get isSuperAdmin => role.isSuperAdmin;
 
+  /// Verifies [candidate] against salted [passwordHash] only.
+  ///
+  /// Login uses Firebase Auth. This helper remains for password-reset /
+  /// metadata sync checks. Legacy plaintext and hash-as-password equality
+  /// are intentionally unsupported.
   bool matchesPassword(String candidate) {
     final password = candidate.trim();
     if (password.isEmpty) return false;
-    if (passwordSalt.isNotEmpty && passwordHash.isNotEmpty) {
-      return AdminPasswordHasher.hash(password, passwordSalt) == passwordHash;
-    }
-    if (plainPassword.isNotEmpty && plainPassword == password) return true;
-    if (passwordHash.isNotEmpty && passwordHash == password) return true;
-    return false;
+    if (passwordSalt.isEmpty || passwordHash.isEmpty) return false;
+    return AdminPasswordHasher.hash(password, passwordSalt) == passwordHash;
   }
 
   factory AdminUser.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {

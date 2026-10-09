@@ -55,10 +55,49 @@ void main() {
       expect(
         CheckInSessionToken.tryParse(
           token,
-          secretOverride: 'other-secret',
+          secretOverride: 'other-unit-test-secret',
         ),
         isNull,
       );
+    });
+
+    test('rejects short non-empty signing secrets without bootstrap fallback',
+        () {
+      const short = 'short-secret'; // 12 chars
+      expect(short.length, lessThan(CheckInSessionToken.minSecretLength));
+      expect(
+        () => CheckInSessionToken.signingSecret(secretOverride: short),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('${CheckInSessionToken.minSecretLength}'),
+          ),
+        ),
+      );
+      expect(
+        () => CheckInSessionToken.create(
+          locationId: 'location_x',
+          sessionDate: '2026-10-08',
+          secretOverride: short,
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('accepts secrets at the minimum length', () {
+      final minSecret = 'a' * CheckInSessionToken.minSecretLength;
+      final token = CheckInSessionToken.create(
+        locationId: 'location_x',
+        sessionDate: '2026-10-08',
+        secretOverride: minSecret,
+      );
+      final claims = CheckInSessionToken.parse(
+        token,
+        secretOverride: minSecret,
+      );
+      expect(claims.locationId, 'location_x');
+      expect(claims.sessionDateStr, '2026-10-08');
     });
 
     test('rejects malformed tokens', () {
@@ -78,6 +117,17 @@ void main() {
       expect(CheckInSessionToken.looksLikeLegacyLocationId(token), isFalse);
       expect(CheckInSessionToken.looksLikeLegacyLocationId('location_x'), isTrue);
       expect(CheckInSessionToken.looksLikeToken('location_x'), isFalse);
+    });
+
+    test('secretOverride is not treated as bootstrap fallback', () {
+      expect(
+        CheckInSessionToken.isUsingBootstrapSecret(secretOverride: secret),
+        isFalse,
+      );
+      expect(
+        CheckInSessionToken.signingSecret(secretOverride: secret),
+        secret,
+      );
     });
   });
 

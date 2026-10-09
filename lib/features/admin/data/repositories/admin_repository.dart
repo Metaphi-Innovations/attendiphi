@@ -114,10 +114,12 @@ class AdminRepositoryImpl implements AdminRepository {
         if (existing != null) {
           throw Exception('An Admin account already exists for this email.');
         }
+        // Do not embed the address — Super Admin already typed it.
         throw Exception(
           'A Firebase Auth account already exists for this email, but no Admin '
           'profile is linked (orphaned Auth user). In Firebase Console → '
-          'Authentication → Users, delete "$cleanEmail", then create the Admin again.',
+          'Authentication → Users, delete the Auth user for the email you '
+          'entered, then create the Admin again.',
         );
       }
       throw Exception(AdminAuthEmailClient.publicCreateError(e));
@@ -145,11 +147,13 @@ class AdminRepositoryImpl implements AdminRepository {
         role: AdminRole.admin,
       );
     } catch (e) {
-      // Auth user already exists — do not roll back Auth. Surface recovery path.
+      // Auth user already exists — do not roll back Auth. Surface recovery path
+      // without interpolating raw exception text (may contain PII).
       throw Exception(
         'Firebase Auth user was created, but the Admin profile could not be '
-        'saved ($e). Stay signed in and try again, or if the '
-        'email shows as orphaned, delete it under Authentication → Users first.',
+        'saved. Stay signed in and try again, or if the Auth user for the '
+        'email you entered shows as orphaned, delete it under Authentication → '
+        'Users first.',
       );
     }
   }

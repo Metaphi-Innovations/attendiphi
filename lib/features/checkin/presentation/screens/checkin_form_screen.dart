@@ -257,6 +257,13 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     return fieldTop > visibleHeight * 0.38;
   }
 
+  /// Runs form validation after the current frame (typeahead select/clear).
+  void _validateFormNextFrame() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _formKey.currentState?.validate();
+    });
+  }
+
   void _closeTypeahead({
     required FocusNode focusNode,
     required void Function(bool) setShowSuggestions,
@@ -267,9 +274,6 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     if (!showSuggestions && !focusNode.hasFocus) return;
     setState(() => setShowSuggestions(false));
     focusNode.unfocus();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _formKey.currentState?.validate();
-    });
   }
 
   void _closeMemberSuggestions() => _closeTypeahead(
@@ -329,7 +333,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   void initState() {
     super.initState();
     // Warm up employee / member list in memory so dropdown opens instantly
-    ref.read(employeesStreamProvider);
+    ref.read(publicMembersStreamProvider);
 
     // Always start this QR scan with empty identity fields so the previous
     // member on a shared device cannot leak into the next check-in.
@@ -500,7 +504,8 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
 
   Future<Employee> _authoritativeMember(Employee selected) async {
     final employees =
-        ref.read(employeesStreamProvider).asData?.value ?? const <Employee>[];
+        ref.read(publicMembersStreamProvider).asData?.value ??
+            const <Employee>[];
     return EmployeeLookup.byId(employees, selected.id) ?? selected;
   }
 
@@ -900,7 +905,6 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     }
 
     // Keep employee list stream hot and cached in memory
-    ref.watch(employeesStreamProvider);
     final formState = ref.watch(checkInFormProvider);
     final locationAsync = ref.watch(locationConfigFamilyProvider(widget.locationId));
     final isCompact = context.isCompactMobile;
@@ -1326,7 +1330,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
             constraints: BoxConstraints(maxHeight: maxHeight),
             child: Consumer(
               builder: (context, ref, _) {
-                final employeesAsync = ref.watch(employeesStreamProvider);
+                final employeesAsync = ref.watch(publicMembersStreamProvider);
                 final checkedInAsync = excludeSessionCheckedIn
                     ? ref.watch(
                         sessionCheckedInMemberIdsProvider(
@@ -1496,6 +1500,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
               notifier.setAdminId(widget.adminId);
             }
             setState(() => _manuallySelectedMember = null);
+            _validateFormNextFrame();
           },
           onQueryChanged: (val) {
             final selected = _manuallySelectedMember;
@@ -1510,6 +1515,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
               notifier.setEmail('');
               notifier.setRecognizedMember(null);
               setState(() => _manuallySelectedMember = null);
+              _validateFormNextFrame();
             }
           },
           onSelectEmployee: (emp) {
@@ -1528,6 +1534,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
               _showMemberSuggestions = false;
             });
             _memberNameFocusNode.unfocus();
+            _validateFormNextFrame();
           },
         ),
         const SizedBox(height: 18),
@@ -1547,7 +1554,14 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
             FilteringTextInputFormatter.digitsOnly,
             LengthLimitingTextInputFormatter(10),
           ],
-          validator: Validators.validatePhone,
+          validator: (val) {
+            // For Member check-in, phone number is auto-filled upon member selection.
+            // When no member is selected yet, the member selection field prompts the user.
+            if (_manuallySelectedMember == null) {
+              return null;
+            }
+            return Validators.validatePhone(val);
+          },
         ),
       ],
     );
@@ -1634,6 +1648,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
               _selectedSubstituteForMemberId = null;
             });
             ref.read(checkInFormProvider.notifier).setSubstituteForMember(null);
+            _validateFormNextFrame();
           },
           onQueryChanged: (val) {
             final selected = _selectedSubstituteForMember;
@@ -1647,6 +1662,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
               ref
                   .read(checkInFormProvider.notifier)
                   .setSubstituteForMember(null);
+              _validateFormNextFrame();
             }
           },
           onSelectEmployee: (emp) {
@@ -1660,6 +1676,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
             notifier.setSubstituteForMember(emp.name, memberId: emp.id);
             notifier.setAdminId(emp.adminId ?? widget.adminId);
             _substituteForFocusNode.unfocus();
+            _validateFormNextFrame();
           },
         ),
 
@@ -1793,6 +1810,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
           onClearSelection: () {
             setState(() => _selectedInvitedByMember = null);
             ref.read(checkInFormProvider.notifier).setInvitedByMember(null);
+            _validateFormNextFrame();
           },
           onQueryChanged: (val) {
             final selected = _selectedInvitedByMember;
@@ -1801,6 +1819,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
             if (!stillMatches) {
               setState(() => _selectedInvitedByMember = null);
               ref.read(checkInFormProvider.notifier).setInvitedByMember(null);
+              _validateFormNextFrame();
             }
           },
           onSelectEmployee: (emp) {
@@ -1813,6 +1832,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
             notifier.setInvitedByMember(emp.name);
             notifier.setAdminId(emp.adminId ?? widget.adminId);
             _invitedByFocusNode.unfocus();
+            _validateFormNextFrame();
           },
         ),
       ],

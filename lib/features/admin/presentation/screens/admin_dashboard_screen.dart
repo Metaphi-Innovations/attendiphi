@@ -28,6 +28,8 @@ import '../../../employee/presentation/providers/employee_providers.dart';
 import '../../domain/substitute_check_in_mapping.dart';
 import '../providers/admin_dashboard_provider.dart';
 import '../providers/attendance_overview_provider.dart';
+import '../widgets/admin_dashboard_attendance_filter_chips.dart';
+import '../widgets/admin_dashboard_hero_metric_card.dart';
 import '../widgets/searchable_thursday_date_dialog.dart';
 
 Widget _buildAttendanceRecordAvatar({
@@ -38,21 +40,19 @@ Widget _buildAttendanceRecordAvatar({
   final liveMember = employees == null || employees.isEmpty
       ? null
       : EmployeeLookup.forCheckIn(employees, record) ??
-          (record.type.isSubstitute
-              ? EmployeeLookup.forNamedMember(
-                  employees,
-                  record.substituteForMember,
-                )
-              : null) ??
-          (record.type.isSubstitute
-              ? null
-              : EmployeeLookup.byPhone(employees, record.userPhone)) ??
-          EmployeeLookup.byName(employees, record.userName);
+            (record.type.isSubstitute
+                ? EmployeeLookup.forNamedMember(
+                    employees,
+                    record.substituteForMember,
+                  )
+                : null) ??
+            (record.type.isSubstitute
+                ? null
+                : EmployeeLookup.byPhone(employees, record.userPhone)) ??
+            EmployeeLookup.byName(employees, record.userName);
 
-  Widget fallback() => _buildFallbackRecordInitials(
-        liveMember?.name ?? record.userName,
-        size,
-      );
+  Widget fallback() =>
+      _buildFallbackRecordInitials(liveMember?.name ?? record.userName, size);
 
   // MEMBER column: member profile photo / initials only.
   // Never use substitute selfie (photoBase64) here.
@@ -112,16 +112,16 @@ Widget _buildAttendanceRecordAvatar({
 }
 
 Widget _buildFallbackRecordInitials(String userName, double size) {
-  final initial = userName.trim().isNotEmpty ? userName.trim()[0].toUpperCase() : 'M';
+  final initial = userName.trim().isNotEmpty
+      ? userName.trim()[0].toUpperCase()
+      : 'M';
   return Container(
     width: size,
     height: size,
     decoration: BoxDecoration(
       color: AppColors.primary.withAlpha(25),
       borderRadius: AppRadius.xsAll,
-      border: Border.all(
-        color: AppColors.primary.withAlpha(40),
-      ),
+      border: Border.all(color: AppColors.primary.withAlpha(40)),
     ),
     child: Center(
       child: Text(
@@ -152,7 +152,7 @@ String _formatDate(DateTime? dt) {
     'Sep',
     'Oct',
     'Nov',
-    'Dec'
+    'Dec',
   ];
   final day = dt.day.toString().padLeft(2, '0');
   final month = months[dt.month - 1];
@@ -213,7 +213,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   /// Covered member roster phone for a dashboard row (never substitute phone).
   String? _coveredMemberPhone(CheckInSubmission record) {
     final employees = ref.read(employeesStreamProvider).value ?? const [];
-    final emp = EmployeeLookup.byId(employees, record.memberId) ??
+    final emp =
+        EmployeeLookup.byId(employees, record.memberId) ??
         EmployeeLookup.byName(employees, record.userName) ??
         EmployeeLookup.forNamedMember(employees, record.substituteForMember);
     final phone = emp?.phone.trim() ?? '';
@@ -222,8 +223,10 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
 
   /// Prefer a real location from today's dashboard rows, else the app default.
   (String, String) _fallbackLocationFromDashboard() {
-    final filterLoc =
-        ref.read(adminDashboardFilterProvider).selectedLocationId?.trim();
+    final filterLoc = ref
+        .read(adminDashboardFilterProvider)
+        .selectedLocationId
+        ?.trim();
     final rows = ref.read(baseDashboardRecordsProvider).value ?? const [];
     for (final row in rows) {
       final id = row.locationId.trim();
@@ -296,10 +299,10 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
           content: Text(
             newVerified
                 ? (isAbsent
-                    ? 'Do you want to verify that ${record.userName} was Absent?'
-                    : (isNotCheckedIn
-                        ? 'Do you want to verify attendance for ${record.userName}?'
-                        : 'Do you want to verify this check-in for ${record.userName}?'))
+                      ? 'Do you want to verify that ${record.userName} was Absent?'
+                      : (isNotCheckedIn
+                            ? 'Do you want to verify attendance for ${record.userName}?'
+                            : 'Do you want to verify this check-in for ${record.userName}?'))
                 : 'Do you want to unverify this record for ${record.userName}?',
           ),
           actions: [
@@ -309,8 +312,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             ),
             FilledButton(
               style: FilledButton.styleFrom(
-                backgroundColor:
-                    newVerified ? AppColors.success : AppColors.error,
+                backgroundColor: newVerified
+                    ? AppColors.success
+                    : AppColors.error,
               ),
               onPressed: () => Navigator.of(context).pop(true),
               child: Text(newVerified ? 'Verify' : 'Unverify'),
@@ -346,16 +350,19 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
         substituteName: (attendee?.name?.trim().isNotEmpty ?? false)
             ? attendee!.name!.trim()
             : record.substituteName,
-        clearSubstituteName: record.type.isSubstitute &&
+        clearSubstituteName:
+            record.type.isSubstitute &&
             (attendee?.name == null || attendee!.name!.trim().isEmpty) &&
-            (record.substituteName == null || record.substituteName!.trim().isEmpty),
+            (record.substituteName == null ||
+                record.substituteName!.trim().isEmpty),
         userPhone: (attendee != null && attendee.phone.isNotEmpty)
             ? attendee.phone
             : record.userPhone,
         substitutePhone: (attendee != null && attendee.phone.isNotEmpty)
             ? attendee.phone
             : (record.substitutePhone ?? record.userPhone),
-        clearSubstitutePhone: record.type.isSubstitute &&
+        clearSubstitutePhone:
+            record.type.isSubstitute &&
             (attendee == null || attendee.phone.isEmpty) &&
             record.userPhone.isEmpty &&
             (record.substitutePhone == null || record.substitutePhone!.isEmpty),
@@ -368,10 +375,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     try {
       final repository = ref.read(checkInRepositoryProvider);
       await repository.updateCheckIn(updatedRecord);
-      ref.read(paginatedCheckInsProvider.notifier).updateCheckInItem(
-            updatedRecord,
-            replaceId: record.id,
-          );
+      ref
+          .read(paginatedCheckInsProvider.notifier)
+          .updateCheckInItem(updatedRecord, replaceId: record.id);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -389,18 +395,17 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                 Text(
                   newVerified
                       ? (isAbsent
-                          ? 'Verified "${record.userName}" as Absent'
-                          : 'Verified "${record.userName}" as Present')
+                            ? 'Verified "${record.userName}" as Absent'
+                            : 'Verified "${record.userName}" as Present')
                       : 'Unmarked verification for "${record.userName}"',
                 ),
               ],
             ),
-            backgroundColor:
-                newVerified ? AppColors.success : const Color(0xFF475569),
+            backgroundColor: newVerified
+                ? AppColors.success
+                : const Color(0xFF475569),
             behavior: SnackBarBehavior.floating,
-            shape: const RoundedRectangleBorder(
-              borderRadius: AppRadius.mdAll,
-            ),
+            shape: const RoundedRectangleBorder(borderRadius: AppRadius.mdAll),
           ),
         );
       }
@@ -418,8 +423,10 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   }
 
   void _showEditCheckInDialog(BuildContext context, CheckInSubmission record) {
-    final employees = ref.read(employeesStreamProvider).value ?? const <Employee>[];
-    final coveredEmployee = EmployeeLookup.byId(employees, record.memberId) ??
+    final employees =
+        ref.read(employeesStreamProvider).value ?? const <Employee>[];
+    final coveredEmployee =
+        EmployeeLookup.byId(employees, record.memberId) ??
         EmployeeLookup.forCheckIn(employees, record) ??
         EmployeeLookup.byName(
           employees,
@@ -431,10 +438,10 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     final coveredMemberName = (coveredEmployee?.name.trim().isNotEmpty ?? false)
         ? coveredEmployee!.name.trim()
         : (record.type.isSubstitute
-            ? (record.substituteForMember?.trim().isNotEmpty ?? false)
-                ? record.substituteForMember!.trim()
-                : record.userName.trim()
-            : record.userName.trim());
+              ? (record.substituteForMember?.trim().isNotEmpty ?? false)
+                    ? record.substituteForMember!.trim()
+                    : record.userName.trim()
+              : record.userName.trim());
 
     // Prefill from original check-in text fields (raw doc), never the covered
     // member roster name/phone.
@@ -449,17 +456,17 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     final nameController = TextEditingController(
       text: record.type.isSubstitute
           ? ((substituteAttendee?.name?.trim().isNotEmpty ?? false)
-              ? substituteAttendee!.name!.trim()
-              : (record.substituteName?.trim() ?? ''))
+                ? substituteAttendee!.name!.trim()
+                : (record.substituteName?.trim() ?? ''))
           : record.userName,
     );
     final phoneController = TextEditingController(
       text: record.type.isSubstitute
           ? ((substituteAttendee?.phone.isNotEmpty ?? false)
-              ? substituteAttendee!.phone
-              : (record.substitutePhone?.trim().isNotEmpty == true
-                  ? record.substitutePhone!.trim()
-                  : record.userPhone.trim()))
+                ? substituteAttendee!.phone
+                : (record.substitutePhone?.trim().isNotEmpty == true
+                      ? record.substitutePhone!.trim()
+                      : record.userPhone.trim()))
           : record.userPhone,
     );
     final venueController = TextEditingController(text: record.locationName);
@@ -479,14 +486,18 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
           final isMobile = screenWidth < 600;
           final isSubstituteType = selectedType.isSubstitute;
 
-          final fieldBgColor =
-              isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC);
-          final defaultBorderColor =
-              isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
-          final labelColor =
-              isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569);
-          final iconColor =
-              isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+          final fieldBgColor = isDark
+              ? const Color(0xFF1E293B)
+              : const Color(0xFFF8FAFC);
+          final defaultBorderColor = isDark
+              ? const Color(0xFF334155)
+              : const Color(0xFFE2E8F0);
+          final labelColor = isDark
+              ? const Color(0xFF94A3B8)
+              : const Color(0xFF475569);
+          final iconColor = isDark
+              ? const Color(0xFF94A3B8)
+              : const Color(0xFF64748B);
 
           InputDecoration buildDecoration({
             required String hint,
@@ -530,7 +541,10 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
               onTap: () => setDialogState(() => selectedType = type),
               borderRadius: BorderRadius.circular(12),
               child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 10,
+                  horizontal: 8,
+                ),
                 decoration: BoxDecoration(
                   color: isSelected ? accentColor.withAlpha(25) : fieldBgColor,
                   borderRadius: BorderRadius.circular(12),
@@ -761,8 +775,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                             child: OutlinedButton(
                               onPressed: () => Navigator.pop(dialogCtx),
                               style: OutlinedButton.styleFrom(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 13),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 13,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -794,8 +809,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                                 Navigator.pop(dialogCtx);
 
                                 try {
-                                  final repo =
-                                      ref.read(checkInRepositoryProvider);
+                                  final repo = ref.read(
+                                    checkInRepositoryProvider,
+                                  );
                                   await repo.updateCheckIn(updated);
                                   ref
                                       .read(paginatedCheckInsProvider.notifier)
@@ -805,8 +821,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                                       );
 
                                   if (mounted) {
-                                    ScaffoldMessenger.of(this.context)
-                                        .showSnackBar(
+                                    ScaffoldMessenger.of(
+                                      this.context,
+                                    ).showSnackBar(
                                       SnackBar(
                                         content: Text(
                                           'Updated check-in for "${updated.userName}"',
@@ -818,8 +835,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                                   }
                                 } catch (e) {
                                   if (mounted) {
-                                    ScaffoldMessenger.of(this.context)
-                                        .showSnackBar(
+                                    ScaffoldMessenger.of(
+                                      this.context,
+                                    ).showSnackBar(
                                       SnackBar(
                                         content: Text('Failed to update: $e'),
                                         backgroundColor: AppColors.error,
@@ -831,8 +849,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                               },
                               style: FilledButton.styleFrom(
                                 backgroundColor: AppColors.primary,
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 13),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 13,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -929,7 +948,10 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                           record.type.isSubstitute
                               ? 'Substitute Face Photo'
                               : 'Attendee Face Photo',
-                          style: const TextStyle(fontSize: 11, color: Colors.grey),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey,
+                          ),
                         ),
                       ],
                     ),
@@ -940,8 +962,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
               final member = emps == null
                   ? null
                   : EmployeeLookup.forCheckIn(emps, record) ??
-                      EmployeeLookup.byPhone(emps, record.userPhone) ??
-                      EmployeeLookup.byName(emps, record.userName);
+                        EmployeeLookup.byPhone(emps, record.userPhone) ??
+                        EmployeeLookup.byName(emps, record.userName);
               final photoUrl = member?.photoUrl?.trim();
               if (member != null && photoUrl != null && photoUrl.isNotEmpty) {
                 return Center(
@@ -981,8 +1003,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
               value: (substituteAttendee?.name?.trim().isNotEmpty ?? false)
                   ? substituteAttendee!.name!.trim()
                   : ((record.substituteName?.trim().isNotEmpty ?? false)
-                      ? record.substituteName!.trim()
-                      : '—'),
+                        ? record.substituteName!.trim()
+                        : '—'),
             ),
           _DetailItem(
             label: record.type.isSubstitute
@@ -990,26 +1012,28 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                 : 'Phone Number',
             value: record.type.isSubstitute
                 ? ((substituteAttendee?.phone.isNotEmpty ?? false)
-                    ? _formatPhoneNumber(substituteAttendee!.phone)
-                    : ((record.substitutePhone?.trim().isNotEmpty ?? false)
-                        ? _formatPhoneNumber(record.substitutePhone!)
-                        : (record.userPhone.trim().isNotEmpty
-                            ? _formatPhoneNumber(record.userPhone)
-                            : '—')))
+                      ? _formatPhoneNumber(substituteAttendee!.phone)
+                      : ((record.substitutePhone?.trim().isNotEmpty ?? false)
+                            ? _formatPhoneNumber(record.substitutePhone!)
+                            : (record.userPhone.trim().isNotEmpty
+                                  ? _formatPhoneNumber(record.userPhone)
+                                  : '—')))
                 : _formatPhoneNumber(record.userPhone),
           ),
           _DetailItem(label: 'Attendance Type', value: record.type.displayName),
           _DetailItem(label: 'Venue', value: record.locationName),
           _DetailItem(
             label: 'GPS Distance',
-            value: (record.type == CheckInType.absent ||
+            value:
+                (record.type == CheckInType.absent ||
                     record.type.isNotCheckedIn)
                 ? '-'
                 : _formatGpsDistanceDetail(record),
           ),
           _DetailItem(
             label: 'GPS Coordinates',
-            value: (record.type == CheckInType.absent ||
+            value:
+                (record.type == CheckInType.absent ||
                     record.type.isNotCheckedIn)
                 ? '-'
                 : '${record.userLatitude.toStringAsFixed(4)}, ${record.userLongitude.toStringAsFixed(4)}',
@@ -1019,8 +1043,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             value: record.type.isNotCheckedIn
                 ? '-'
                 : (record.isEdited
-                    ? '${record.timestamp.formattedDateTime} (Edited by Admin)'
-                    : record.timestamp.formattedDateTime),
+                      ? '${record.timestamp.formattedDateTime} (Edited by Admin)'
+                      : record.timestamp.formattedDateTime),
           ),
           _DetailItem(label: 'Submission ID', value: record.id),
           _DetailItem(
@@ -1028,12 +1052,12 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             value: record.type.isNotCheckedIn
                 ? 'Not Checked In'
                 : (record.isVerified
-                    ? (record.type.isAbsent
-                        ? '✓ Absence Verified by Admin'
-                        : '✓ Verified by Admin')
-                    : (record.type.isAbsent
-                        ? 'Pending Absence Verification'
-                        : 'Pending Verification')),
+                      ? (record.type.isAbsent
+                            ? '✓ Absence Verified by Admin'
+                            : '✓ Verified by Admin')
+                      : (record.type.isAbsent
+                            ? 'Pending Absence Verification'
+                            : 'Pending Verification')),
           ),
           const SizedBox(height: 12),
 
@@ -1055,7 +1079,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                   label: Text(
                     record.isVerified
                         ? 'Unverify'
-                        : (record.type.isAbsent ? 'Verify Absent' : 'Verify Present'),
+                        : (record.type.isAbsent
+                              ? 'Verify Absent'
+                              : 'Verify Present'),
                   ),
                   style: FilledButton.styleFrom(
                     backgroundColor: record.isVerified
@@ -1124,9 +1150,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                 top: Radius.circular(20),
               ),
             ),
-            child: SingleChildScrollView(
-              child: buildDetailContent(sheetCtx),
-            ),
+            child: SingleChildScrollView(child: buildDetailContent(sheetCtx)),
           ),
         ),
       );
@@ -1147,20 +1171,20 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     // Compute metrics from stream providers (Dashboard excludes visitor records)
     final totalMembersCount =
         employeesAsync.value?.where((e) => e.isActive).length ?? 0;
-    
+
     // Fetch the base records (all active members with attendance mapped)
     final baseRecordsAsync = ref.watch(baseDashboardRecordsProvider);
     final baseRecords = baseRecordsAsync.value ?? [];
 
-    final dashboardRecords =
-        baseRecords.where((r) => !r.type.isVisitor).toList();
+    final dashboardRecords = baseRecords
+        .where((r) => !r.type.isVisitor)
+        .toList();
     final totalCount = dashboardRecords.length;
-    final memberCount =
-        dashboardRecords.where((r) => r.type.isMember).length;
-    final substituteCount =
-        dashboardRecords.where((r) => r.type.isSubstitute).length;
-    final absentCount =
-        dashboardRecords.where((r) => r.type.isAbsent).length;
+    final memberCount = dashboardRecords.where((r) => r.type.isMember).length;
+    final substituteCount = dashboardRecords
+        .where((r) => r.type.isSubstitute)
+        .length;
+    final absentCount = dashboardRecords.where((r) => r.type.isAbsent).length;
     final totalCheckIns = memberCount + substituteCount;
 
     final hPadding = context.responsiveValue<double>(
@@ -1322,7 +1346,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
               allCheckInsAsync.error.toString(),
               style: TextStyle(
                 fontSize: 12,
-                color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                color: isDark
+                    ? const Color(0xFF94A3B8)
+                    : const Color(0xFF64748B),
               ),
               textAlign: TextAlign.center,
             ),
@@ -1331,9 +1357,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
               onPressed: () => ref.invalidate(checkInsStreamProvider),
               icon: const Icon(Icons.refresh_rounded, size: 16),
               label: const Text('Retry'),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.primary,
-              ),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
             ),
           ],
         ),
@@ -1430,30 +1454,27 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     DateTime now,
     AdminDashboardFilterState filterState,
   ) {
-    final viewingDate =
-        filterState.selectedDate ?? _defaultSessionDate(now);
-    final viewingDateStr =
-        DateFormat('EEEE, d MMM yyyy').format(viewingDate);
+    final viewingDate = filterState.selectedDate ?? _defaultSessionDate(now);
+    final viewingDateStr = DateFormat('EEEE, d MMM yyyy').format(viewingDate);
     final restrictionsEnabled = ref.watch(restrictionsEnabledProvider);
-    final isDefaultNextSession = !restrictionsEnabled &&
+    final isDefaultNextSession =
+        !restrictionsEnabled &&
         filterState.selectedDate == null &&
         now.weekday != DateTime.thursday;
-    final isLiveToday = now.weekday == DateTime.thursday &&
-        filterState.selectedDate == null;
+    final isLiveToday =
+        now.weekday == DateTime.thursday && filterState.selectedDate == null;
     final dateSubtitle = isDefaultNextSession
         ? 'Showing next session: $viewingDateStr. Use the date picker for stamped QR days.'
         : isLiveToday
-            ? 'Live attendance for today, $viewingDateStr.'
-            : 'Attendance records for $viewingDateStr.';
+        ? 'Live attendance for today, $viewingDateStr.'
+        : 'Attendance records for $viewingDateStr.';
 
     return AppPageHeader(
       title: 'Daily Attendance',
       subtitle: dateSubtitle,
       isCompact: !isWide,
       badge: const AppLiveSyncBadge(),
-      actions: const [
-        CheckInRestrictionsToggle(),
-      ],
+      actions: const [CheckInRestrictionsToggle()],
     );
   }
 
@@ -1465,8 +1486,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     DateTime now,
   ) {
     final allThursdays = ref.watch(allThursdayDatesProvider);
-    final viewingDate =
-        filterState.selectedDate ?? _defaultSessionDate(now);
+    final viewingDate = filterState.selectedDate ?? _defaultSessionDate(now);
     final isCustom = filterState.selectedDate != null;
     final displayText = DateFormat('EEE, dd MMM yyyy').format(viewingDate);
 
@@ -1480,7 +1500,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
               selectedDate: viewingDate,
               allThursdays: allThursdays,
               onDateSelected: (date) {
-                ref.read(adminDashboardFilterProvider.notifier).setSelectedDate(
+                ref
+                    .read(adminDashboardFilterProvider.notifier)
+                    .setSelectedDate(
                       date == null
                           ? null
                           : DateTime(date.year, date.month, date.day),
@@ -1496,15 +1518,15 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
               color: isCustom
                   ? AppColors.primary.withAlpha(isDark ? 40 : 20)
                   : (isDark
-                      ? const Color(0xFF0F172A)
-                      : const Color(0xFFF1F5F9)),
+                        ? const Color(0xFF0F172A)
+                        : const Color(0xFFF1F5F9)),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: isCustom
                     ? AppColors.primary.withAlpha(120)
                     : (isDark
-                        ? const Color(0xFF334155)
-                        : const Color(0xFFCBD5E1)),
+                          ? const Color(0xFF334155)
+                          : const Color(0xFFCBD5E1)),
               ),
             ),
             child: Row(
@@ -1609,7 +1631,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     // 1. Total Active Members (from Members tab)
     final card1 = SizedBox(
       height: cardHeight,
-      child: _HeroMetricCard(
+      child: AdminDashboardHeroMetricCard(
         title: 'Total Active Members',
         value: '$totalMembersCount',
         icon: Icons.people_alt_rounded,
@@ -1621,7 +1643,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     // 2. Total Check-Ins
     final card2 = SizedBox(
       height: cardHeight,
-      child: _HeroMetricCard(
+      child: AdminDashboardHeroMetricCard(
         title: 'Total Check-Ins',
         value: '$totalCheckIns',
         icon: Icons.groups_rounded,
@@ -1633,7 +1655,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     // 3. Members Checked In
     final card3 = SizedBox(
       height: cardHeight,
-      child: _HeroMetricCard(
+      child: AdminDashboardHeroMetricCard(
         title: 'Members',
         value: '$memberCount',
         icon: Icons.verified_user_rounded,
@@ -1645,7 +1667,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     // 4. Substitutes Checked In
     final card4 = SizedBox(
       height: cardHeight,
-      child: _HeroMetricCard(
+      child: AdminDashboardHeroMetricCard(
         title: 'Substitutes',
         value: '$substituteCount',
         icon: Icons.camera_alt_rounded,
@@ -1657,7 +1679,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     // 5. Absent Members
     final card5 = SizedBox(
       height: cardHeight,
-      child: _HeroMetricCard(
+      child: AdminDashboardHeroMetricCard(
         title: 'Absent',
         value: '$absentCount',
         icon: Icons.person_off_rounded,
@@ -1752,11 +1774,11 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
 
     final searchField = TextField(
       controller: _searchController,
-      style: TextStyle(
-        fontSize: isMobile ? 12.5 : 13.5,
-      ),
+      style: TextStyle(fontSize: isMobile ? 12.5 : 13.5),
       decoration: InputDecoration(
-        hintText: isMobile ? 'Search name / phone...' : 'Search by Name or Phone...',
+        hintText: isMobile
+            ? 'Search name / phone...'
+            : 'Search by Name or Phone...',
         hintStyle: TextStyle(
           fontSize: isMobile ? 12 : 13,
           color: isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
@@ -1782,9 +1804,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             : null,
         isDense: true,
         filled: true,
-        fillColor: isDark
-            ? AppColors.surfaceDark
-            : const Color(0xFFF1F5F9),
+        fillColor: isDark ? AppColors.surfaceDark : const Color(0xFFF1F5F9),
         contentPadding: EdgeInsets.symmetric(
           horizontal: isMobile ? 10 : 14,
           vertical: isMobile ? 8 : 12,
@@ -1803,10 +1823,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
         ),
         focusedBorder: const OutlineInputBorder(
           borderRadius: AppRadius.mdAll,
-          borderSide: BorderSide(
-            color: AppColors.primary,
-            width: 1.5,
-          ),
+          borderSide: BorderSide(color: AppColors.primary, width: 1.5),
         ),
       ),
       onChanged: (query) {
@@ -1823,46 +1840,15 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       now,
     );
 
-    final filterChips = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _FilterChip(
-          label: 'All ($totalCount)',
-          isSelected: filterState.filterType == AdminFilterType.all,
-          onTap: () => ref
-              .read(adminDashboardFilterProvider.notifier)
-              .setFilterType(AdminFilterType.all),
-        ),
-        const SizedBox(width: 8),
-        _FilterChip(
-          label: 'Members ($memberCount)',
-          isSelected: filterState.filterType == AdminFilterType.member,
-          accentColor: AppColors.success,
-          onTap: () => ref
-              .read(adminDashboardFilterProvider.notifier)
-              .setFilterType(AdminFilterType.member),
-        ),
-        const SizedBox(width: 8),
-        _FilterChip(
-          label: 'Substitutes ($substituteCount)',
-          isSelected: filterState.filterType == AdminFilterType.substitute,
-          accentColor: AppColors.warning,
-          onTap: () => ref
-              .read(adminDashboardFilterProvider.notifier)
-              .setFilterType(AdminFilterType.substitute),
-        ),
-        const SizedBox(width: 8),
-        _FilterChip(
-          label: 'Absent ($absentCount)',
-          isSelected: filterState.filterType == AdminFilterType.absent,
-          accentColor: AppColors.error,
-          onTap: () => ref
-              .read(adminDashboardFilterProvider.notifier)
-              .setFilterType(AdminFilterType.absent),
-        ),
-      ],
+    final filterChips = AdminDashboardAttendanceFilterChips(
+      filterType: filterState.filterType,
+      totalCount: totalCount,
+      memberCount: memberCount,
+      substituteCount: substituteCount,
+      absentCount: absentCount,
+      onFilterTypeChanged: (type) =>
+          ref.read(adminDashboardFilterProvider.notifier).setFilterType(type),
     );
-
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
@@ -1888,10 +1874,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
           children: [
             searchField,
             const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: sessionDateDropdown,
-            ),
+            Align(alignment: Alignment.centerLeft, child: sessionDateDropdown),
             const SizedBox(height: 10),
             // Horizontally scrollable filter pills with smooth trailing peek / fade shader
             ShaderMask(
@@ -1899,11 +1882,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                 return const LinearGradient(
                   begin: Alignment.centerLeft,
                   end: Alignment.centerRight,
-                  colors: [
-                    Colors.white,
-                    Colors.white,
-                    Colors.transparent,
-                  ],
+                  colors: [Colors.white, Colors.white, Colors.transparent],
                   stops: [0.0, 0.88, 1.0],
                 ).createShader(bounds);
               },
@@ -1914,10 +1893,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 2),
                   child: Row(
-                    children: [
-                      filterChips,
-                      const SizedBox(width: 24),
-                    ],
+                    children: [filterChips, const SizedBox(width: 24)],
                   ),
                 ),
               ),
@@ -1964,8 +1940,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
               allCheckInsAsync.error.toString(),
               style: TextStyle(
                 fontSize: 14,
-                color:
-                    isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight,
+                color: isDark
+                    ? AppColors.onSurfaceDark
+                    : AppColors.onSurfaceLight,
               ),
               textAlign: TextAlign.center,
             ),
@@ -1974,9 +1951,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
               onPressed: () => ref.invalidate(checkInsStreamProvider),
               icon: const Icon(Icons.refresh_rounded),
               label: const Text('Retry'),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.primary,
-              ),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
             ),
           ],
         ),
@@ -1985,8 +1960,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
 
     if (filteredRecords.isEmpty) {
       return const AppEmptyView(
-        message:
-            'No Check-In Records Found.\nNew check-ins will appear here in real-time as members submit attendance.',
+        message: 'No Check-In Records Found.\nNew check-ins will appear here in real-time as members submit attendance.',
         icon: Icons.how_to_reg_outlined,
       );
     }
@@ -2008,165 +1982,6 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       rawCheckInById: (id) => rawById[id],
       scrollController: _scrollController,
       isEmbeddedInScroll: false,
-    );
-  }
-}
-
-class _FilterChip extends StatelessWidget {
-  const _FilterChip({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-    this.accentColor,
-  });
-
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-  final Color? accentColor;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final effectiveAccent = accentColor ?? AppColors.primary;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: AppRadius.fullAll,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? (isDark
-                    ? effectiveAccent.withAlpha(45)
-                    : (accentColor != null
-                        ? effectiveAccent.withAlpha(25)
-                        : const Color(0xFFEEF2FF)))
-                : (isDark ? AppColors.surfaceDark : AppColors.surfaceLight),
-            borderRadius: AppRadius.fullAll,
-            border: Border.all(
-              color: isSelected
-                  ? effectiveAccent
-                  : (isDark ? AppColors.outlineDark : AppColors.outlineLight),
-              width: isSelected ? 1.5 : 1,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (isSelected) ...[
-                Icon(
-                  Icons.check_rounded,
-                  size: 13,
-                  color: effectiveAccent,
-                ),
-                const SizedBox(width: 5),
-              ],
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                  color: isSelected
-                      ? (isDark
-                          ? (accentColor ?? const Color(0xFF818CF8))
-                          : effectiveAccent)
-                      : (isDark
-                          ? AppColors.onSurfaceVariantDark
-                          : AppColors.onSurfaceVariantLight),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Standardized SaaS KPI Metric Card for Dashboard statistics
-class _HeroMetricCard extends StatelessWidget {
-  const _HeroMetricCard({
-    required this.title,
-    required this.value,
-    required this.icon,
-    required this.accentColor,
-    this.isMobile = false,
-  });
-
-  final String title;
-  final String value;
-  final IconData icon;
-  final Color accentColor;
-  final bool isMobile;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return AppCard(
-      padding: EdgeInsets.symmetric(
-        horizontal: isMobile ? 12 : 14,
-        vertical: isMobile ? 8 : 10,
-      ),
-      borderRadius: AppRadius.mdAll,
-      shadows: AppShadows.sm,
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: isMobile ? 11 : 12,
-                    fontWeight: FontWeight.w600,
-                    color: isDark
-                        ? const Color(0xFF94A3B8)
-                        : const Color(0xFF64748B),
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 1),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    value,
-                    style: TextStyle(
-                      fontSize: isMobile ? 20 : 22,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.5,
-                      height: 1.1,
-                      color: isDark ? Colors.white : const Color(0xFF0F172A),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 6),
-          Container(
-            width: isMobile ? 34 : 36,
-            height: isMobile ? 34 : 36,
-            decoration: BoxDecoration(
-              color: accentColor.withAlpha(isDark ? 35 : 20),
-              borderRadius: AppRadius.mdAll,
-            ),
-            child: Center(
-              child: Icon(icon, color: accentColor, size: isMobile ? 16 : 18),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -2316,22 +2131,22 @@ class _MobileCheckInRow extends StatelessWidget {
     final photoBytes = ImageUtils.base64ToBytes(record.photoBase64);
     final coveredEmp =
         EmployeeLookup.byId(employees ?? const [], record.memberId) ??
-            EmployeeLookup.byName(employees ?? const [], record.userName);
+        EmployeeLookup.byName(employees ?? const [], record.userName);
     final rosterPhone = coveredEmp?.phone.trim() ?? '';
     final substituteAttendee = record.type.isSubstitute
         ? resolveSubstituteAttendeeFields(
             displayed: record,
             raw: rawCheckIn,
             coveredMemberName: record.userName,
-            coveredMemberPhone:
-                rosterPhone.isNotEmpty ? rosterPhone : null,
+            coveredMemberPhone: rosterPhone.isNotEmpty ? rosterPhone : null,
           )
         : null;
-    final subLabel = (substituteAttendee?.displayLabel?.trim().isNotEmpty ?? false)
+    final subLabel =
+        (substituteAttendee?.displayLabel?.trim().isNotEmpty ?? false)
         ? substituteAttendee!.displayLabel!.trim()
         : ((record.substituteName?.trim().isNotEmpty ?? false)
-            ? record.substituteName!.trim()
-            : record.userPhone.trim());
+              ? record.substituteName!.trim()
+              : record.userPhone.trim());
     final memberPhone = () {
       if (!record.type.isSubstitute) return record.userPhone;
       return rosterPhone.isNotEmpty ? rosterPhone : record.userPhone;
@@ -2389,7 +2204,9 @@ class _MobileCheckInRow extends StatelessWidget {
                           Icon(
                             Icons.phone_outlined,
                             size: 11,
-                            color: theme.colorScheme.onSurfaceVariant.withAlpha(180),
+                            color: theme.colorScheme.onSurfaceVariant.withAlpha(
+                              180,
+                            ),
                           ),
                           const SizedBox(width: 3),
                           Text(
@@ -2544,10 +2361,11 @@ class _MobileCheckInRow extends StatelessWidget {
                           color: record.isEdited
                               ? const Color(0xFFD97706)
                               : (isDark
-                                  ? const Color(0xFF94A3B8)
-                                  : const Color(0xFF64748B)),
-                          fontWeight:
-                              record.isEdited ? FontWeight.w600 : FontWeight.w500,
+                                    ? const Color(0xFF94A3B8)
+                                    : const Color(0xFF64748B)),
+                          fontWeight: record.isEdited
+                              ? FontWeight.w600
+                              : FontWeight.w500,
                         ),
                       ),
                       if (record.isEdited) ...[
@@ -2582,11 +2400,15 @@ class _MobileCheckInRow extends StatelessWidget {
                             : theme.colorScheme.onSurfaceVariant.withAlpha(160),
                       ),
                       padding: EdgeInsets.zero,
-                      constraints:
-                          const BoxConstraints(minWidth: 26, minHeight: 26),
+                      constraints: const BoxConstraints(
+                        minWidth: 26,
+                        minHeight: 26,
+                      ),
                       tooltip: record.isVerified
                           ? 'Verified'
-                          : (record.type.isAbsent ? 'Verify Absence' : 'Verify'),
+                          : (record.type.isAbsent
+                                ? 'Verify Absence'
+                                : 'Verify'),
                       onPressed: onVerifyTap,
                     ),
                     const SizedBox(width: 4),
@@ -2597,8 +2419,10 @@ class _MobileCheckInRow extends StatelessWidget {
                         color: AppColors.primary,
                       ),
                       padding: EdgeInsets.zero,
-                      constraints:
-                          const BoxConstraints(minWidth: 26, minHeight: 26),
+                      constraints: const BoxConstraints(
+                        minWidth: 26,
+                        minHeight: 26,
+                      ),
                       tooltip: 'Edit',
                       onPressed: onEditTap,
                     ),
@@ -2698,12 +2522,9 @@ class _CheckInTableView extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 20),
         decoration: BoxDecoration(
           color: headerColor,
-          borderRadius:
-              const BorderRadius.vertical(top: Radius.circular(12)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
           border: Border(
-            bottom: BorderSide(
-              color: theme.dividerColor.withAlpha(40),
-            ),
+            bottom: BorderSide(color: theme.dividerColor.withAlpha(40)),
           ),
         ),
         child: const Row(
@@ -2719,7 +2540,10 @@ class _CheckInTableView extends StatelessWidget {
               flex: 2,
               child: Text('SUBSTITUTE', style: headerTextStyle),
             ),
-            Expanded(flex: 2, child: Text('GPS STATUS', style: headerTextStyle)),
+            Expanded(
+              flex: 2,
+              child: Text('GPS STATUS', style: headerTextStyle),
+            ),
             Expanded(flex: 2, child: Text('TIMESTAMP', style: headerTextStyle)),
             SizedBox(
               width: 90,
@@ -2741,24 +2565,25 @@ class _CheckInTableView extends StatelessWidget {
       final raw = rawCheckInById(record.id);
       final coveredEmp =
           EmployeeLookup.byId(employees ?? const [], record.memberId) ??
-              EmployeeLookup.byName(employees ?? const [], record.userName);
+          EmployeeLookup.byName(employees ?? const [], record.userName);
       final rosterPhone = coveredEmp?.phone.trim() ?? '';
       final substituteAttendee = record.type.isSubstitute
           ? resolveSubstituteAttendeeFields(
               displayed: record,
               raw: raw,
               coveredMemberName: record.userName,
-              coveredMemberPhone:
-                  rosterPhone.isNotEmpty ? rosterPhone : null,
+              coveredMemberPhone: rosterPhone.isNotEmpty ? rosterPhone : null,
             )
           : null;
       // Name from text field, else phone from text field — never hide both.
-      final subName = (substituteAttendee?.displayLabel?.trim().isNotEmpty ?? false)
+      final subName =
+          (substituteAttendee?.displayLabel?.trim().isNotEmpty ?? false)
           ? substituteAttendee!.displayLabel!.trim()
           : ((record.substituteName?.trim().isNotEmpty ?? false)
-              ? record.substituteName!.trim()
-              : record.userPhone.trim());
-      final hasSubstitute = record.type.isSubstitute &&
+                ? record.substituteName!.trim()
+                : record.userPhone.trim());
+      final hasSubstitute =
+          record.type.isSubstitute &&
           (subName.isNotEmpty || photoBytes != null);
       // Member column phone = roster phone; substitute phone lives in SUBSTITUTE.
       final memberPhone = () {
@@ -2774,13 +2599,11 @@ class _CheckInTableView extends StatelessWidget {
           decoration: BoxDecoration(
             color: isZebra
                 ? (isDark
-                    ? Colors.white.withAlpha(4)
-                    : Colors.black.withAlpha(3))
+                      ? Colors.white.withAlpha(4)
+                      : Colors.black.withAlpha(3))
                 : Colors.transparent,
             border: Border(
-              bottom: BorderSide(
-                color: theme.dividerColor.withAlpha(30),
-              ),
+              bottom: BorderSide(color: theme.dividerColor.withAlpha(30)),
             ),
           ),
           child: Row(
@@ -2898,16 +2721,15 @@ class _CheckInTableView extends StatelessWidget {
                                     borderRadius: AppRadius.fullAll,
                                     onTap: photoBytes != null
                                         ? () => _showAttendeePhotoDialog(
-                                              context: context,
-                                              photoBytes: photoBytes,
-                                              title: subName.isNotEmpty
-                                                  ? subName
-                                                  : 'Substitute',
-                                              subtitle:
-                                                  'Substitute for ${record.userName}',
-                                              badgeLabel:
-                                                  'Substitute Live Photo',
-                                            )
+                                            context: context,
+                                            photoBytes: photoBytes,
+                                            title: subName.isNotEmpty
+                                                ? subName
+                                                : 'Substitute',
+                                            subtitle:
+                                                'Substitute for ${record.userName}',
+                                            badgeLabel: 'Substitute Live Photo',
+                                          )
                                         : null,
                                     child: photoBytes != null
                                         ? Container(
@@ -2948,8 +2770,9 @@ class _CheckInTableView extends StatelessWidget {
                                             child: Center(
                                               child: Text(
                                                 subName.isNotEmpty
-                                                    ? subName.trim()[0]
-                                                        .toUpperCase()
+                                                    ? subName
+                                                          .trim()[0]
+                                                          .toUpperCase()
                                                     : 'S',
                                                 style: const TextStyle(
                                                   fontWeight: FontWeight.bold,
@@ -2966,8 +2789,8 @@ class _CheckInTableView extends StatelessWidget {
                                   child: Text(
                                     subName.isNotEmpty
                                         ? (substituteAttendee?.name != null
-                                            ? subName
-                                            : _formatPhoneNumber(subName))
+                                              ? subName
+                                              : _formatPhoneNumber(subName))
                                         : 'Substitute',
                                     style: TextStyle(
                                       fontWeight: FontWeight.w500,
@@ -3003,15 +2826,17 @@ class _CheckInTableView extends StatelessWidget {
                 flex: 2,
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: (record.type == CheckInType.absent ||
+                  child:
+                      (record.type == CheckInType.absent ||
                           record.type.isNotCheckedIn)
                       ? Text(
                           '—',
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: 14,
-                            color: theme.colorScheme.onSurfaceVariant
-                                .withAlpha(120),
+                            color: theme.colorScheme.onSurfaceVariant.withAlpha(
+                              120,
+                            ),
                           ),
                         )
                       : Row(
@@ -3047,8 +2872,9 @@ class _CheckInTableView extends StatelessWidget {
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: 14,
-                            color: theme.colorScheme.onSurfaceVariant
-                                .withAlpha(120),
+                            color: theme.colorScheme.onSurfaceVariant.withAlpha(
+                              120,
+                            ),
                           ),
                         ),
                       )
@@ -3067,8 +2893,8 @@ class _CheckInTableView extends StatelessWidget {
                                   color: record.isEdited
                                       ? const Color(0xFFD97706)
                                       : (isDark
-                                          ? Colors.white
-                                          : const Color(0xFF1E293B)),
+                                            ? Colors.white
+                                            : const Color(0xFF1E293B)),
                                 ),
                               ),
                               if (record.isEdited) ...[
@@ -3092,7 +2918,7 @@ class _CheckInTableView extends StatelessWidget {
                               color: record.isEdited
                                   ? const Color(0xFFD97706).withAlpha(220)
                                   : theme.colorScheme.onSurfaceVariant
-                                      .withAlpha(180),
+                                        .withAlpha(180),
                               fontWeight: record.isEdited
                                   ? FontWeight.w600
                                   : FontWeight.w500,
@@ -3122,7 +2948,9 @@ class _CheckInTableView extends StatelessWidget {
                           size: 18,
                           color: record.isVerified
                               ? AppColors.success
-                              : theme.colorScheme.onSurfaceVariant.withAlpha(160),
+                              : theme.colorScheme.onSurfaceVariant.withAlpha(
+                                  160,
+                                ),
                         ),
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(
@@ -3132,8 +2960,8 @@ class _CheckInTableView extends StatelessWidget {
                         tooltip: record.isVerified
                             ? 'Verified (Click to unverify)'
                             : (record.type.isAbsent
-                                ? 'Verify Absence'
-                                : 'Verify Attendee Present'),
+                                  ? 'Verify Absence'
+                                  : 'Verify Attendee Present'),
                         onPressed: () => onVerifyTap(record),
                       ),
                     ),
@@ -3199,37 +3027,11 @@ class _CheckInTableView extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Main Table Area (Fixed Header + Scrollable Data Rows only)
-          if (isEmbeddedInScroll)
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final minTableWidth = constraints.maxWidth.isFinite &&
-                        constraints.maxWidth > 1050
-                    ? constraints.maxWidth
-                    : 1050.0;
-
-                return SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  physics: const ClampingScrollPhysics(),
-                  child: SizedBox(
-                    width: minTableWidth,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        buildTableHeader(),
-                        ...records.asMap().entries.map(
-                              (entry) => buildDataRow(entry.key, entry.value),
-                            ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            )
-          else
-            Expanded(
-              child: LayoutBuilder(
+            if (isEmbeddedInScroll)
+              LayoutBuilder(
                 builder: (context, constraints) {
-                  final minTableWidth = constraints.maxWidth.isFinite &&
+                  final minTableWidth =
+                      constraints.maxWidth.isFinite &&
                           constraints.maxWidth > 1050
                       ? constraints.maxWidth
                       : 1050.0;
@@ -3242,30 +3044,57 @@ class _CheckInTableView extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // FIXED HEADER ROW (Never scrolls vertically)
                           buildTableHeader(),
-
-                          // SCROLLABLE DATA ROWS (Only rows scroll)
-                          Expanded(
-                            child: ListView.builder(
-                              controller: scrollController,
-                              physics: const AlwaysScrollableScrollPhysics(),
-                              itemCount: records.length,
-                              itemBuilder: (context, index) =>
-                                  buildDataRow(index, records[index]),
-                            ),
+                          ...records.asMap().entries.map(
+                            (entry) => buildDataRow(entry.key, entry.value),
                           ),
                         ],
                       ),
                     ),
                   );
                 },
+              )
+            else
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final minTableWidth =
+                        constraints.maxWidth.isFinite &&
+                            constraints.maxWidth > 1050
+                        ? constraints.maxWidth
+                        : 1050.0;
+
+                    return SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const ClampingScrollPhysics(),
+                      child: SizedBox(
+                        width: minTableWidth,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // FIXED HEADER ROW (Never scrolls vertically)
+                            buildTableHeader(),
+
+                            // SCROLLABLE DATA ROWS (Only rows scroll)
+                            Expanded(
+                              child: ListView.builder(
+                                controller: scrollController,
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                itemCount: records.length,
+                                itemBuilder: (context, index) =>
+                                    buildDataRow(index, records[index]),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ),
-            ),
           ],
         ),
       ),
     );
   }
 }
-

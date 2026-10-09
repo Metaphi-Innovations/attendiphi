@@ -59,6 +59,8 @@ await assertSucceeds(
     userName: 'Rahul Sharma',
     userPhone: '+919876543210',
     locationId: 'location_x',
+    locationName: 'Main Hall',
+    type: 'member',
   }),
 );
 await assertFails(unauth.doc('checkIns/c1').get());
@@ -111,11 +113,160 @@ await assertFails(otherAuth.doc('employees/e1').set({ name: 'Nope' }));
 await assertFails(otherAuth.doc('locations/l1').set({ name: 'Nope' }));
 
 await assertSucceeds(superAuth.doc('employees/e1').set({ name: 'Member' }));
+// Full employees roster is admin-only (AUD-SEC-002).
+await assertFails(unauth.collection('employees').get());
+await assertFails(unauth.doc('employees/e1').get());
+await assertSucceeds(adminAuth.doc('employees/e1').get());
+
+// Public projection for QR typeahead — active-only presence model.
+// Unfiltered list is denied; clients must query isActive==true.
+await assertFails(unauth.collection('publicMembers').get());
+await assertFails(
+  unauth.doc('publicMembers/m1').set({
+    id: 'm1',
+    name: 'Public',
+    phone: '9876543210',
+    isActive: true,
+  }),
+);
+await assertSucceeds(
+  adminAuth.doc('publicMembers/m1').set({
+    id: 'm1',
+    name: 'Public',
+    phone: '9876543210',
+    isActive: true,
+    updatedAt: '2026-10-09T00:00:00.000',
+  }),
+);
+// Admins cannot write inactive projections (must delete instead).
+await assertFails(
+  adminAuth.doc('publicMembers/m-inactive-write').set({
+    id: 'm-inactive-write',
+    name: 'Inactive',
+    phone: '9876543219',
+    isActive: false,
+    updatedAt: '2026-10-09T00:00:00.000',
+  }),
+);
+await assertFails(
+  adminAuth.doc('publicMembers/m2').set({
+    id: 'm2',
+    name: 'Leak',
+    phone: '9876543211',
+    isActive: true,
+    email: 'leak@example.com',
+    updatedAt: '2026-10-09T00:00:00.000',
+  }),
+);
+await assertSucceeds(unauth.doc('publicMembers/m1').get());
+await assertSucceeds(
+  unauth.collection('publicMembers').where('isActive', '==', true).get(),
+);
+// Seed a legacy inactive projection (rules-disabled) — anonymous must not read it.
+await testEnv.withSecurityRulesDisabled(async (ctx) => {
+  await ctx.firestore().doc('publicMembers/m-legacy-inactive').set({
+    id: 'm-legacy-inactive',
+    name: 'Legacy Inactive',
+    phone: '9000000099',
+    isActive: false,
+    updatedAt: '2026-10-09T00:00:00.000',
+  });
+});
+await assertFails(unauth.doc('publicMembers/m-legacy-inactive').get());
+await assertSucceeds(adminAuth.doc('publicMembers/m-legacy-inactive').delete());
+
+// Missing isActive must not be anonymously readable.
+await testEnv.withSecurityRulesDisabled(async (ctx) => {
+  await ctx.firestore().doc('publicMembers/m-missing-active').set({
+    id: 'm-missing-active',
+    name: 'No Flag',
+    phone: '9000000088',
+    updatedAt: '2026-10-09T00:00:00.000',
+  });
+});
+await assertFails(unauth.doc('publicMembers/m-missing-active').get());
+await assertSucceeds(adminAuth.doc('publicMembers/m-missing-active').delete());
+
+// Unauthenticated clients cannot update/delete publicMembers.
+await assertFails(
+  unauth.doc('publicMembers/m1').update({ name: 'Hacked' }),
+);
+await assertFails(unauth.doc('publicMembers/m1').delete());
+await assertFails(
+  unauth.doc('publicMembers/m1').set({
+    id: 'm1',
+    name: 'Overwrite',
+    phone: '9876543210',
+    isActive: true,
+    updatedAt: '2026-10-09T00:00:00.000',
+  }),
+);
+
+// Admin employee CRUD (create already covered); update + delete.
+await assertSucceeds(
+  adminAuth.doc('employees/e1').update({ name: 'Member Updated', isActive: false }),
+);
+await assertSucceeds(adminAuth.doc('employees/e1').delete());
+await assertFails(unauth.doc('employees/e2').set({ name: 'Nope' }));
+await assertSucceeds(
+  adminAuth.doc('employees/e2').set({
+    id: 'e2',
+    name: 'Member Two',
+    phone: '9000000000',
+    isActive: true,
+  }),
+);
+await assertSucceeds(
+  adminAuth.doc('publicMembers/e2').set({
+    id: 'e2',
+    name: 'Member Two',
+    phone: '9000000000',
+    isActive: true,
+    updatedAt: '2026-10-09T00:00:00.000',
+  }),
+);
+await assertFails(otherAuth.doc('publicMembers/e2').delete());
+await assertSucceeds(adminAuth.doc('publicMembers/e2').delete());
+await assertSucceeds(adminAuth.doc('employees/e2').delete());
+
+// Check-in create rejects oversized / privileged fields.
+await assertFails(
+  unauth.doc('checkIns/c2').set({
+    userName: 'X',
+    userPhone: '+919876543210',
+    locationId: 'location_x',
+    isAdmin: true,
+  }),
+);
+await assertSucceeds(
+  unauth.doc('checkIns/c3').set({
+    id: 'c3',
+    userName: 'Visitor',
+    userPhone: '9876543210',
+    locationId: 'location_x',
+    locationName: 'Hall',
+    type: 'member',
+    memberId: 'e2',
+  }),
+);
+await assertFails(unauth.doc('checkIns/c3').get());
+await assertSucceeds(adminAuth.doc('checkIns/c3').get());
+
 await assertSucceeds(adminAuth.collection('checkIns').get());
 await assertFails(otherAuth.collection('admin_devices').get());
 await assertFails(otherAuth.collection('admin_notifications').doc('n1').set({
   title: 'x',
 }));
+
+// Face templates + Storage-adjacent collections stay locked.
+await assertFails(unauth.doc('faceTemplates/e1').get());
+await assertFails(unauth.doc('faceTemplates/e1').set({ memberId: 'e1' }));
+await assertSucceeds(
+  adminAuth.doc('faceTemplates/e1').set({ memberId: 'e1', updatedAt: 't' }),
+);
+await assertSucceeds(adminAuth.doc('faceTemplates/e1').delete());
+await assertFails(unauth.doc('mail/m1').get());
+await assertFails(unauth.doc('admin_password_resets/r1').get());
 
 await testEnv.cleanup();
 console.log('firestore rules tests passed');

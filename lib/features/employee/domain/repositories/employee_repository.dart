@@ -3,6 +3,10 @@ import '../entities/employee.dart';
 /// Contract for employee / member roster management.
 abstract class EmployeeRepository {
   Stream<List<Employee>> streamEmployees();
+
+  /// Public QR directory: id, name, phone, isActive only (no email/photos/biometrics).
+  Stream<List<Employee>> streamPublicMembers();
+
   Future<void> addEmployee(
     String name, {
     String email = '',

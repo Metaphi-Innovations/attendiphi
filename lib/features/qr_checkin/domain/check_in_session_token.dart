@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 
 /// Opaque, HMAC-signed check-in session token for public URLs.
 ///
@@ -11,10 +12,9 @@ import 'package:crypto/crypto.dart';
 /// Payload (UTF-8): `locationId|sessionDate|adminId`
 ///
 /// Signing secret:
-/// - Prefer `--dart-define=CHECKIN_SESSION_TOKEN_SECRET=...` for production
+/// - **Production / release:** require `--dart-define=CHECKIN_SESSION_TOKEN_SECRET=...`
 /// - Tests may pass [secretOverride]
-/// - Empty define falls back to a bootstrap value so local builds work;
-///   rotate via dart-define before treating tokens as unforgeable in prod.
+/// - Debug/profile without a define falls back to [bootstrapSecret] for local work only
 class CheckInSessionToken {
   CheckInSessionToken._();
 
@@ -24,15 +24,63 @@ class CheckInSessionToken {
     defaultValue: '',
   );
 
-  /// Bootstrap only — override with CHECKIN_SESSION_TOKEN_SECRET in production.
+  /// Bootstrap only — never use in production release builds.
   static const bootstrapSecret = 'attendiphi-checkin-session-hmac-v1';
+
+  /// Matches [scripts/build_web_release.sh] minimum length.
+  static const minSecretLength = 16;
+
+  /// True when the compile-time dart-define is non-empty and meets
+  /// [minSecretLength]. Short non-empty defines are rejected, not treated
+  /// as configured.
+  static bool get hasConfiguredSecret {
+    final value = dartDefineSecret.trim();
+    return value.length >= minSecretLength;
+  }
+
+  /// True when [signingSecret] would return [bootstrapSecret]
+  /// (debug/profile with empty define and no override).
+  ///
+  /// Short non-empty defines are not bootstrap: [signingSecret] throws.
+  static bool isUsingBootstrapSecret({String? secretOverride}) {
+    final override = secretOverride?.trim() ?? '';
+    if (override.isNotEmpty) return false;
+    final fromDefine = dartDefineSecret.trim();
+    if (fromDefine.isNotEmpty) return false;
+    return true;
+  }
 
   static String signingSecret({String? secretOverride}) {
     final override = secretOverride?.trim() ?? '';
-    if (override.isNotEmpty) return override;
+    if (override.isNotEmpty) {
+      _assertMinSecretLength(override, source: 'secretOverride');
+      return override;
+    }
     final fromDefine = dartDefineSecret.trim();
-    if (fromDefine.isNotEmpty) return fromDefine;
+    if (fromDefine.isNotEmpty) {
+      _assertMinSecretLength(
+        fromDefine,
+        source: 'CHECKIN_SESSION_TOKEN_SECRET',
+      );
+      return fromDefine;
+    }
+    if (kReleaseMode) {
+      throw StateError(
+        'CHECKIN_SESSION_TOKEN_SECRET dart-define is required for release '
+        'builds. Pass --dart-define=CHECKIN_SESSION_TOKEN_SECRET=<secret> '
+        'with at least $minSecretLength characters '
+        '(see scripts/build_web_release.sh).',
+      );
+    }
     return bootstrapSecret;
+  }
+
+  static void _assertMinSecretLength(String secret, {required String source}) {
+    if (secret.length >= minSecretLength) return;
+    throw StateError(
+      '$source must be at least $minSecretLength characters '
+      '(see scripts/build_web_release.sh).',
+    );
   }
 
   /// True when [segment] looks like a v1 session token (not a legacy locationId).

@@ -6,6 +6,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../../core/logger/app_logger.dart';
 import '../../../../firebase_options.dart';
 
 /// Result of provisioning a Firebase Auth user on a secondary app.
@@ -68,14 +69,24 @@ class AdminAuthEmailClient {
     }
   }
 
+  /// Redacts an email for logs (`j***@example.com`). Never log full addresses.
+  @visibleForTesting
+  static String redactEmail(String email) {
+    final normalized = email.trim().toLowerCase();
+    final at = normalized.indexOf('@');
+    if (at <= 0 || at == normalized.length - 1) return '[redacted-email]';
+    final local = normalized.substring(0, at);
+    final domain = normalized.substring(at + 1);
+    final prefix = local.isEmpty ? '*' : local[0];
+    return '$prefix***@$domain';
+  }
+
   static Future<void> _ensureRecaptcha(FirebaseAuth auth) async {
     if (!kIsWeb) return;
     try {
       await auth.initializeRecaptchaConfig();
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('reCAPTCHA init: $e');
-      }
+      AppLogger.warning('reCAPTCHA init failed: $e', tag: 'AdminAuthEmail');
     }
   }
 
@@ -85,6 +96,7 @@ class AdminAuthEmailClient {
   }) async {
     FirebaseAuth? authUsed;
     final primaryUidBefore = FirebaseAuth.instance.currentUser?.uid;
+    final redacted = redactEmail(email);
     try {
       authUsed = await _secondaryAuth();
       // Guard: never use the primary Auth instance for provisioning.
@@ -100,9 +112,10 @@ class AdminAuthEmailClient {
       try {
         await authUsed.setPersistence(Persistence.NONE);
       } catch (e) {
-        if (kDebugMode) {
-          debugPrint('Secondary Auth persistence: $e');
-        }
+        AppLogger.warning(
+          'Secondary Auth persistence: $e',
+          tag: 'AdminAuthEmail',
+        );
       }
 
       await _ensureRecaptcha(authUsed);
@@ -119,12 +132,18 @@ class AdminAuthEmailClient {
             message: 'Firebase Auth did not return a UID.',
           );
         }
-        debugPrint('AUTH USER created recipient: $email');
+        AppLogger.info(
+          'AUTH USER created recipient: $redacted',
+          tag: 'AdminAuthEmail',
+        );
         return uid;
       } on FirebaseAuthException catch (e) {
         if (e.code == 'email-already-in-use') {
           // Do NOT signInWithEmailAndPassword — preserves Super Admin session.
-          debugPrint('AUTH USER exists recipient: $email');
+          AppLogger.info(
+            'AUTH USER exists recipient: $redacted',
+            tag: 'AdminAuthEmail',
+          );
           rethrow;
         }
         rethrow;
@@ -132,9 +151,11 @@ class AdminAuthEmailClient {
     } on FirebaseAuthException {
       rethrow;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('AUTH PROVISION FAILURE recipient: $email error: $e');
-      }
+      AppLogger.error(
+        'AUTH PROVISION FAILURE recipient: $redacted',
+        error: e,
+        tag: 'AdminAuthEmail',
+      );
       throw FirebaseAuthException(
         code: 'internal-error',
         message: e.toString(),
@@ -145,9 +166,9 @@ class AdminAuthEmailClient {
       if (primaryUidBefore != null &&
           primaryUidAfter != null &&
           primaryUidBefore != primaryUidAfter) {
-        debugPrint(
-          'AUTH WARNING: primary session changed during provision '
-          '(spillover). Super Admin UID was $primaryUidBefore.',
+        AppLogger.warning(
+          'AUTH WARNING: primary session changed during provision (spillover).',
+          tag: 'AdminAuthEmail',
         );
       }
     }
@@ -302,15 +323,17 @@ class AdminAuthEmailClient {
     }
     final text = error.toString();
     if (text.contains('Firebase Auth user was created')) {
-      final cleaned = text.replaceFirst(RegExp(r'^Exception:\s*'), '').trim();
-      return cleaned.isNotEmpty
-          ? cleaned
-          : 'Firebase Auth user was created, but the Admin profile could not be saved. Stay signed in as Super Admin and try again.';
+      // Fixed copy — do not echo Exception text (may include emails).
+      return 'Firebase Auth user was created, but the Admin profile could not be '
+          'saved. Stay signed in as Super Admin and try again, or delete the '
+          'Auth user for the email you entered under Authentication → Users '
+          'if it shows as orphaned.';
     }
     if (text.contains('orphaned') || text.contains('Authentication → Users')) {
-      final cleaned = text.replaceFirst(RegExp(r'^Exception:\s*'), '').trim();
-      if (cleaned.isNotEmpty) return cleaned;
-      return 'A Firebase Auth account already exists for this email, but no Admin profile is linked. In Firebase Console → Authentication → Users, delete that email, then create the Admin again.';
+      return 'A Firebase Auth account already exists for this email, but no '
+          'Admin profile is linked (orphaned Auth user). In Firebase Console → '
+          'Authentication → Users, delete the Auth user for the email you '
+          'entered, then create the Admin again.';
     }
     if (text.contains('already exists')) {
       return 'An Admin account already exists for this email.';

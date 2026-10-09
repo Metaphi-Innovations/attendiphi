@@ -218,16 +218,43 @@ service cloud.firestore {
         );
     }
 
-    // Public read for QR member dropdown (name/phone). New creates must not
-    // ship biometrics here — use faceTemplates (admin-only). Updates may still
-    // carry legacy embedding fields until migrated; clients strip on write.
+    // Full member profiles — Attendiphi admins only (AUD-SEC-002).
+    // New creates must not ship biometrics here — use faceTemplates.
     match /employees/{employeeId} {
-      allow read: if true;
+      allow read: if isAttendiphiAdmin();
       allow create: if isAttendiphiAdmin()
         && !('faceEmbedding' in request.resource.data)
         && !('faceTemplates' in request.resource.data)
         && !('faceDescriptors' in request.resource.data);
       allow update, delete: if isAttendiphiAdmin();
+    }
+
+    // Minimal public directory for QR typeahead (id, name, phone, isActive).
+    // Only active members are projected; inactive docs are deleted (not stored
+    // as isActive:false). Reads require isActive==true so leftover inactive
+    // docs are not anonymously discoverable; clients must query accordingly.
+    // Written only by admins (client sync + backfill). No email/photo/biometrics.
+    match /publicMembers/{memberId} {
+      allow read: if resource.data.isActive == true
+        && resource.data.keys().hasOnly([
+          'id', 'name', 'phone', 'isActive', 'updatedAt'
+        ]);
+      allow create, update: if isAttendiphiAdmin()
+        && request.resource.data.keys().hasOnly([
+          'id', 'name', 'phone', 'isActive', 'updatedAt'
+        ])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 120
+        && request.resource.data.phone is string
+        && request.resource.data.phone.size() <= 24
+        && request.resource.data.isActive == true
+        && !('email' in request.resource.data)
+        && !('photoUrl' in request.resource.data)
+        && !('faceEmbedding' in request.resource.data)
+        && !('faceTemplates' in request.resource.data)
+        && !('faceDescriptors' in request.resource.data);
+      allow delete: if isAttendiphiAdmin();
     }
 
     // Locked biometrics — Attendiphi admins only (not public QR).
