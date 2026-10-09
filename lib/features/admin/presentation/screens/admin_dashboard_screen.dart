@@ -453,22 +453,25 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             coveredMemberPhone: coveredEmployee?.phone,
           )
         : null;
-    final nameController = TextEditingController(
-      text: record.type.isSubstitute
-          ? ((substituteAttendee?.name?.trim().isNotEmpty ?? false)
-                ? substituteAttendee!.name!.trim()
-                : (record.substituteName?.trim() ?? ''))
-          : record.userName,
-    );
-    final phoneController = TextEditingController(
-      text: record.type.isSubstitute
-          ? ((substituteAttendee?.phone.isNotEmpty ?? false)
-                ? substituteAttendee!.phone
-                : (record.substitutePhone?.trim().isNotEmpty == true
-                      ? record.substitutePhone!.trim()
-                      : record.userPhone.trim()))
-          : record.userPhone,
-    );
+    final initialName = record.type.isSubstitute
+        ? ((substituteAttendee?.name?.trim().isNotEmpty ?? false)
+              ? substituteAttendee!.name!.trim()
+              : (record.substituteName?.trim() ?? ''))
+        : (record.userName.trim().isNotEmpty
+              ? record.userName.trim()
+              : coveredMemberName);
+    final nameController = TextEditingController(text: initialName);
+
+    final initialPhone = record.type.isSubstitute
+        ? ((substituteAttendee?.phone.isNotEmpty ?? false)
+              ? substituteAttendee!.phone
+              : (record.substitutePhone?.trim().isNotEmpty == true
+                    ? record.substitutePhone!.trim()
+                    : record.userPhone.trim()))
+        : (record.userPhone.trim().isNotEmpty
+              ? record.userPhone.trim()
+              : (coveredEmployee?.phone.trim() ?? ''));
+    final phoneController = TextEditingController(text: initialPhone);
     final venueController = TextEditingController(text: record.locationName);
     var selectedType = record.type == CheckInType.notCheckedIn
         ? CheckInType.member
@@ -538,7 +541,36 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
           }) {
             final isSelected = selectedType == type;
             return InkWell(
-              onTap: () => setDialogState(() => selectedType = type),
+              onTap: () {
+                setDialogState(() {
+                  selectedType = type;
+                  if (type == CheckInType.member || type == CheckInType.absent) {
+                    final prevSubName = substituteAttendee?.name?.trim() ?? record.substituteName?.trim();
+                    if (nameController.text.trim().isEmpty ||
+                        (prevSubName != null && nameController.text.trim() == prevSubName)) {
+                      nameController.text = coveredMemberName;
+                    }
+                    final prevSubPhone = substituteAttendee?.phone.trim() ?? record.substitutePhone?.trim();
+                    if (phoneController.text.trim().isEmpty ||
+                        (prevSubPhone != null && phoneController.text.trim() == prevSubPhone)) {
+                      phoneController.text = (coveredEmployee?.phone.trim().isNotEmpty ?? false)
+                          ? coveredEmployee!.phone.trim()
+                          : record.userPhone.trim();
+                    }
+                  } else if (type == CheckInType.substitute) {
+                    if (nameController.text.trim() == coveredMemberName) {
+                      final prevSubName = (substituteAttendee?.name?.trim().isNotEmpty ?? false)
+                          ? substituteAttendee!.name!.trim()
+                          : (record.substituteName?.trim() ?? '');
+                      nameController.text = prevSubName;
+                      final prevSubPhone = (substituteAttendee?.phone.isNotEmpty ?? false)
+                          ? substituteAttendee!.phone
+                          : (record.substitutePhone?.trim() ?? '');
+                      phoneController.text = prevSubPhone;
+                    }
+                  }
+                });
+              },
               borderRadius: BorderRadius.circular(12),
               child: Container(
                 padding: const EdgeInsets.symmetric(
@@ -634,9 +666,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                       ),
                       const SizedBox(height: 20),
 
-                      if (isSubstituteType) ...[
+                      if (selectedType == CheckInType.absent) ...[
                         Text(
-                          'Covered Member',
+                          'Member Name',
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
@@ -648,7 +680,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                           decoration: buildDecoration(
                             hint: coveredMemberName,
                             prefixIcon: Icon(
-                              Icons.badge_outlined,
+                              Icons.person_rounded,
                               size: 20,
                               color: iconColor,
                             ),
@@ -665,64 +697,137 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                           ),
                         ),
                         const SizedBox(height: 14),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.error.withAlpha(15),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppColors.error.withAlpha(40),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.info_outline_rounded,
+                                size: 18,
+                                color: AppColors.error,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'This record will be marked as Absent for $coveredMemberName.',
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppColors.error,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                      ] else ...[
+                        if (isSubstituteType) ...[
+                          Text(
+                            'Covered Member',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: labelColor,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          InputDecorator(
+                            decoration: buildDecoration(
+                              hint: coveredMemberName,
+                              prefixIcon: Icon(
+                                Icons.badge_outlined,
+                                size: 20,
+                                color: iconColor,
+                              ),
+                            ),
+                            child: Text(
+                              coveredMemberName.isEmpty ? '—' : coveredMemberName,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: isDark
+                                    ? Colors.white
+                                    : const Color(0xFF0F172A),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                        ],
+
+                        // Full Name / Substitute Name
+                        Text(
+                          isSubstituteType ? 'Substitute Name' : 'Member Name',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: labelColor,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        TextFormField(
+                          controller: nameController,
+                          decoration: buildDecoration(
+                            hint: isSubstituteType
+                                ? 'Enter substitute attendee name'
+                                : (coveredMemberName.isNotEmpty
+                                      ? coveredMemberName
+                                      : 'Enter member name'),
+                            prefixIcon: Icon(
+                              Icons.person_outline_rounded,
+                              size: 20,
+                              color: iconColor,
+                            ),
+                          ),
+                          validator: (val) {
+                            if (selectedType == CheckInType.absent ||
+                                selectedType == CheckInType.member) {
+                              return null;
+                            }
+                            if (val == null || val.trim().isEmpty) {
+                              return 'Please enter substitute name';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Phone Number
+                        Text(
+                          isSubstituteType ? 'Substitute Phone' : 'Phone Number',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: labelColor,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        TextFormField(
+                          controller: phoneController,
+                          keyboardType: TextInputType.phone,
+                          decoration: buildDecoration(
+                            hint: isSubstituteType
+                                ? 'Enter substitute phone number'
+                                : 'Enter phone number',
+                            prefixIcon: Icon(
+                              Icons.phone_outlined,
+                              size: 20,
+                              color: iconColor,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
                       ],
-
-                      // Full Name / Substitute Name
-                      Text(
-                        isSubstituteType ? 'Substitute Name' : 'Full Name',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: labelColor,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      TextFormField(
-                        controller: nameController,
-                        decoration: buildDecoration(
-                          hint: isSubstituteType
-                              ? 'Enter substitute attendee name'
-                              : 'Enter attendee name',
-                          prefixIcon: Icon(
-                            Icons.person_outline_rounded,
-                            size: 20,
-                            color: iconColor,
-                          ),
-                        ),
-                        validator: (val) {
-                          if (val == null || val.trim().isEmpty) {
-                            return isSubstituteType
-                                ? 'Please enter substitute name'
-                                : 'Please enter name';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 14),
-
-                      // Phone Number
-                      Text(
-                        isSubstituteType ? 'Substitute Phone' : 'Phone Number',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: labelColor,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      TextFormField(
-                        controller: phoneController,
-                        keyboardType: TextInputType.phone,
-                        decoration: buildDecoration(
-                          hint: 'Enter phone number',
-                          prefixIcon: Icon(
-                            Icons.phone_outlined,
-                            size: 20,
-                            color: iconColor,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
 
                       // Attendance Type
                       Text(
@@ -792,11 +897,21 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                                 if (!formKey.currentState!.validate()) return;
                                 final fallback =
                                     _fallbackLocationFromDashboard();
+                                final nameToSave = selectedType == CheckInType.absent
+                                    ? coveredMemberName
+                                    : (nameController.text.trim().isNotEmpty
+                                        ? nameController.text.trim()
+                                        : coveredMemberName);
+                                final phoneToSave = selectedType == CheckInType.absent
+                                    ? (coveredEmployee?.phone ?? record.userPhone)
+                                    : (phoneController.text.trim().isNotEmpty
+                                        ? phoneController.text.trim()
+                                        : (coveredEmployee?.phone ?? record.userPhone));
                                 final updated = prepareAdminEditedCheckIn(
                                   original: record,
                                   selectedType: selectedType,
-                                  nameField: nameController.text,
-                                  phoneField: phoneController.text,
+                                  nameField: nameToSave,
+                                  phoneField: phoneToSave,
                                   venueField: venueController.text,
                                   coveredMemberName: coveredMemberName,
                                   coveredMemberId: coveredMemberId,
