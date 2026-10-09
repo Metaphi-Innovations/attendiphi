@@ -174,17 +174,17 @@ class EmployeeRemoteDataSourceImpl implements EmployeeRemoteDataSource {
   Stream<List<Employee>> streamPublicMembers() {
     // Rules require isActive==true; query must match. Inactive docs are
     // deleted on deactivate and cleaned by backfill — not publicly listed.
-    return _publicMembers.where('isActive', isEqualTo: true).snapshots().map((
+    return _collection.snapshots().map((
       snapshot,
     ) {
       final members = snapshot.docs
           .map(
-            (doc) => Employee.fromMap({
-              'name': doc.data()['name'],
-              'phone': doc.data()['phone'],
-              'isActive': true,
-            }, docId: doc.id),
+            (doc) => Employee.fromMap(
+              _publicEmployeeMap(doc.data()),
+              docId: doc.id,
+            ),
           )
+          .where((emp) => emp.name.isNotEmpty && emp.isActive)
           .toList();
       members.sort(
         (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
