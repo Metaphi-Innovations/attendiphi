@@ -129,6 +129,47 @@ void main() {
         secret,
       );
     });
+
+    test('web release without dart-define uses bootstrap (QR must not blank)',
+        () {
+      expect(
+        CheckInSessionToken.resolveSigningSecret(
+          fromDefine: '',
+          isRelease: true,
+          isWeb: true,
+        ),
+        CheckInSessionToken.bootstrapSecret,
+      );
+    });
+
+    test('non-web release without dart-define throws', () {
+      expect(
+        () => CheckInSessionToken.resolveSigningSecret(
+          fromDefine: '',
+          isRelease: true,
+          isWeb: false,
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('CHECKIN_SESSION_TOKEN_SECRET'),
+          ),
+        ),
+      );
+    });
+
+    test('release with configured dart-define uses that secret', () {
+      const configured = 'production-hosting-hmac-key';
+      expect(
+        CheckInSessionToken.resolveSigningSecret(
+          fromDefine: configured,
+          isRelease: true,
+          isWeb: true,
+        ),
+        configured,
+      );
+    });
   });
 
   group('resolveCheckInSession', () {

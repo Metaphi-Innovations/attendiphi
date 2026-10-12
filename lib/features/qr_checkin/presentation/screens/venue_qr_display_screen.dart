@@ -118,13 +118,35 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
   /// Builds the unique QR check-in payload for a given Thursday.
   ///
   /// Public URL is opaque: `/checkin/<v1.…>` (no cleartext date/locationId).
+  /// Returns null when signing is unavailable (e.g. release build missing
+  /// `CHECKIN_SESSION_TOKEN_SECRET`) so the UI can show an error instead of
+  /// blanking the whole page.
+  String? _tryBuildQrPayload(DateTime thursdayDate) {
+    try {
+      final dateStr = DateFormat('yyyy-MM-dd').format(thursdayDate);
+      final token = CheckInSessionToken.create(
+        locationId: widget.location.id,
+        sessionDate: dateStr,
+      );
+      return AppUrl.public(path: RouteNames.checkinFormPath(token));
+    } on Object {
+      return null;
+    }
+  }
+
+  /// Builds the unique QR check-in payload for a given Thursday.
+  ///
+  /// Throws when signing is unavailable — prefer [_tryBuildQrPayload] in build.
   String _buildQrPayload(DateTime thursdayDate) {
-    final dateStr = DateFormat('yyyy-MM-dd').format(thursdayDate);
-    final token = CheckInSessionToken.create(
-      locationId: widget.location.id,
-      sessionDate: dateStr,
-    );
-    return AppUrl.public(path: RouteNames.checkinFormPath(token));
+    final payload = _tryBuildQrPayload(thursdayDate);
+    if (payload == null) {
+      throw StateError(
+        'Unable to create check-in QR payload. Ensure the web release was '
+        'built with CHECKIN_SESSION_TOKEN_SECRET '
+        '(see scripts/build_web_release.sh).',
+      );
+    }
+    return payload;
   }
 
   void _onMonthChanged(DateTime newMonth) {
@@ -719,7 +741,19 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
     final isDark = theme.brightness == Brightness.dark;
     final isMobile = context.isMobile;
     final dateFormatted = DateFormat('EEEE, dd MMMM yyyy').format(thursdayDate);
-    final payload = _buildQrPayload(thursdayDate);
+    final payload = _tryBuildQrPayload(thursdayDate);
+    if (payload == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'QR Standee unavailable: rebuild with CHECKIN_SESSION_TOKEN_SECRET.',
+          ),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
 
     final thursdays = _getThursdaysForMonth(_selectedMonth);
     final selectedIndex = thursdays.indexWhere(
@@ -872,12 +906,61 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
     );
   }
 
+  Widget _buildPayloadConfigError(ThemeData theme, bool isDark) {
+    return AppCard(
+      elevation: 0,
+      color: isDark
+          ? const Color(0xFF7F1D1D).withAlpha(40)
+          : const Color(0xFFFEF2F2),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.error_outline_rounded,
+              color: isDark ? const Color(0xFFF87171) : const Color(0xFFB91C1C),
+              size: 28,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'QR Standee unavailable',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: isDark
+                          ? const Color(0xFFFCA5A5)
+                          : const Color(0xFF991B1B),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Session QR codes could not be signed. Rebuild with '
+                    './scripts/build_web_release.sh (injects CHECKIN_SESSION_TOKEN_SECRET) '
+                    'and redeploy Hosting.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: isDark
+                          ? const Color(0xFFFECACA)
+                          : const Color(0xFF7F1D1D),
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final screenWidth = MediaQuery.sizeOf(context).width;
-    final isMobile = screenWidth < 850;
     final isCompact = context.isCompactMobile;
 
     final hPadding = context.responsiveValue<double>(
@@ -895,20 +978,34 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
     final hasPrevMonth = currentIndex > 0;
     final hasNextMonth = currentIndex < _availableMonths.length - 1;
     final isCurrentMonthActive = _isMonthActive(_selectedMonth);
+    final selectedPayload = _tryBuildQrPayload(_selectedThursday);
+    final payloadReady = selectedPayload != null;
 
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(
-          maxWidth: 1240,
-        ),
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: hPadding,
-            vertical: isMobile ? 12 : 20,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+    // Match other admin shell pages: Scaffold fills the branch navigator so
+    // Column + Expanded always receive bounded height (avoids a blank body).
+    return Scaffold(
+      backgroundColor:
+          isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          // Use the shell content pane width — not the full window — so the
+          // sidebar does not force a broken desktop toolbar layout.
+          final contentWidth = constraints.maxWidth;
+          final isMobile = contentWidth < 850;
+          final useSplitLayout = contentWidth >= 900;
+
+          return Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1240),
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: hPadding,
+                  vertical: isMobile ? 12 : 20,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
               // 1. Sticky Top Header Bar & Month Toolbar (Anchored at Top Middle)
               Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1024,7 +1121,9 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                                     borderRadius: AppRadius.mdAll,
                                   ),
                                 ),
-                                onPressed: (isCurrentMonthActive && !_isDownloading)
+                                onPressed: (isCurrentMonthActive &&
+                                        payloadReady &&
+                                        !_isDownloading)
                                     ? _downloadAllForCurrentMonth
                                     : null,
                               ),
@@ -1060,44 +1159,55 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                               const SizedBox(width: 12),
 
                               // Thursdays Count Badge
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 7,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: isDark
-                                      ? theme.colorScheme.surfaceContainerHighest.withAlpha(80)
-                                      : const Color(0xFFF8FAFC),
-                                  borderRadius: AppRadius.fullAll,
-                                  border: Border.all(
-                                    color: isDark
-                                        ? theme.colorScheme.outlineVariant.withAlpha(60)
-                                        : const Color(0xFFE2E8F0),
+                              Flexible(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 7,
                                   ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.calendar_today_rounded,
-                                      size: 13,
-                                      color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                                  decoration: BoxDecoration(
+                                    color: isDark
+                                        ? theme.colorScheme.surfaceContainerHighest
+                                            .withAlpha(80)
+                                        : const Color(0xFFF8FAFC),
+                                    borderRadius: AppRadius.fullAll,
+                                    border: Border.all(
+                                      color: isDark
+                                          ? theme.colorScheme.outlineVariant
+                                              .withAlpha(60)
+                                          : const Color(0xFFE2E8F0),
                                     ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      '${thursdays.length} Thursdays in ${monthFormat.format(_selectedMonth)}',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 12,
-                                        color: isDark ? Colors.white : const Color(0xFF334155),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.calendar_today_rounded,
+                                        size: 13,
+                                        color: isDark
+                                            ? const Color(0xFF94A3B8)
+                                            : const Color(0xFF64748B),
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(width: 6),
+                                      Flexible(
+                                        child: Text(
+                                          '${thursdays.length} Thursdays in ${monthFormat.format(_selectedMonth)}',
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 12,
+                                            color: isDark
+                                                ? Colors.white
+                                                : const Color(0xFF334155),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
 
-                              const Spacer(),
+                              const SizedBox(width: 12),
 
                               // Bulk Download Month QRs Button (Anchored to right)
                               ElevatedButton.icon(
@@ -1142,7 +1252,9 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                                     borderRadius: AppRadius.mdAll,
                                   ),
                                 ),
-                                onPressed: (isCurrentMonthActive && !_isDownloading)
+                                onPressed: (isCurrentMonthActive &&
+                                        payloadReady &&
+                                        !_isDownloading)
                                     ? _downloadAllForCurrentMonth
                                     : null,
                               ),
@@ -1156,58 +1268,73 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
 
               // 2. Scrollable Content Area
               Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.only(bottom: 24),
-                  child: screenWidth >= 900
-                      ? Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Left Column: Thursdays List for Selected Month (50%)
-                            Expanded(
-                              flex: 1,
-                              child: _buildThursdaysList(theme, thursdays),
-                            ),
-                            const SizedBox(width: 24),
+                child: !payloadReady
+                    ? SingleChildScrollView(
+                        padding: const EdgeInsets.only(bottom: 24),
+                        child: _buildPayloadConfigError(theme, isDark),
+                      )
+                    : SingleChildScrollView(
+                        padding: const EdgeInsets.only(bottom: 24),
+                        child: useSplitLayout
+                            ? Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Left Column: Thursdays List for Selected Month (50%)
+                                  Expanded(
+                                    flex: 1,
+                                    child:
+                                        _buildThursdaysList(theme, thursdays),
+                                  ),
+                                  const SizedBox(width: 24),
 
-                            // Right Column: Standee Preview for Selected Thursday (50%)
-                            Expanded(
-                              flex: 1,
-                              child: Align(
-                                alignment: Alignment.topCenter,
-                                child: _buildStandeePreviewCard(
-                                  theme,
-                                  isDark,
-                                  isMobile,
-                                  isCompact,
-                                  thursdays,
-                                ),
+                                  // Right Column: Standee Preview for Selected Thursday (50%)
+                                  Expanded(
+                                    flex: 1,
+                                    child: Align(
+                                      alignment: Alignment.topCenter,
+                                      child: _buildStandeePreviewCard(
+                                        theme,
+                                        isDark,
+                                        isMobile,
+                                        isCompact,
+                                        thursdays,
+                                        payload: selectedPayload,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  // Mobile: compact Thursday date selector (no list cards)
+                                  if (isMobile)
+                                    _buildMobileDateSelector(
+                                      theme,
+                                      isDark,
+                                      thursdays,
+                                    )
+                                  else
+                                    _buildThursdaysList(theme, thursdays),
+                                  const SizedBox(height: 16),
+                                  _buildStandeePreviewCard(
+                                    theme,
+                                    isDark,
+                                    isMobile,
+                                    isCompact,
+                                    thursdays,
+                                    payload: selectedPayload,
+                                  ),
+                                ],
                               ),
-                            ),
-                          ],
-                        )
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            // Mobile: compact Thursday date selector (no list cards)
-                            if (isMobile)
-                              _buildMobileDateSelector(theme, isDark, thursdays)
-                            else
-                              _buildThursdaysList(theme, thursdays),
-                            const SizedBox(height: 16),
-                            _buildStandeePreviewCard(
-                              theme,
-                              isDark,
-                              isMobile,
-                              isCompact,
-                              thursdays,
-                            ),
-                          ],
-                        ),
-                ),
+                      ),
               ),
             ],
-          ),
-        ),
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -1725,10 +1852,10 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
     bool isDark,
     bool isMobile,
     bool isCompact,
-    List<DateTime> thursdays,
-  ) {
+    List<DateTime> thursdays, {
+    required String payload,
+  }) {
     final isCurrentMonthActive = _isMonthActive(_selectedMonth);
-    final payload = _buildQrPayload(_selectedThursday);
 
     final now = _now;
     final today = DateTime(now.year, now.month, now.day);

@@ -1679,6 +1679,98 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     );
   }
 
+  Widget _buildSortDropdown(
+    ThemeData theme,
+    bool isDark,
+    AdminDashboardFilterState filterState,
+  ) {
+    final isAlphabetical =
+        filterState.sortMode == AdminDashboardSortMode.alphabetical;
+
+    return PopupMenuButton<AdminDashboardSortMode>(
+      tooltip: 'Sort records',
+      initialValue: filterState.sortMode,
+      onSelected: (mode) {
+        ref.read(adminDashboardFilterProvider.notifier).setSortMode(mode);
+      },
+      itemBuilder: (context) => [
+        for (final mode in AdminDashboardSortMode.values)
+          PopupMenuItem(
+            value: mode,
+            child: Row(
+              children: [
+                Icon(
+                  mode == AdminDashboardSortMode.alphabetical
+                      ? Icons.sort_by_alpha_rounded
+                      : Icons.schedule_rounded,
+                  size: 18,
+                  color: mode == filterState.sortMode
+                      ? AppColors.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  mode.label,
+                  style: TextStyle(
+                    fontWeight: mode == filterState.sortMode
+                        ? FontWeight.w700
+                        : FontWeight.w500,
+                    color: mode == filterState.sortMode
+                        ? AppColors.primary
+                        : theme.colorScheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+      child: Container(
+        height: 40,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: isAlphabetical
+              ? AppColors.primary.withAlpha(isDark ? 40 : 20)
+              : (isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9)),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isAlphabetical
+                ? AppColors.primary.withAlpha(120)
+                : (isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.sort_by_alpha_rounded,
+              size: 16,
+              color: isAlphabetical
+                  ? AppColors.primary
+                  : theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              filterState.sortMode.label,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: isAlphabetical
+                    ? AppColors.primary
+                    : theme.colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.arrow_drop_down_rounded,
+              size: 20,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildThursdayNotice(DateTime now) {
     final restrictionsEnabled = ref.watch(restrictionsEnabledProvider);
     // When restrictions are OFF, check-in is allowed any day for the upcoming
@@ -1955,6 +2047,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       now,
     );
 
+    final sortDropdown = _buildSortDropdown(theme, isDark, filterState);
+
     final filterChips = AdminDashboardAttendanceFilterChips(
       filterType: filterState.filterType,
       totalCount: totalCount,
@@ -1976,6 +2070,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
               Expanded(child: searchField),
               const SizedBox(width: 12),
               sessionDateDropdown,
+              const SizedBox(width: 8),
+              sortDropdown,
               const SizedBox(width: 16),
               filterChips,
             ],
@@ -1989,7 +2085,14 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
           children: [
             searchField,
             const SizedBox(height: 10),
-            Align(alignment: Alignment.centerLeft, child: sessionDateDropdown),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [sessionDateDropdown, sortDropdown],
+              ),
+            ),
             const SizedBox(height: 10),
             // Horizontally scrollable filter pills with smooth trailing peek / fade shader
             ShaderMask(

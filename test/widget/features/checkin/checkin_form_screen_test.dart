@@ -51,6 +51,13 @@ void main() {
       phone: '9876543211',
       email: 'pooja@example.com',
     ),
+    const Employee(
+      id: 'emp_inactive',
+      name: 'Inactive Person',
+      phone: '9000000099',
+      email: 'inactive@example.com',
+      isActive: false,
+    ),
   ];
 
   List<Override> baseOverrides({bool restrictionsEnabled = true}) => [
@@ -217,6 +224,28 @@ void main() {
       expect(find.text('Pooja Nair'), findsOneWidget);
       expect(find.text('9876543211'), findsOneWidget);
       expect(find.text(AppStrings.validationPhoneRequired), findsNothing);
+    });
+
+    testWidgets('inactive members are not offered in member typeahead',
+        (tester) async {
+      tester.view.physicalSize = const Size(1000, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      await tester.pumpWidget(createWidgetUnderTest());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      await tester.tap(find.byIcon(Icons.arrow_drop_down_rounded));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(find.text('Rohan Mehta'), findsOneWidget);
+      expect(find.text('Pooja Nair'), findsOneWidget);
+      expect(find.text('Inactive Person'), findsNothing);
     });
 
     testWidgets('switching to Substitute displays substitute form with member typeahead and photo card', (tester) async {

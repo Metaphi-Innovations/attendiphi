@@ -48,6 +48,15 @@ enum AdminFilterType {
   final String label;
 }
 
+/// Sort order for the daily attendance list.
+enum AdminDashboardSortMode {
+  recent('Recent'),
+  alphabetical('Name A–Z');
+
+  const AdminDashboardSortMode(this.label);
+  final String label;
+}
+
 /// Real-time stream provider for check-ins across the unified database.
 final checkInsStreamProvider = StreamProvider<List<CheckInSubmission>>((ref) {
   ref.keepAlive();
@@ -60,18 +69,21 @@ class AdminDashboardFilterState {
   const AdminDashboardFilterState({
     this.searchQuery = '',
     this.filterType = AdminFilterType.all,
+    this.sortMode = AdminDashboardSortMode.recent,
     this.selectedLocationId,
     this.selectedDate,
   });
 
   final String searchQuery;
   final AdminFilterType filterType;
+  final AdminDashboardSortMode sortMode;
   final String? selectedLocationId;
   final DateTime? selectedDate;
 
   AdminDashboardFilterState copyWith({
     String? searchQuery,
     AdminFilterType? filterType,
+    AdminDashboardSortMode? sortMode,
     String? selectedLocationId,
     DateTime? selectedDate,
     bool clearSelectedDate = false,
@@ -79,6 +91,7 @@ class AdminDashboardFilterState {
     return AdminDashboardFilterState(
       searchQuery: searchQuery ?? this.searchQuery,
       filterType: filterType ?? this.filterType,
+      sortMode: sortMode ?? this.sortMode,
       selectedLocationId: selectedLocationId ?? this.selectedLocationId,
       selectedDate:
           clearSelectedDate ? null : (selectedDate ?? this.selectedDate),
@@ -99,6 +112,10 @@ class AdminDashboardFilterNotifier extends Notifier<AdminDashboardFilterState> {
 
   void setFilterType(AdminFilterType type) {
     state = state.copyWith(filterType: type);
+  }
+
+  void setSortMode(AdminDashboardSortMode mode) {
+    state = state.copyWith(sortMode: mode);
   }
 
   void setLocationId(String? locationId) {
@@ -419,10 +436,11 @@ class _FilterPayload {
   _FilterPayload(this.records, this.filters);
 }
 
-List<CheckInSubmission> _filterAndSortRecords(_FilterPayload payload) {
-  final records = payload.records;
-  final filters = payload.filters;
-
+/// Filters and sorts daily attendance records. Exposed for unit tests.
+List<CheckInSubmission> filterAndSortDashboardRecords({
+  required List<CheckInSubmission> records,
+  required AdminDashboardFilterState filters,
+}) {
   final filtered = records.where((record) {
     if (record.type.isVisitor) return false;
     if (filters.filterType == AdminFilterType.member && !record.type.isMember) {
@@ -452,19 +470,36 @@ List<CheckInSubmission> _filterAndSortRecords(_FilterPayload payload) {
     return true;
   }).toList();
 
-  filtered.sort((a, b) {
-    // Show checked in members first, then not checked in
-    if (a.type.isNotCheckedIn && !b.type.isNotCheckedIn) return 1;
-    if (!a.type.isNotCheckedIn && b.type.isNotCheckedIn) return -1;
-    final aTime = a.createdAt ?? a.timestamp;
-    final bTime = b.createdAt ?? b.timestamp;
-    final cmp = bTime.compareTo(aTime);
-    if (cmp != 0) return cmp;
-    return a.userName.compareTo(b.userName);
-  });
+  if (filters.sortMode == AdminDashboardSortMode.alphabetical) {
+    filtered.sort((a, b) {
+      final byName =
+          a.userName.toLowerCase().compareTo(b.userName.toLowerCase());
+      if (byName != 0) return byName;
+      final aTime = a.createdAt ?? a.timestamp;
+      final bTime = b.createdAt ?? b.timestamp;
+      return bTime.compareTo(aTime);
+    });
+  } else {
+    filtered.sort((a, b) {
+      // Show checked in members first, then not checked in
+      if (a.type.isNotCheckedIn && !b.type.isNotCheckedIn) return 1;
+      if (!a.type.isNotCheckedIn && b.type.isNotCheckedIn) return -1;
+      final aTime = a.createdAt ?? a.timestamp;
+      final bTime = b.createdAt ?? b.timestamp;
+      final cmp = bTime.compareTo(aTime);
+      if (cmp != 0) return cmp;
+      return a.userName.toLowerCase().compareTo(b.userName.toLowerCase());
+    });
+  }
 
   return filtered;
 }
+
+List<CheckInSubmission> _filterAndSortRecords(_FilterPayload payload) =>
+    filterAndSortDashboardRecords(
+      records: payload.records,
+      filters: payload.filters,
+    );
 
 /// Filtered view over the real-time check-in stream based on search and attendance type filters.
 final filteredCheckInsProvider =

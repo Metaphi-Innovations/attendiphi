@@ -58,6 +58,7 @@ node_modules/
 *.key
 *.pem
 .env*
+.secrets/
 assets/data/
 
 # Temporary & Scratch files

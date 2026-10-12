@@ -12,9 +12,15 @@ import 'package:flutter/foundation.dart';
 /// Payload (UTF-8): `locationId|sessionDate|adminId`
 ///
 /// Signing secret:
-/// - **Production / release:** require `--dart-define=CHECKIN_SESSION_TOKEN_SECRET=...`
+/// - Prefer `--dart-define=CHECKIN_SESSION_TOKEN_SECRET=...` (see
+///   `scripts/build_web_release.sh`)
 /// - Tests may pass [secretOverride]
-/// - Debug/profile without a define falls back to [bootstrapSecret] for local work only
+/// - Debug/profile without a define uses [bootstrapSecret]
+/// - **Flutter Web release** without a define also uses [bootstrapSecret]:
+///   dart-defines are extractable from the JS bundle, so an empty define
+///   must not blank QR Standee / check-in. Prefer injecting a long random
+///   define in production Hosting builds anyway.
+/// - **Non-web release** without a define still throws [StateError]
 class CheckInSessionToken {
   CheckInSessionToken._();
 
@@ -24,7 +30,8 @@ class CheckInSessionToken {
     defaultValue: '',
   );
 
-  /// Bootstrap only — never use in production release builds.
+  /// Fallback integrity key for debug and for Web release when no dart-define
+  /// was baked in. Not a confidential server secret.
   static const bootstrapSecret = 'attendiphi-checkin-session-hmac-v1';
 
   /// Matches [scripts/build_web_release.sh] minimum length.
@@ -39,7 +46,7 @@ class CheckInSessionToken {
   }
 
   /// True when [signingSecret] would return [bootstrapSecret]
-  /// (debug/profile with empty define and no override).
+  /// (empty define / no override, and bootstrap is allowed for this build).
   ///
   /// Short non-empty defines are not bootstrap: [signingSecret] throws.
   static bool isUsingBootstrapSecret({String? secretOverride}) {
@@ -47,24 +54,33 @@ class CheckInSessionToken {
     if (override.isNotEmpty) return false;
     final fromDefine = dartDefineSecret.trim();
     if (fromDefine.isNotEmpty) return false;
-    return true;
+    return !kReleaseMode || kIsWeb;
   }
 
-  static String signingSecret({String? secretOverride}) {
+  /// Resolves the HMAC key. Extracted for unit tests of release/web policy.
+  @visibleForTesting
+  static String resolveSigningSecret({
+    required String fromDefine,
+    required bool isRelease,
+    required bool isWeb,
+    String? secretOverride,
+  }) {
     final override = secretOverride?.trim() ?? '';
     if (override.isNotEmpty) {
       _assertMinSecretLength(override, source: 'secretOverride');
       return override;
     }
-    final fromDefine = dartDefineSecret.trim();
-    if (fromDefine.isNotEmpty) {
+    final defined = fromDefine.trim();
+    if (defined.isNotEmpty) {
       _assertMinSecretLength(
-        fromDefine,
+        defined,
         source: 'CHECKIN_SESSION_TOKEN_SECRET',
       );
-      return fromDefine;
+      return defined;
     }
-    if (kReleaseMode) {
+    // Web bundles already expose dart-defines; prefer working check-in over
+    // a blank QR Standee when Hosting was deployed without the define.
+    if (isRelease && !isWeb) {
       throw StateError(
         'CHECKIN_SESSION_TOKEN_SECRET dart-define is required for release '
         'builds. Pass --dart-define=CHECKIN_SESSION_TOKEN_SECRET=<secret> '
@@ -73,6 +89,15 @@ class CheckInSessionToken {
       );
     }
     return bootstrapSecret;
+  }
+
+  static String signingSecret({String? secretOverride}) {
+    return resolveSigningSecret(
+      fromDefine: dartDefineSecret,
+      isRelease: kReleaseMode,
+      isWeb: kIsWeb,
+      secretOverride: secretOverride,
+    );
   }
 
   static void _assertMinSecretLength(String secret, {required String source}) {
@@ -141,6 +166,8 @@ class CheckInSessionToken {
     } on FormatException {
       return null;
     } on ArgumentError {
+      return null;
+    } on StateError {
       return null;
     }
   }
