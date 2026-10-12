@@ -10,6 +10,7 @@ import '../../../../app/theme/app_radius.dart';
 import '../../../../app/theme/app_shadows.dart';
 import '../../../../core/extensions/date_extensions.dart';
 import '../../../../core/responsive/responsive_breakpoints.dart';
+import '../../../../core/utils/file_download_helper.dart';
 import '../../../../core/utils/image_utils.dart';
 import '../../../../core/widgets/app_badge.dart';
 import '../../../../core/widgets/app_card.dart';
@@ -25,6 +26,7 @@ import '../../../checkin/presentation/providers/checkin_providers.dart';
 import '../../../employee/domain/employee_lookup.dart';
 import '../../../employee/domain/entities/employee.dart';
 import '../../../employee/presentation/providers/employee_providers.dart';
+import '../../domain/attendance_substitute_absent_export.dart';
 import '../../domain/substitute_check_in_mapping.dart';
 import '../providers/admin_dashboard_provider.dart';
 import '../providers/attendance_overview_provider.dart';
@@ -1495,14 +1497,21 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'ATTENDEES (${filteredRecords.length})',
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.6,
-                  color: Colors.grey,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'ATTENDEES (${filteredRecords.length})',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.6,
+                      color: Colors.grey,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  _buildMemberNameSortArrow(),
+                ],
               ),
               if (allCheckInsAsync.isLoading)
                 const SizedBox(
@@ -1679,17 +1688,95 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     );
   }
 
-  Widget _buildSortDropdown(
-    ThemeData theme,
-    bool isDark,
-    AdminDashboardFilterState filterState,
-  ) {
-    final isAlphabetical =
-        filterState.sortMode == AdminDashboardSortMode.alphabetical;
+  Future<void> _downloadSubstituteAbsentTxt() async {
+    final filterState = ref.read(adminDashboardFilterProvider);
+    final sessionDate = filterState.selectedDate ??
+        defaultAttendanceSessionDate(
+          DateTime.now(),
+          restrictionsEnabled: ref.read(restrictionsEnabledProvider),
+        );
+    final records = ref.read(baseDashboardRecordsProvider).value ?? [];
+    final filename = attendanceExportTxtFilename(sessionDate);
+    final content = buildSubstituteAbsentAttendanceTxt(records: records);
+
+    try {
+      await FileDownloadHelper.downloadTxt(content, filename);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Downloaded $filename'),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Download failed: $e'),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Widget _buildSubstituteAbsentDownloadButton(ThemeData theme, bool isDark) {
+    return Tooltip(
+      message: 'Download Substitute & Absent (.txt)',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _downloadSubstituteAbsentTxt,
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            height: 40,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isDark
+                    ? const Color(0xFF334155)
+                    : const Color(0xFFCBD5E1),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.download_rounded,
+                  size: 16,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Sub / Absent',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMemberNameSortArrow({Color? inactiveColor}) {
+    final filterState = ref.watch(adminDashboardFilterProvider);
+    final sortMode = filterState.sortMode;
+    final isAlphabetical = sortMode == AdminDashboardSortMode.alphabetical;
+    final theme = Theme.of(context);
 
     return PopupMenuButton<AdminDashboardSortMode>(
-      tooltip: 'Sort records',
-      initialValue: filterState.sortMode,
+      tooltip: 'Sort by member name',
+      padding: EdgeInsets.zero,
+      offset: const Offset(0, 28),
+      initialValue: sortMode,
       onSelected: (mode) {
         ref.read(adminDashboardFilterProvider.notifier).setSortMode(mode);
       },
@@ -1697,76 +1784,26 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
         for (final mode in AdminDashboardSortMode.values)
           PopupMenuItem(
             value: mode,
-            child: Row(
-              children: [
-                Icon(
-                  mode == AdminDashboardSortMode.alphabetical
-                      ? Icons.sort_by_alpha_rounded
-                      : Icons.schedule_rounded,
-                  size: 18,
-                  color: mode == filterState.sortMode
-                      ? AppColors.primary
-                      : theme.colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  mode.label,
-                  style: TextStyle(
-                    fontWeight: mode == filterState.sortMode
-                        ? FontWeight.w700
-                        : FontWeight.w500,
-                    color: mode == filterState.sortMode
-                        ? AppColors.primary
-                        : theme.colorScheme.onSurface,
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-      child: Container(
-        height: 40,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: isAlphabetical
-              ? AppColors.primary.withAlpha(isDark ? 40 : 20)
-              : (isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9)),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: isAlphabetical
-                ? AppColors.primary.withAlpha(120)
-                : (isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.sort_by_alpha_rounded,
-              size: 16,
-              color: isAlphabetical
-                  ? AppColors.primary
-                  : theme.colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              filterState.sortMode.label,
+            height: 40,
+            child: Text(
+              mode.label,
               style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                color: isAlphabetical
+                fontSize: 13,
+                fontWeight:
+                    mode == sortMode ? FontWeight.w700 : FontWeight.w500,
+                color: mode == sortMode
                     ? AppColors.primary
                     : theme.colorScheme.onSurface,
               ),
             ),
-            const SizedBox(width: 4),
-            Icon(
-              Icons.arrow_drop_down_rounded,
-              size: 20,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ],
-        ),
+          ),
+      ],
+      child: Icon(
+        Icons.arrow_drop_down_rounded,
+        size: 20,
+        color: isAlphabetical
+            ? AppColors.primary
+            : (inactiveColor ?? Colors.grey),
       ),
     );
   }
@@ -2047,7 +2084,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       now,
     );
 
-    final sortDropdown = _buildSortDropdown(theme, isDark, filterState);
+    final exportButton = _buildSubstituteAbsentDownloadButton(theme, isDark);
 
     final filterChips = AdminDashboardAttendanceFilterChips(
       filterType: filterState.filterType,
@@ -2071,7 +2108,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
               const SizedBox(width: 12),
               sessionDateDropdown,
               const SizedBox(width: 8),
-              sortDropdown,
+              exportButton,
               const SizedBox(width: 16),
               filterChips,
             ],
@@ -2090,7 +2127,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
               child: Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: [sessionDateDropdown, sortDropdown],
+                children: [sessionDateDropdown, exportButton],
               ),
             ),
             const SizedBox(height: 10),
@@ -2697,7 +2734,7 @@ class _DetailItem extends StatelessWidget {
 }
 
 /// Rows and Columns (Excel / Spreadsheet Data View) for check-in records.
-class _CheckInTableView extends StatelessWidget {
+class _CheckInTableView extends ConsumerWidget {
   const _CheckInTableView({
     required this.records,
     required this.onRecordTap,
@@ -2719,9 +2756,11 @@ class _CheckInTableView extends StatelessWidget {
   final List<Employee>? employees;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final sortMode = ref.watch(adminDashboardFilterProvider).sortMode;
+    final isAlphabetical = sortMode == AdminDashboardSortMode.alphabetical;
 
     final headerColor = isDark
         ? AppColors.surfaceVariantDark.withAlpha(120)
@@ -2745,25 +2784,72 @@ class _CheckInTableView extends StatelessWidget {
             bottom: BorderSide(color: theme.dividerColor.withAlpha(40)),
           ),
         ),
-        child: const Row(
+        child: Row(
           children: [
-            SizedBox(width: 50, child: Text('#', style: headerTextStyle)),
-            Expanded(flex: 3, child: Text('MEMBER', style: headerTextStyle)),
-            Expanded(flex: 2, child: Text('PHONE', style: headerTextStyle)),
+            const SizedBox(width: 50, child: Text('#', style: headerTextStyle)),
             Expanded(
+              flex: 3,
+              child: Row(
+                children: [
+                  const Text('MEMBER', style: headerTextStyle),
+                  const SizedBox(width: 2),
+                  PopupMenuButton<AdminDashboardSortMode>(
+                    tooltip: 'Sort by member name',
+                    padding: EdgeInsets.zero,
+                    offset: const Offset(0, 28),
+                    initialValue: sortMode,
+                    onSelected: (mode) {
+                      ref
+                          .read(adminDashboardFilterProvider.notifier)
+                          .setSortMode(mode);
+                    },
+                    itemBuilder: (context) => [
+                      for (final mode in AdminDashboardSortMode.values)
+                        PopupMenuItem(
+                          value: mode,
+                          height: 40,
+                          child: Text(
+                            mode.label,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: mode == sortMode
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                              color: mode == sortMode
+                                  ? AppColors.primary
+                                  : theme.colorScheme.onSurface,
+                            ),
+                          ),
+                        ),
+                    ],
+                    child: Icon(
+                      Icons.arrow_drop_down_rounded,
+                      size: 20,
+                      color:
+                          isAlphabetical ? AppColors.primary : Colors.grey,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Expanded(flex: 2, child: Text('PHONE', style: headerTextStyle)),
+            const Expanded(
               flex: 2,
               child: Text('ATTENDANCE TYPE', style: headerTextStyle),
             ),
-            Expanded(
+            const Expanded(
               flex: 2,
               child: Text('SUBSTITUTE', style: headerTextStyle),
             ),
-            Expanded(
+            const Expanded(
               flex: 2,
               child: Text('GPS STATUS', style: headerTextStyle),
             ),
-            Expanded(flex: 2, child: Text('TIMESTAMP', style: headerTextStyle)),
-            SizedBox(
+            const Expanded(
+              flex: 2,
+              child: Text('TIMESTAMP', style: headerTextStyle),
+            ),
+            const SizedBox(
               width: 90,
               child: Text(
                 'ACTIONS',

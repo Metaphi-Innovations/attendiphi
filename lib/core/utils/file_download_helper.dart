@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'file_download_helper_stub.dart'
@@ -15,6 +16,17 @@ class FileDownloadHelper {
       bytes,
       sanitizedFilename,
       mimeType: 'image/png',
+    );
+  }
+
+  /// Triggers a download of UTF-8 [content] as a `.txt` file named [filename].
+  static Future<void> downloadTxt(String content, String filename) async {
+    final sanitizedFilename =
+        filename.endsWith('.txt') ? filename : '$filename.txt';
+    await platform.saveBytesAsFile(
+      Uint8List.fromList(utf8.encode(content)),
+      sanitizedFilename,
+      mimeType: 'text/plain;charset=utf-8',
     );
   }
 }
