@@ -39,10 +39,9 @@ void main() {
     container.listen(allAdminsStreamProvider, (_, _) {});
     await Future<void>.delayed(Duration.zero);
 
-    final visible = container.read(visibleAdminsProvider).maybeWhen(
-          data: (admins) => admins,
-          orElse: () => <AdminUser>[],
-        );
+    final visible = container
+        .read(visibleAdminsProvider)
+        .maybeWhen(data: (admins) => admins, orElse: () => <AdminUser>[]);
     expect(visible.map((a) => a.id), ['uid-admin']);
     expect(visible.any((a) => a.isSuperAdmin), isFalse);
   });

@@ -44,7 +44,9 @@ GoRouter _router({
 }
 
 void main() {
-  testWidgets('logged-out visitor cannot enter the admin shell', (tester) async {
+  testWidgets('logged-out visitor cannot enter the admin shell', (
+    tester,
+  ) async {
     final router = _router(
       initialLocation: RouteNames.adminDashboard,
       isAuthenticated: false,
@@ -55,8 +57,9 @@ void main() {
     expect(find.text('ADMIN SHELL'), findsNothing);
   });
 
-  testWidgets('logged-out visitor visiting /admins redirects to login',
-      (tester) async {
+  testWidgets('logged-out visitor visiting /admins redirects to login', (
+    tester,
+  ) async {
     final router = _router(
       initialLocation: RouteNames.adminAdmins,
       isAuthenticated: false,
@@ -67,8 +70,9 @@ void main() {
     expect(find.text('ADMIN SHELL'), findsNothing);
   });
 
-  testWidgets('password reset with oobCode stays on the reset screen',
-      (tester) async {
+  testWidgets('password reset with oobCode stays on the reset screen', (
+    tester,
+  ) async {
     final router = _router(
       initialLocation: RouteNames.adminResetPassword,
       isAuthenticated: false,
@@ -81,16 +85,17 @@ void main() {
   });
 
   testWidgets(
-      'password reset without oobCode does not create an admin session',
-      (tester) async {
-    final router = _router(
-      initialLocation: RouteNames.adminResetPassword,
-      isAuthenticated: false,
-      hasPasswordResetCode: false,
-    );
-    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-    await tester.pumpAndSettle();
-    expect(find.text('LOGIN'), findsOneWidget);
-    expect(find.text('ADMIN SHELL'), findsNothing);
-  });
+    'password reset without oobCode does not create an admin session',
+    (tester) async {
+      final router = _router(
+        initialLocation: RouteNames.adminResetPassword,
+        isAuthenticated: false,
+        hasPasswordResetCode: false,
+      );
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+      expect(find.text('LOGIN'), findsOneWidget);
+      expect(find.text('ADMIN SHELL'), findsNothing);
+    },
+  );
 }

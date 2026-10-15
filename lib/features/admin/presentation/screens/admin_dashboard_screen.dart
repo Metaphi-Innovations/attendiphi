@@ -17,6 +17,7 @@ import '../../../../core/widgets/app_card.dart';
 import '../../../../core/widgets/app_empty_view.dart';
 import '../../../../core/widgets/app_page_header.dart';
 import '../../../../core/widgets/app_shimmer.dart';
+import '../../../../core/widgets/check_in_photo_image.dart';
 import '../../../../core/widgets/member_photo.dart';
 import '../../../app_config/presentation/providers/check_in_restrictions_provider.dart';
 import '../../../app_config/presentation/widgets/check_in_restrictions_toggle.dart';
@@ -184,6 +185,13 @@ String _formatPhoneNumber(String phone) {
     return '${clean.substring(0, 5)} ${clean.substring(5)}';
   }
   return phone;
+}
+
+/// Empty / null phone → em dash (used for substitute phone when unset).
+String _formatPhoneNumberOrDash(String? phone) {
+  final trimmed = phone?.trim() ?? '';
+  if (trimmed.isEmpty) return '—';
+  return _formatPhoneNumber(trimmed);
 }
 
 /// GPS distance label for Daily Attendance detail modal.
@@ -467,9 +475,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     final initialPhone = record.type.isSubstitute
         ? ((substituteAttendee?.phone.isNotEmpty ?? false)
               ? substituteAttendee!.phone
-              : (record.substitutePhone?.trim().isNotEmpty == true
-                    ? record.substitutePhone!.trim()
-                    : record.userPhone.trim()))
+              : (record.substitutePhone?.trim() ?? ''))
         : (record.userPhone.trim().isNotEmpty
               ? record.userPhone.trim()
               : (coveredEmployee?.phone.trim() ?? ''));
@@ -546,26 +552,36 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
               onTap: () {
                 setDialogState(() {
                   selectedType = type;
-                  if (type == CheckInType.member || type == CheckInType.absent) {
-                    final prevSubName = substituteAttendee?.name?.trim() ?? record.substituteName?.trim();
+                  if (type == CheckInType.member ||
+                      type == CheckInType.absent) {
+                    final prevSubName =
+                        substituteAttendee?.name?.trim() ??
+                        record.substituteName?.trim();
                     if (nameController.text.trim().isEmpty ||
-                        (prevSubName != null && nameController.text.trim() == prevSubName)) {
+                        (prevSubName != null &&
+                            nameController.text.trim() == prevSubName)) {
                       nameController.text = coveredMemberName;
                     }
-                    final prevSubPhone = substituteAttendee?.phone.trim() ?? record.substitutePhone?.trim();
+                    final prevSubPhone =
+                        substituteAttendee?.phone.trim() ??
+                        record.substitutePhone?.trim();
                     if (phoneController.text.trim().isEmpty ||
-                        (prevSubPhone != null && phoneController.text.trim() == prevSubPhone)) {
-                      phoneController.text = (coveredEmployee?.phone.trim().isNotEmpty ?? false)
+                        (prevSubPhone != null &&
+                            phoneController.text.trim() == prevSubPhone)) {
+                      phoneController.text =
+                          (coveredEmployee?.phone.trim().isNotEmpty ?? false)
                           ? coveredEmployee!.phone.trim()
                           : record.userPhone.trim();
                     }
                   } else if (type == CheckInType.substitute) {
                     if (nameController.text.trim() == coveredMemberName) {
-                      final prevSubName = (substituteAttendee?.name?.trim().isNotEmpty ?? false)
+                      final prevSubName =
+                          (substituteAttendee?.name?.trim().isNotEmpty ?? false)
                           ? substituteAttendee!.name!.trim()
                           : (record.substituteName?.trim() ?? '');
                       nameController.text = prevSubName;
-                      final prevSubPhone = (substituteAttendee?.phone.isNotEmpty ?? false)
+                      final prevSubPhone =
+                          (substituteAttendee?.phone.isNotEmpty ?? false)
                           ? substituteAttendee!.phone
                           : (record.substitutePhone?.trim() ?? '');
                       phoneController.text = prevSubPhone;
@@ -754,7 +770,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                               ),
                             ),
                             child: Text(
-                              coveredMemberName.isEmpty ? '—' : coveredMemberName,
+                              coveredMemberName.isEmpty
+                                  ? '—'
+                                  : coveredMemberName,
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
@@ -806,7 +824,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
 
                         // Phone Number
                         Text(
-                          isSubstituteType ? 'Substitute Phone' : 'Phone Number',
+                          isSubstituteType
+                              ? 'Substitute Phone'
+                              : 'Phone Number',
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
@@ -899,16 +919,20 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                                 if (!formKey.currentState!.validate()) return;
                                 final fallback =
                                     _fallbackLocationFromDashboard();
-                                final nameToSave = selectedType == CheckInType.absent
+                                final nameToSave =
+                                    selectedType == CheckInType.absent
                                     ? coveredMemberName
                                     : (nameController.text.trim().isNotEmpty
-                                        ? nameController.text.trim()
-                                        : coveredMemberName);
-                                final phoneToSave = selectedType == CheckInType.absent
-                                    ? (coveredEmployee?.phone ?? record.userPhone)
+                                          ? nameController.text.trim()
+                                          : coveredMemberName);
+                                final phoneToSave =
+                                    selectedType == CheckInType.absent
+                                    ? (coveredEmployee?.phone ??
+                                          record.userPhone)
                                     : (phoneController.text.trim().isNotEmpty
-                                        ? phoneController.text.trim()
-                                        : (coveredEmployee?.phone ?? record.userPhone));
+                                          ? phoneController.text.trim()
+                                          : (coveredEmployee?.phone ??
+                                                record.userPhone));
                                 final updated = prepareAdminEditedCheckIn(
                                   original: record,
                                   selectedType: selectedType,
@@ -1045,7 +1069,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
 
           Builder(
             builder: (context) {
-              if (photoBytes != null) {
+              if (photoBytes != null ||
+                  (record.type.isSubstitute && _checkInHasPhoto(record))) {
                 return Center(
                   child: Padding(
                     padding: const EdgeInsets.only(bottom: 8.0),
@@ -1053,12 +1078,19 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                       children: [
                         ClipRRect(
                           borderRadius: AppRadius.mdAll,
-                          child: Image.memory(
-                            photoBytes,
-                            width: 110,
-                            height: 110,
-                            fit: BoxFit.cover,
-                          ),
+                          child: photoBytes != null
+                              ? Image.memory(
+                                  photoBytes,
+                                  width: 110,
+                                  height: 110,
+                                  fit: BoxFit.cover,
+                                )
+                              : CheckInPhotoImage(
+                                  submission: record,
+                                  width: 110,
+                                  height: 110,
+                                  fit: BoxFit.cover,
+                                ),
                         ),
                         const SizedBox(height: 4),
                         Text(
@@ -1128,14 +1160,12 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                 ? 'Substitute Phone'
                 : 'Phone Number',
             value: record.type.isSubstitute
-                ? ((substituteAttendee?.phone.isNotEmpty ?? false)
-                      ? _formatPhoneNumber(substituteAttendee!.phone)
-                      : ((record.substitutePhone?.trim().isNotEmpty ?? false)
-                            ? _formatPhoneNumber(record.substitutePhone!)
-                            : (record.userPhone.trim().isNotEmpty
-                                  ? _formatPhoneNumber(record.userPhone)
-                                  : '—')))
-                : _formatPhoneNumber(record.userPhone),
+                ? _formatPhoneNumberOrDash(
+                    (substituteAttendee?.phone.isNotEmpty ?? false)
+                        ? substituteAttendee!.phone
+                        : record.substitutePhone,
+                  )
+                : _formatPhoneNumberOrDash(record.userPhone),
           ),
           _DetailItem(label: 'Attendance Type', value: record.type.displayName),
           _DetailItem(label: 'Venue', value: record.locationName),
@@ -1440,14 +1470,27 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     List<CheckInSubmission> filteredRecords,
     double availableWidth,
   ) {
-    if (allCheckInsAsync.isLoading && filteredRecords.isEmpty) {
+    final employeesAsync = ref.watch(employeesStreamProvider);
+    final baseRecordsAsync = ref.watch(baseDashboardRecordsProvider);
+    final waiting =
+        (allCheckInsAsync.isLoading ||
+            employeesAsync.isLoading ||
+            baseRecordsAsync.isLoading) &&
+        filteredRecords.isEmpty;
+    final loadError = allCheckInsAsync.hasError
+        ? allCheckInsAsync.error
+        : (employeesAsync.hasError
+              ? employeesAsync.error
+              : (baseRecordsAsync.hasError ? baseRecordsAsync.error : null));
+
+    if (waiting) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 24),
         child: CheckInCardSkeletonList(count: 3),
       );
     }
 
-    if (allCheckInsAsync.hasError && filteredRecords.isEmpty) {
+    if (loadError != null && filteredRecords.isEmpty) {
       return AppCard(
         elevation: 1,
         padding: const EdgeInsets.all(20),
@@ -1460,7 +1503,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              allCheckInsAsync.error.toString(),
+              loadError.toString(),
               style: TextStyle(
                 fontSize: 12,
                 color: isDark
@@ -1471,7 +1514,10 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
-              onPressed: () => ref.invalidate(checkInsStreamProvider),
+              onPressed: () {
+                ref.invalidate(checkInsStreamProvider);
+                ref.invalidate(employeesStreamProvider);
+              },
               icon: const Icon(Icons.refresh_rounded, size: 16),
               label: const Text('Retry'),
               style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
@@ -1690,7 +1736,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
 
   Future<void> _downloadSubstituteAbsentTxt() async {
     final filterState = ref.read(adminDashboardFilterProvider);
-    final sessionDate = filterState.selectedDate ??
+    final sessionDate =
+        filterState.selectedDate ??
         defaultAttendanceSessionDate(
           DateTime.now(),
           restrictionsEnabled: ref.read(restrictionsEnabledProvider),
@@ -1789,8 +1836,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
               mode.label,
               style: TextStyle(
                 fontSize: 13,
-                fontWeight:
-                    mode == sortMode ? FontWeight.w700 : FontWeight.w500,
+                fontWeight: mode == sortMode
+                    ? FontWeight.w700
+                    : FontWeight.w500,
                 color: mode == sortMode
                     ? AppColors.primary
                     : theme.colorScheme.onSurface,
@@ -2167,13 +2215,26 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     List<CheckInSubmission> filteredRecords,
     double availableWidth,
   ) {
-    if (allCheckInsAsync.isLoading && filteredRecords.isEmpty) {
+    final employeesAsync = ref.watch(employeesStreamProvider);
+    final baseRecordsAsync = ref.watch(baseDashboardRecordsProvider);
+    final waiting =
+        (allCheckInsAsync.isLoading ||
+            employeesAsync.isLoading ||
+            baseRecordsAsync.isLoading) &&
+        filteredRecords.isEmpty;
+    final loadError = allCheckInsAsync.hasError
+        ? allCheckInsAsync.error
+        : (employeesAsync.hasError
+              ? employeesAsync.error
+              : (baseRecordsAsync.hasError ? baseRecordsAsync.error : null));
+
+    if (waiting) {
       return const SingleChildScrollView(
         child: CheckInCardSkeletonList(count: 5),
       );
     }
 
-    if (allCheckInsAsync.hasError && filteredRecords.isEmpty) {
+    if (loadError != null && filteredRecords.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -2192,7 +2253,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              allCheckInsAsync.error.toString(),
+              loadError.toString(),
               style: TextStyle(
                 fontSize: 14,
                 color: isDark
@@ -2203,7 +2264,10 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             ),
             const SizedBox(height: 16),
             FilledButton.icon(
-              onPressed: () => ref.invalidate(checkInsStreamProvider),
+              onPressed: () {
+                ref.invalidate(checkInsStreamProvider);
+                ref.invalidate(employeesStreamProvider);
+              },
               icon: const Icon(Icons.refresh_rounded),
               label: const Text('Retry'),
               style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
@@ -2241,16 +2305,55 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   }
 }
 
+bool _checkInHasPhoto(CheckInSubmission record) {
+  return record.hasPhoto ||
+      (record.photoPath?.trim().isNotEmpty ?? false) ||
+      (record.photoBase64?.trim().isNotEmpty ?? false);
+}
+
+Widget _substituteInitialAvatar(String subName, {required double size}) {
+  return Container(
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      color: AppColors.warning.withAlpha(40),
+      shape: BoxShape.circle,
+      border: Border.all(
+        color: AppColors.warning.withAlpha(90),
+        width: 1.0,
+      ),
+    ),
+    child: Center(
+      child: Text(
+        subName.trim().isNotEmpty ? subName.trim()[0].toUpperCase() : 'S',
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: size * 0.45,
+          color: AppColors.warning,
+        ),
+      ),
+    ),
+  );
+}
+
 /// Quick-preview dialog for attendee or substitute live photos.
+///
+/// Prefers inline [photoBytes] when present; otherwise loads Storage via
+/// [submission] (lean list rows only have `photo_path` / `has_photo`).
 void _showAttendeePhotoDialog({
   required BuildContext context,
-  required Uint8List photoBytes,
+  Uint8List? photoBytes,
+  CheckInSubmission? submission,
   required String title,
   required String subtitle,
   String badgeLabel = 'Live Check-In Selfie',
 }) {
   final theme = Theme.of(context);
   final isDark = theme.brightness == Brightness.dark;
+  final bytes = photoBytes;
+  final hasInline = bytes != null && bytes.isNotEmpty;
+  final canLoadStorage =
+      submission != null && _checkInHasPhoto(submission);
 
   showDialog(
     context: context,
@@ -2310,12 +2413,30 @@ void _showAttendeePhotoDialog({
             const SizedBox(height: 14),
             ClipRRect(
               borderRadius: AppRadius.mdAll,
-              child: Image.memory(
-                photoBytes,
-                width: double.infinity,
-                height: 320,
-                fit: BoxFit.cover,
-              ),
+              child: hasInline
+                  ? Image.memory(
+                      bytes,
+                      width: double.infinity,
+                      height: 320,
+                      fit: BoxFit.cover,
+                    )
+                  : canLoadStorage
+                  ? CheckInPhotoImage(
+                      submission: submission,
+                      width: double.infinity,
+                      height: 320,
+                      fit: BoxFit.cover,
+                      placeholder: const SizedBox(
+                        height: 320,
+                        child: Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    )
+                  : const SizedBox(
+                      height: 320,
+                      child: Center(child: Icon(Icons.person_outline)),
+                    ),
             ),
             const SizedBox(height: 14),
             Container(
@@ -2384,6 +2505,7 @@ class _MobileCheckInRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final photoBytes = ImageUtils.base64ToBytes(record.photoBase64);
+    final hasStoredPhoto = _checkInHasPhoto(record);
     final coveredEmp =
         EmployeeLookup.byId(employees ?? const [], record.memberId) ??
         EmployeeLookup.byName(employees ?? const [], record.userName);
@@ -2396,12 +2518,14 @@ class _MobileCheckInRow extends StatelessWidget {
             coveredMemberPhone: rosterPhone.isNotEmpty ? rosterPhone : null,
           )
         : null;
+    // Name only — never use userPhone (often the member after remap).
     final subLabel =
         (substituteAttendee?.displayLabel?.trim().isNotEmpty ?? false)
         ? substituteAttendee!.displayLabel!.trim()
-        : ((record.substituteName?.trim().isNotEmpty ?? false)
-              ? record.substituteName!.trim()
-              : record.userPhone.trim());
+        : (record.substituteName?.trim() ?? '');
+    final subPhone = (substituteAttendee?.phone.isNotEmpty ?? false)
+        ? substituteAttendee!.phone
+        : (record.substitutePhone?.trim() ?? '');
     final memberPhone = () {
       if (!record.type.isSubstitute) return record.userPhone;
       return rosterPhone.isNotEmpty ? rosterPhone : record.userPhone;
@@ -2475,7 +2599,7 @@ class _MobileCheckInRow extends StatelessWidget {
                         ],
                       ),
                       if (record.type.isSubstitute &&
-                          (subLabel.isNotEmpty || photoBytes != null)) ...[
+                          (subLabel.isNotEmpty || hasStoredPhoto)) ...[
                         const SizedBox(height: 3),
                         Container(
                           padding: const EdgeInsets.fromLTRB(4, 2, 8, 2),
@@ -2494,11 +2618,12 @@ class _MobileCheckInRow extends StatelessWidget {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              if (photoBytes != null)
+                              if (hasStoredPhoto)
                                 InkWell(
                                   onTap: () => _showAttendeePhotoDialog(
                                     context: context,
                                     photoBytes: photoBytes,
+                                    submission: record,
                                     title: subLabel.isNotEmpty
                                         ? subLabel
                                         : 'Substitute',
@@ -2517,12 +2642,24 @@ class _MobileCheckInRow extends StatelessWidget {
                                       ),
                                     ),
                                     child: ClipOval(
-                                      child: Image.memory(
-                                        photoBytes,
-                                        width: 18,
-                                        height: 18,
-                                        fit: BoxFit.cover,
-                                      ),
+                                      child: photoBytes != null
+                                          ? Image.memory(
+                                              photoBytes,
+                                              width: 18,
+                                              height: 18,
+                                              fit: BoxFit.cover,
+                                            )
+                                          : CheckInPhotoImage(
+                                              submission: record,
+                                              width: 18,
+                                              height: 18,
+                                              fit: BoxFit.cover,
+                                              placeholder:
+                                                  _substituteInitialAvatar(
+                                                subLabel,
+                                                size: 18,
+                                              ),
+                                            ),
                                     ),
                                   ),
                                 )
@@ -2535,7 +2672,7 @@ class _MobileCheckInRow extends StatelessWidget {
                               const SizedBox(width: 4),
                               Flexible(
                                 child: Text(
-                                  'Sub: ${subLabel.isNotEmpty ? (substituteAttendee?.name != null ? subLabel : _formatPhoneNumber(subLabel)) : 'Attendee'}',
+                                  'Sub: ${subLabel.isNotEmpty ? subLabel : (subPhone.isNotEmpty ? _formatPhoneNumber(subPhone) : '—')}',
                                   style: TextStyle(
                                     fontSize: 11,
                                     color: isDark
@@ -2823,16 +2960,18 @@ class _CheckInTableView extends ConsumerWidget {
                         ),
                     ],
                     child: Icon(
-                      Icons.arrow_drop_down_rounded,
-                      size: 20,
-                      color:
-                          isAlphabetical ? AppColors.primary : Colors.grey,
+                      Icons.filter_list_rounded,
+                      size: 18,
+                      color: isAlphabetical ? AppColors.primary : Colors.grey,
                     ),
                   ),
                 ],
               ),
             ),
-            const Expanded(flex: 2, child: Text('PHONE', style: headerTextStyle)),
+            const Expanded(
+              flex: 2,
+              child: Text('PHONE', style: headerTextStyle),
+            ),
             const Expanded(
               flex: 2,
               child: Text('ATTENDANCE TYPE', style: headerTextStyle),
@@ -2866,6 +3005,7 @@ class _CheckInTableView extends ConsumerWidget {
       final rowNumber = index + 1;
       final isZebra = index.isOdd;
       final photoBytes = ImageUtils.base64ToBytes(record.photoBase64);
+      final hasStoredPhoto = _checkInHasPhoto(record);
       final raw = rawCheckInById(record.id);
       final coveredEmp =
           EmployeeLookup.byId(employees ?? const [], record.memberId) ??
@@ -2879,16 +3019,17 @@ class _CheckInTableView extends ConsumerWidget {
               coveredMemberPhone: rosterPhone.isNotEmpty ? rosterPhone : null,
             )
           : null;
-      // Name from text field, else phone from text field — never hide both.
+      // Name / dedicated substitute phone only — never member userPhone.
       final subName =
           (substituteAttendee?.displayLabel?.trim().isNotEmpty ?? false)
           ? substituteAttendee!.displayLabel!.trim()
-          : ((record.substituteName?.trim().isNotEmpty ?? false)
-                ? record.substituteName!.trim()
-                : record.userPhone.trim());
+          : (record.substituteName?.trim() ?? '');
+      final subPhone = (substituteAttendee?.phone.isNotEmpty ?? false)
+          ? substituteAttendee!.phone
+          : (record.substitutePhone?.trim() ?? '');
       final hasSubstitute =
           record.type.isSubstitute &&
-          (subName.isNotEmpty || photoBytes != null);
+          (subName.isNotEmpty || subPhone.isNotEmpty || hasStoredPhoto);
       // Member column phone = roster phone; substitute phone lives in SUBSTITUTE.
       final memberPhone = () {
         if (!record.type.isSubstitute) return record.userPhone;
@@ -3018,15 +3159,16 @@ class _CheckInTableView extends ConsumerWidget {
                             child: Row(
                               children: [
                                 Tooltip(
-                                  message: photoBytes != null
+                                  message: hasStoredPhoto
                                       ? 'Click to preview selfie'
                                       : 'Substitute attendee',
                                   child: InkWell(
                                     borderRadius: AppRadius.fullAll,
-                                    onTap: photoBytes != null
+                                    onTap: hasStoredPhoto
                                         ? () => _showAttendeePhotoDialog(
                                             context: context,
                                             photoBytes: photoBytes,
+                                            submission: record,
                                             title: subName.isNotEmpty
                                                 ? subName
                                                 : 'Substitute',
@@ -3035,67 +3177,54 @@ class _CheckInTableView extends ConsumerWidget {
                                             badgeLabel: 'Substitute Live Photo',
                                           )
                                         : null,
-                                    child: photoBytes != null
-                                        ? Container(
-                                            width: 22,
-                                            height: 22,
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              border: Border.all(
-                                                color: AppColors.warning
-                                                    .withAlpha(120),
-                                                width: 1.2,
+                                    child: Container(
+                                      width: 22,
+                                      height: 22,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: AppColors.warning
+                                              .withAlpha(120),
+                                          width: 1.2,
+                                        ),
+                                      ),
+                                      child: ClipOval(
+                                        child: hasStoredPhoto
+                                            ? (photoBytes != null
+                                                  ? Image.memory(
+                                                      photoBytes,
+                                                      width: 22,
+                                                      height: 22,
+                                                      cacheWidth: 44,
+                                                      cacheHeight: 44,
+                                                      fit: BoxFit.cover,
+                                                    )
+                                                  : CheckInPhotoImage(
+                                                      submission: record,
+                                                      width: 22,
+                                                      height: 22,
+                                                      fit: BoxFit.cover,
+                                                      placeholder: _substituteInitialAvatar(
+                                                        subName,
+                                                        size: 22,
+                                                      ),
+                                                    ))
+                                            : _substituteInitialAvatar(
+                                                subName,
+                                                size: 22,
                                               ),
-                                            ),
-                                            child: ClipOval(
-                                              child: Image.memory(
-                                                photoBytes,
-                                                width: 22,
-                                                height: 22,
-                                                cacheWidth: 44,
-                                                cacheHeight: 44,
-                                                fit: BoxFit.cover,
-                                              ),
-                                            ),
-                                          )
-                                        : Container(
-                                            width: 22,
-                                            height: 22,
-                                            decoration: BoxDecoration(
-                                              color: AppColors.warning
-                                                  .withAlpha(40),
-                                              shape: BoxShape.circle,
-                                              border: Border.all(
-                                                color: AppColors.warning
-                                                    .withAlpha(90),
-                                                width: 1.0,
-                                              ),
-                                            ),
-                                            child: Center(
-                                              child: Text(
-                                                subName.isNotEmpty
-                                                    ? subName
-                                                          .trim()[0]
-                                                          .toUpperCase()
-                                                    : 'S',
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 10,
-                                                  color: AppColors.warning,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
+                                      ),
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 5),
                                 Expanded(
                                   child: Text(
                                     subName.isNotEmpty
-                                        ? (substituteAttendee?.name != null
-                                              ? subName
-                                              : _formatPhoneNumber(subName))
-                                        : 'Substitute',
+                                        ? subName
+                                        : (subPhone.isNotEmpty
+                                              ? _formatPhoneNumber(subPhone)
+                                              : '—'),
                                     style: TextStyle(
                                       fontWeight: FontWeight.w500,
                                       fontSize: 11,

@@ -17,7 +17,9 @@ Future<void> showSearchableThursdayDateDropdown({
   final mediaQuery = MediaQuery.of(context);
   final screenSize = mediaQuery.size;
 
-  final dropdownWidth = screenSize.width < 372 ? (screenSize.width - 32) : 340.0;
+  final dropdownWidth = screenSize.width < 372
+      ? (screenSize.width - 32)
+      : 340.0;
   const dropdownHeight = 380.0;
 
   // Horizontal alignment: Align with left of button, but if it overflows screen right edge, align with right of button
@@ -31,7 +33,8 @@ Future<void> showSearchableThursdayDateDropdown({
 
   // Vertical alignment: Dropdown appears right below the button; if not enough space below, show above
   double top = offset.dy + size.height + 6;
-  if (top + dropdownHeight > screenSize.height - 16 && offset.dy > dropdownHeight + 16) {
+  if (top + dropdownHeight > screenSize.height - 16 &&
+      offset.dy > dropdownHeight + 16) {
     top = offset.dy - dropdownHeight - 6;
   }
 
@@ -110,8 +113,9 @@ class _SearchableThursdayDateDialogState
 
     final filteredList = widget.allThursdays.where((date) {
       if (query.isEmpty) return true;
-      final fullText =
-          DateFormat('EEEE, dd MMM yyyy').format(date).toLowerCase();
+      final fullText = DateFormat('EEEE, dd MMM yyyy')
+          .format(date)
+          .toLowerCase();
       final shortText = DateFormat('dd MMM yyyy').format(date).toLowerCase();
       final numeric = DateFormat('dd/MM/yyyy').format(date).toLowerCase();
       return fullText.contains(query) ||
@@ -261,7 +265,8 @@ class _SearchableThursdayDateDialogState
                   )
                 else
                   ...filteredList.map((d) {
-                    final isSel = widget.selectedDate != null &&
+                    final isSel =
+                        widget.selectedDate != null &&
                         widget.selectedDate!.year == d.year &&
                         widget.selectedDate!.month == d.month &&
                         widget.selectedDate!.day == d.day;
@@ -309,8 +314,8 @@ class _SearchableThursdayDateDialogState
               color: isSelected
                   ? AppColors.primary
                   : (isDark
-                      ? const Color(0xFF94A3B8)
-                      : const Color(0xFF64748B)),
+                        ? const Color(0xFF94A3B8)
+                        : const Color(0xFF64748B)),
             ),
             const SizedBox(width: 9),
             Expanded(
@@ -322,8 +327,8 @@ class _SearchableThursdayDateDialogState
                   color: isSelected
                       ? AppColors.primary
                       : (isDark
-                          ? const Color(0xFFE2E8F0)
-                          : const Color(0xFF1E293B)),
+                            ? const Color(0xFFE2E8F0)
+                            : const Color(0xFF1E293B)),
                 ),
               ),
             ),

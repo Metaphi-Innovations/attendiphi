@@ -1,12 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// Screen breakpoint definitions and device classification.
-enum ScreenDeviceType {
-  compactMobile,
-  mobile,
-  tablet,
-  desktop,
-}
+enum ScreenDeviceType { compactMobile, mobile, tablet, desktop }
 
 /// Centralized responsive breakpoint constants and layout helpers.
 class ResponsiveBreakpoints {
@@ -48,8 +43,7 @@ extension ResponsiveContextExtension on BuildContext {
   bool get isLandscape => orientation == Orientation.landscape;
 
   /// True if screen width is < 360px (ultra-compact mobile).
-  bool get isCompactMobile =>
-      screenWidth < ResponsiveBreakpoints.compactMobile;
+  bool get isCompactMobile => screenWidth < ResponsiveBreakpoints.compactMobile;
 
   /// True if screen width is < 600px (mobile).
   bool get isMobile => screenWidth < ResponsiveBreakpoints.mobile;

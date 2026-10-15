@@ -105,7 +105,8 @@ class EmployeeLookup {
     String? memberId,
     String? phone,
   }) {
-    final live = byId(employees, memberId) ??
+    final live =
+        byId(employees, memberId) ??
         byPhone(employees, phone) ??
         byName(employees, storedName);
     if (live != null && live.name.trim().isNotEmpty) return live.name;

@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 import '../admin_password_hasher.dart';
 
 /// Role identifier for administrator accounts.
@@ -14,7 +12,9 @@ enum AdminRole {
   static AdminRole fromString(String? val) {
     if (val == null) return AdminRole.admin;
     final clean = val.trim().toLowerCase();
-    if (clean == 'superadmin' || clean == 'super_admin' || clean == 'super admin') {
+    if (clean == 'superadmin' ||
+        clean == 'super_admin' ||
+        clean == 'super admin') {
       return AdminRole.superAdmin;
     }
     return AdminRole.admin;
@@ -60,14 +60,14 @@ class AdminUser {
   final DateTime? passwordUpdatedAt;
   final List<String> assignedLocationIds;
 
-  /// Firebase Auth UID. Same as [id] when the admin doc is keyed by UID.
+  /// Supabase Auth user id (`auth.users.id`). Falls back to [id] when unlinked.
   final String uid;
 
   bool get isSuperAdmin => role.isSuperAdmin;
 
   /// Verifies [candidate] against salted [passwordHash] only.
   ///
-  /// Login uses Firebase Auth. This helper remains for password-reset /
+  /// Login uses Supabase Auth. This helper remains for password-reset /
   /// metadata sync checks. Legacy plaintext and hash-as-password equality
   /// are intentionally unsupported.
   bool matchesPassword(String candidate) {
@@ -77,16 +77,12 @@ class AdminUser {
     return AdminPasswordHasher.hash(password, passwordSalt) == passwordHash;
   }
 
-  factory AdminUser.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data() ?? {};
-    return AdminUser.fromMap(data, id: doc.id);
-  }
-
   factory AdminUser.fromMap(Map<String, dynamic> data, {required String id}) {
     DateTime? parseDate(dynamic val) {
-      if (val is Timestamp) return val.toDate();
+      if (val is DateTime) return val;
       if (val is String) return DateTime.tryParse(val);
       if (val is int) return DateTime.fromMillisecondsSinceEpoch(val);
+      if (val is num) return DateTime.fromMillisecondsSinceEpoch(val.toInt());
       return null;
     }
 
@@ -120,9 +116,9 @@ class AdminUser {
       'passwordSalt': passwordSalt,
       'mustResetPassword': mustResetPassword,
       'isActive': isActive,
-      'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : FieldValue.serverTimestamp(),
+      'createdAt': (createdAt ?? DateTime.now()).toUtc().toIso8601String(),
       'createdBy': createdBy,
-      'lastLoginAt': lastLoginAt != null ? Timestamp.fromDate(lastLoginAt!) : null,
+      'lastLoginAt': lastLoginAt?.toUtc().toIso8601String(),
       'assignedLocationIds': assignedLocationIds,
       'uid': (uid.isNotEmpty ? uid : id),
     };

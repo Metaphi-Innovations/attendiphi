@@ -12,7 +12,6 @@ import '../../../../core/l10n/app_strings.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_text_field.dart';
 import '../../../../core/widgets/metaphi_loading_indicator.dart';
-import '../../../checkin/data/datasources/device_checkin_service.dart';
 import '../../../employee/presentation/providers/employee_providers.dart';
 import '../../domain/check_in_session_token.dart';
 import '../providers/qr_scanner_provider.dart';
@@ -87,7 +86,9 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
   }
 
   void _showManualInputDialog() async {
-    final controller = TextEditingController(text: '{"locationId": "location_x"}');
+    final controller = TextEditingController(
+      text: '{"locationId": "location_x"}',
+    );
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogCtx) => AlertDialog(
@@ -129,25 +130,11 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
   }
 
   Future<void> _handleQrScannerSuccess(QrScannerSuccess next) async {
-    // 1. Check if this device has already submitted attendance for this session
-    final deviceService = ref.read(deviceCheckInServiceProvider);
-    final existingSubmission = await deviceService.getSubmissionForSession(
-      sessionDateStr: next.payload.sessionDateStr,
-      locationId: next.location.id,
-    );
+    // Always open the check-in form — shared devices serve many members.
+    // Duplicate member/phone is enforced on submit.
     if (!mounted) return;
-    if (existingSubmission != null) {
-      context.push(
-        RouteNames.checkinResultPath(
-          checkInId: existingSubmission.id,
-          memberId: existingSubmission.memberId,
-        ),
-        extra: existingSubmission,
-      );
-      return;
-    }
 
-    // 2. Prefer opaque /checkin/<token>; fall back to legacy permission query.
+    // Prefer opaque /checkin/<token>; fall back to legacy permission query.
     final sessionDate = next.payload.sessionDateStr?.trim() ?? '';
     if (sessionDate.isNotEmpty) {
       try {
@@ -156,10 +143,7 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
           sessionDate: sessionDate,
           adminId: next.payload.adminId,
         );
-        context.push(
-          RouteNames.checkinFormPath(token),
-          extra: next.location,
-        );
+        context.push(RouteNames.checkinFormPath(token), extra: next.location);
         return;
       } catch (_) {
         // Fall through to legacy query navigation.
@@ -216,9 +200,8 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
                       const SizedBox(height: 16),
                       Text(
                         'Camera unavailable or permission denied',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              color: Colors.white,
-                            ),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(color: Colors.white),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 20),
@@ -357,20 +340,24 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
               children: [
                 Text(
                   AppStrings.qrScannerTitle,
-                  style: (MediaQuery.orientationOf(context) == Orientation.landscape
-                          ? Theme.of(context).textTheme.titleSmall
-                          : Theme.of(context).textTheme.titleLarge)
-                      ?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style:
+                      (MediaQuery.orientationOf(context) ==
+                                  Orientation.landscape
+                              ? Theme.of(context).textTheme.titleSmall
+                              : Theme.of(context).textTheme.titleLarge)
+                          ?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   AppStrings.qrScannerInstruction,
                   style: TextStyle(
                     color: Colors.white70,
-                    fontSize: MediaQuery.orientationOf(context) == Orientation.landscape
+                    fontSize:
+                        MediaQuery.orientationOf(context) ==
+                            Orientation.landscape
                         ? 11
                         : 13,
                   ),
@@ -390,7 +377,8 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
               child: Padding(
                 padding: EdgeInsets.symmetric(
                   horizontal: AppSpacing.xl,
-                  vertical: MediaQuery.orientationOf(context) == Orientation.landscape
+                  vertical:
+                      MediaQuery.orientationOf(context) == Orientation.landscape
                       ? 6
                       : AppSpacing.lg,
                 ),
@@ -430,9 +418,7 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
           if (isProcessing)
             Container(
               color: Colors.black.withAlpha(180),
-              child: const Center(
-                child: MetaPhiLoadingIndicator(),
-              ),
+              child: const Center(child: MetaPhiLoadingIndicator()),
             ),
 
           // 7. Error Banner Modal
@@ -519,22 +505,14 @@ class _ControlCircleButton extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Material(
-          color: isActive
-              ? AppColors.primary
-              : Colors.black.withAlpha(160),
-          shape: const CircleBorder(
-            side: BorderSide(color: Colors.white24),
-          ),
+          color: isActive ? AppColors.primary : Colors.black.withAlpha(160),
+          shape: const CircleBorder(side: BorderSide(color: Colors.white24)),
           child: InkWell(
             customBorder: const CircleBorder(),
             onTap: onTap,
             child: Padding(
               padding: const EdgeInsets.all(14),
-              child: Icon(
-                icon,
-                color: Colors.white,
-                size: 22,
-              ),
+              child: Icon(icon, color: Colors.white, size: 22),
             ),
           ),
         ),

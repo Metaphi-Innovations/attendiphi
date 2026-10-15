@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'dart:ui';
+
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image/image.dart' as img;
@@ -56,8 +57,14 @@ class FaceEmbeddingService {
 
     final int x = max(0, (box.left - marginX).toInt());
     final int y = max(0, (box.top - marginY).toInt());
-    final int w = min(workingImage.width - x, (box.width + (marginX * 2)).toInt());
-    final int h = min(workingImage.height - y, (box.height + (marginY * 2)).toInt());
+    final int w = min(
+      workingImage.width - x,
+      (box.width + (marginX * 2)).toInt(),
+    );
+    final int h = min(
+      workingImage.height - y,
+      (box.height + (marginY * 2)).toInt(),
+    );
 
     final cropped = img.copyCrop(
       workingImage,
@@ -82,10 +89,22 @@ class FaceEmbeddingService {
 
     final int x = max(0, (boundingBox.left - marginX).toInt());
     final int y = max(0, (boundingBox.top - marginY).toInt());
-    final int w = min(image.width - x, (boundingBox.width + (marginX * 2)).toInt());
-    final int h = min(image.height - y, (boundingBox.height + (marginY * 2)).toInt());
+    final int w = min(
+      image.width - x,
+      (boundingBox.width + (marginX * 2)).toInt(),
+    );
+    final int h = min(
+      image.height - y,
+      (boundingBox.height + (marginY * 2)).toInt(),
+    );
 
-    final cropped = img.copyCrop(image, x: x, y: y, width: max(1, w), height: max(1, h));
+    final cropped = img.copyCrop(
+      image,
+      x: x,
+      y: y,
+      width: max(1, w),
+      height: max(1, h),
+    );
     return img.copyResize(cropped, width: 112, height: 112);
   }
 
@@ -93,7 +112,9 @@ class FaceEmbeddingService {
   /// Automatically resizes to 112x112 and normalizes pixels to [-1, 1].
   List<double> extractEmbedding(img.Image faceImage) {
     if (!_isInitialized || _interpreter == null) {
-      throw StateError('FaceEmbeddingService is not initialized. Call initialize() first.');
+      throw StateError(
+        'FaceEmbeddingService is not initialized. Call initialize() first.',
+      );
     }
 
     // 1. Resize cropped face to 112 x 112 required by MobileFaceNet
@@ -104,17 +125,14 @@ class FaceEmbeddingService {
       1,
       (_) => List.generate(
         112,
-        (y) => List.generate(
-          112,
-          (x) {
-            final pixel = resized.getPixel(x, y);
-            // MobileFaceNet standard normalization: (x - 127.5) / 128.0
-            final r = (pixel.r - 127.5) / 128.0;
-            final g = (pixel.g - 127.5) / 128.0;
-            final b = (pixel.b - 127.5) / 128.0;
-            return [r, g, b];
-          },
-        ),
+        (y) => List.generate(112, (x) {
+          final pixel = resized.getPixel(x, y);
+          // MobileFaceNet standard normalization: (x - 127.5) / 128.0
+          final r = (pixel.r - 127.5) / 128.0;
+          final g = (pixel.g - 127.5) / 128.0;
+          final b = (pixel.b - 127.5) / 128.0;
+          return [r, g, b];
+        }),
       ),
     );
 
@@ -126,7 +144,9 @@ class FaceEmbeddingService {
 
     // 5. Extract and L2-normalize the 192 numbers
     final List<dynamic> rawRow = output[0] as List<dynamic>;
-    final List<double> embedding = rawRow.map((e) => (e as num).toDouble()).toList();
+    final List<double> embedding = rawRow
+        .map((e) => (e as num).toDouble())
+        .toList();
 
     double sumSq = 0.0;
     for (final val in embedding) {

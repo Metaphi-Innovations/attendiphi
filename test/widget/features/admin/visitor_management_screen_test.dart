@@ -65,76 +65,78 @@ void main() {
   Widget createWidgetUnderTest() {
     return ProviderScope(
       overrides: [
-        checkInsStreamProvider
-            .overrideWith((ref) => Stream.value(testVisitors)),
+        checkInsStreamProvider.overrideWith(
+          (ref) => Stream.value(testVisitors),
+        ),
       ],
-      child: const MaterialApp(
-        home: VisitorManagementScreen(),
-      ),
+      child: const MaterialApp(home: VisitorManagementScreen()),
     );
   }
 
   group('VisitorManagementScreen Widget Tests', () {
-    testWidgets('renders screen title, live badge, and toolbar filters without KPI cards',
-        (tester) async {
-      tester.view.physicalSize = const Size(1400, 900);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() => tester.view.resetPhysicalSize());
+    testWidgets(
+      'renders screen title, live badge, and toolbar filters without KPI cards',
+      (tester) async {
+        tester.view.physicalSize = const Size(1400, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() => tester.view.resetPhysicalSize());
 
-      await tester.pumpWidget(createWidgetUnderTest());
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(createWidgetUnderTest());
+        await tester.pumpAndSettle();
 
-      // Check header
-      expect(find.text('Visitors Overview'), findsOneWidget);
-      expect(find.text('LIVE VISITORS'), findsNothing);
+        // Check header
+        expect(find.text('Visitors Overview'), findsOneWidget);
+        expect(find.text('LIVE VISITORS'), findsNothing);
 
-      // Verify 4 KPI summary cards are removed
-      expect(find.text('Total Visitors'), findsNothing);
-      expect(find.text('Unique Companies'), findsNothing);
-      expect(find.text('Unique Categories'), findsNothing);
-      expect(find.text('Top Inviting Member'), findsNothing);
+        // Verify 4 KPI summary cards are removed
+        expect(find.text('Total Visitors'), findsNothing);
+        expect(find.text('Unique Companies'), findsNothing);
+        expect(find.text('Unique Categories'), findsNothing);
+        expect(find.text('Top Inviting Member'), findsNothing);
 
-      // Verify table headers rendered cleanly
-      expect(find.text('GPS STATUS'), findsOneWidget);
-      expect(find.text('ACTIONS'), findsOneWidget);
+        // Verify table headers rendered cleanly
+        expect(find.text('GPS STATUS'), findsOneWidget);
+        expect(find.text('ACTIONS'), findsOneWidget);
 
-      // Verify Thursday session dropdown filter
-      expect(find.text('All Thursdays / All Dates'), findsOneWidget);
+        // Verify Thursday session dropdown filter
+        expect(find.text('All Thursdays / All Dates'), findsOneWidget);
 
-      // Verify pagination footer bar is removed
-      expect(find.textContaining('Showing 1–'), findsNothing);
-      expect(find.text('Rows per page:'), findsNothing);
-    });
+        // Verify pagination footer bar is removed
+        expect(find.textContaining('Showing 1–'), findsNothing);
+        expect(find.text('Rows per page:'), findsNothing);
+      },
+    );
 
-    testWidgets('displays visitors tabular data, On-site status, and deduplicates duplicate rows',
-        (tester) async {
-      tester.view.physicalSize = const Size(1400, 900);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() => tester.view.resetPhysicalSize());
+    testWidgets(
+      'displays visitors tabular data, On-site status, and deduplicates duplicate rows',
+      (tester) async {
+        tester.view.physicalSize = const Size(1400, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() => tester.view.resetPhysicalSize());
 
-      await tester.pumpWidget(createWidgetUnderTest());
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(createWidgetUnderTest());
+        await tester.pumpAndSettle();
 
-      // Check visitor names - Rahul Sharma appears exactly once despite duplicate stream item
-      expect(find.text('Rahul Sharma'), findsOneWidget);
-      expect(find.text('Sneha Patel'), findsOneWidget);
+        // Check visitor names - Rahul Sharma appears exactly once despite duplicate stream item
+        expect(find.text('Rahul Sharma'), findsOneWidget);
+        expect(find.text('Sneha Patel'), findsOneWidget);
 
-      // Check company names
-      expect(find.text('Acme Corp'), findsOneWidget);
-      expect(find.text('Design Studio'), findsOneWidget);
+        // Check company names
+        expect(find.text('Acme Corp'), findsOneWidget);
+        expect(find.text('Design Studio'), findsOneWidget);
 
-      // Check GPS status indicators (only "On-site" without distance meter suffix)
-      expect(find.text('On-site'), findsNWidgets(2));
+        // Check GPS status indicators (only "On-site" without distance meter suffix)
+        expect(find.text('On-site'), findsNWidgets(2));
 
-      // Check action icons (Edit Details and View Details rendered; Flag and Delete removed)
-      expect(find.byIcon(Icons.edit_outlined), findsNWidgets(2));
-      expect(find.byIcon(Icons.visibility_outlined), findsNWidgets(2));
-      expect(find.byIcon(Icons.flag_outlined), findsNothing);
-      expect(find.byIcon(Icons.delete_outline_rounded), findsNothing);
-    });
+        // Check action icons (Edit Details and View Details rendered; Flag and Delete removed)
+        expect(find.byIcon(Icons.edit_outlined), findsNWidgets(2));
+        expect(find.byIcon(Icons.visibility_outlined), findsNWidgets(2));
+        expect(find.byIcon(Icons.flag_outlined), findsNothing);
+        expect(find.byIcon(Icons.delete_outline_rounded), findsNothing);
+      },
+    );
 
-    testWidgets('searches visitors by company name accurately',
-        (tester) async {
+    testWidgets('searches visitors by company name accurately', (tester) async {
       tester.view.physicalSize = const Size(1400, 900);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() => tester.view.resetPhysicalSize());

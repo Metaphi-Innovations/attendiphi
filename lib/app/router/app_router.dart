@@ -12,6 +12,8 @@ import '../../features/admin/presentation/screens/admin_login_screen.dart';
 import '../../features/admin/presentation/screens/admin_management_screen.dart';
 import '../../features/admin/presentation/screens/admin_reset_password_screen.dart';
 import '../../features/admin/presentation/screens/attendance_overview_screen.dart';
+import '../../features/admin/presentation/screens/substitute_detail_screen.dart';
+import '../../features/admin/presentation/screens/substitutes_overview_screen.dart';
 import '../../features/admin/presentation/screens/user_management_screen.dart';
 import '../../features/admin/presentation/screens/visitor_management_screen.dart';
 import '../../features/admin/presentation/widgets/admin_shell_layout.dart';
@@ -49,29 +51,35 @@ String? _extractQueryParam(GoRouterState state, String key) {
   return null;
 }
 
-/// Sends Firebase password-reset action links to [RouteNames.adminResetPassword].
-///
-/// Keeps [oobCode] in the query. Does not redirect when the app is already on
-/// that screen (or the legacy `/reset-password` alias).
-String? _firebasePasswordResetLocation(GoRouterState state) {
-  final mode = _extractQueryParam(state, 'mode');
-  final oobCode = _extractQueryParam(state, 'oobCode');
-  if (mode != 'resetPassword' || oobCode == null || oobCode.isEmpty) {
-    return null;
+/// Parses the URL hash fragment (`#access_token=…&type=recovery`) used by
+/// Supabase implicit-flow recovery links. Returns an empty map when absent.
+Map<String, String> _recoveryFragmentParams() {
+  if (!kIsWeb || !Uri.base.hasFragment) return const {};
+  var fragment = Uri.base.fragment;
+  if (fragment.startsWith('/')) return const {};
+  if (fragment.startsWith('?')) fragment = fragment.substring(1);
+  if (!fragment.contains('=')) return const {};
+  try {
+    return Uri.splitQueryString(fragment);
+  } catch (_) {
+    return const {};
   }
-  if (state.uri.path == RouteNames.adminResetPassword ||
-      state.uri.path == RouteNames.adminForgotPasswordReset) {
-    return null;
+}
+
+/// True when the current URL is a Supabase password-recovery landing: either
+/// a hash fragment with `type=recovery` / an auth error, or a PKCE `?code=`
+/// redirect on the reset-password path.
+bool _isSupabaseRecoveryLanding(GoRouterState state) {
+  final frag = _recoveryFragmentParams();
+  if (frag['type'] == 'recovery') return true;
+  if (frag.containsKey('error_code') || frag.containsKey('error')) {
+    return state.uri.path == RouteNames.adminResetPassword;
   }
-  final apiKey = _extractQueryParam(state, 'apiKey');
-  return Uri(
-    path: RouteNames.adminResetPassword,
-    queryParameters: {
-      'mode': mode,
-      'oobCode': oobCode,
-      if (apiKey != null && apiKey.isNotEmpty) 'apiKey': apiKey,
-    },
-  ).toString();
+  if (state.uri.path == RouteNames.adminResetPassword) {
+    final code = _extractQueryParam(state, 'code');
+    if (code != null && code.isNotEmpty) return true;
+  }
+  return false;
 }
 
 /// Key for the root navigator.
@@ -91,12 +99,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     debugLogDiagnostics: kDebugMode,
     refreshListenable: refresh,
     redirect: (context, state) {
-      final resetLocation = _firebasePasswordResetLocation(state);
-      if (resetLocation != null) return resetLocation;
+      final isRecovery = _isSupabaseRecoveryLanding(state);
+      // Supabase may land recovery links on the site root; send them to the
+      // reset screen (the recovery session is already established by then).
+      if (isRecovery &&
+          state.uri.path != RouteNames.adminResetPassword &&
+          _recoveryFragmentParams()['type'] == 'recovery') {
+        return RouteNames.adminResetPassword;
+      }
       final auth = ref.read(adminAuthProvider);
       final oobCode = _extractQueryParam(state, 'oobCode');
       final token = _extractQueryParam(state, 'token');
       final hasPasswordResetCode =
+          isRecovery ||
           (oobCode != null && oobCode.isNotEmpty) ||
           (token != null && token.isNotEmpty);
       return AuthRedirect.location(
@@ -112,9 +127,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: RouteNames.adminLogin,
         name: 'admin_login',
-        builder: (context, state) => const PageLoadingTransitionWrapper(
-          child: AdminLoginScreen(),
-        ),
+        builder: (context, state) =>
+            const PageLoadingTransitionWrapper(child: AdminLoginScreen()),
       ),
       GoRoute(
         path: RouteNames.adminResetPassword,
@@ -122,8 +136,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final token = _extractQueryParam(state, 'token');
           final oobCode = _extractQueryParam(state, 'oobCode');
-          final mode = _extractQueryParam(state, 'mode');
-          final hasEmailReset = (oobCode != null && oobCode.isNotEmpty) ||
+          var mode = _extractQueryParam(state, 'mode');
+          final isRecovery = _isSupabaseRecoveryLanding(state);
+          if (isRecovery) mode = 'recovery';
+          final hasEmailReset =
+              isRecovery ||
+              (oobCode != null && oobCode.isNotEmpty) ||
               (token != null && token.isNotEmpty);
           if (hasEmailReset) {
             return PageLoadingTransitionWrapper(
@@ -160,14 +178,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ).toString();
         },
       ),
-      GoRoute(
-        path: '/__/auth/action',
-        redirect: (context, state) {
-          return _firebasePasswordResetLocation(state) ??
-              RouteNames.adminLogin;
-        },
-      ),
-
       // ── Redirects: attendiphi namespace root & legacy routes ───────────────
       GoRoute(
         path: RouteNames.attendiphiNamespace,
@@ -188,6 +198,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: RouteNames.legacyAttendiphiMembers,
         redirect: (context, state) => RouteNames.adminMembers,
+      ),
+      GoRoute(
+        path: RouteNames.legacyAttendiphiSubstitutes,
+        redirect: (context, state) => RouteNames.adminSubstitutes,
       ),
       GoRoute(
         path: RouteNames.legacyAttendiphiVenueQr,
@@ -212,6 +226,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: RouteNames.legacyAdminMembers,
         redirect: (context, state) => RouteNames.adminMembers,
+      ),
+      GoRoute(
+        path: RouteNames.legacyAdminSubstitutes,
+        redirect: (context, state) => RouteNames.adminSubstitutes,
       ),
       GoRoute(
         path: RouteNames.legacyVenueQr,
@@ -272,7 +290,30 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ],
           ),
 
-          // Branch 4: Venue QR Standee Display
+          // Branch 4: Substitutes attendance analytics
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: RouteNames.adminSubstitutes,
+                name: 'admin_substitutes',
+                builder: (context, state) => const SubstitutesOverviewScreen(),
+                routes: [
+                  GoRoute(
+                    path: ':identityKey',
+                    name: 'admin_substitute_detail',
+                    builder: (context, state) {
+                      final raw = state.pathParameters['identityKey'] ?? '';
+                      return SubstituteDetailScreen(
+                        identityKey: Uri.decodeComponent(raw),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+
+          // Branch 5: Venue QR Standee Display
           StatefulShellBranch(
             routes: [
               GoRoute(
@@ -283,7 +324,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ],
           ),
 
-          // Branch 5: Admins Management
+          // Branch 6: Admins Management
           StatefulShellBranch(
             routes: [
               GoRoute(
@@ -382,7 +423,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             }
           }
 
-          final location = initialLocation ??
+          final location =
+              initialLocation ??
               LocationConfig(
                 id: resolved.locationId,
                 name: resolved.locationId == 'location_x'
@@ -419,15 +461,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             proximityResult: proximityResult,
             adminId: resolved.adminId,
             sessionDateStr: resolved.sessionDateStr,
+            sessionToken: resolved.sessionToken,
           );
         },
       ),
       GoRoute(
         path: RouteNames.qrScanner,
         name: 'qr_scanner',
-        builder: (context, state) => const PageLoadingTransitionWrapper(
-          child: QrScannerScreen(),
-        ),
+        builder: (context, state) =>
+            const PageLoadingTransitionWrapper(child: QrScannerScreen()),
       ),
     ],
     errorBuilder: (context, state) => Scaffold(

@@ -15,12 +15,18 @@ class LivenessCheckResult {
 
 /// Integration point for production anti-spoofing.
 ///
+/// **P2 policy:** liveness is a **soft signal** only until a real provider is
+/// wired. [CloudFaceRecognitionService] must not hard-fail check-in / match
+/// when [LivenessCheckResult.implemented] is false or when a future provider
+/// returns `passed: false` — log and continue with descriptor match.
+///
 /// Face matching alone cannot stop a printed photo or screen replay.
 /// Do not invent random/fake liveness scores here.
 ///
 /// TODO: Integrate a production liveness provider (challenge-response blink,
 /// depth, or a dedicated anti-spoofing model) and call it after face detection
-/// and before descriptor matching.
+/// and before descriptor matching. Only then consider a hard gate behind a
+/// feature flag.
 abstract class LivenessService {
   Future<LivenessCheckResult> evaluateLiveCapture();
 }
@@ -35,7 +41,8 @@ class UnimplementedLivenessService implements LivenessService {
       passed: true,
       implemented: false,
       reason:
-          'Liveness/anti-spoofing is not implemented for Flutter Web yet. Matching proceeds on descriptors only.',
+          'Liveness/anti-spoofing is not implemented (soft signal). '
+          'Matching proceeds on descriptors only.',
     );
   }
 }

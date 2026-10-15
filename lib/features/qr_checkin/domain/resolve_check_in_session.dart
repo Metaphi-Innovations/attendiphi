@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import 'check_in_session_token.dart';
 
 /// Resolved public check-in session (from opaque token or legacy URL).
@@ -21,17 +23,19 @@ class ResolvedCheckInSession {
 
 /// Resolves `/checkin/:segment` plus optional legacy query params.
 ///
-/// Dual-read (one release):
-/// - New: `/checkin/<v1.…>` opaque token
-/// - Legacy: `/checkin/<locationId>?date=yyyy-MM-dd`
+/// - Preferred: `/checkin/<v1.…>` opaque token
+/// - Legacy: `/checkin/<locationId>?date=yyyy-MM-dd` — **rejected in release**
+///   after standee cutover (P1). Debug/profile still accept legacy for local QA.
 ResolvedCheckInSession? resolveCheckInSession({
   required String? pathSegment,
   String? queryDate,
   String? queryAdminId,
   String? queryLocationId,
   String? secretOverride,
+  bool? rejectLegacy,
 }) {
   final segment = pathSegment?.trim() ?? '';
+  final blockLegacy = rejectLegacy ?? kReleaseMode;
 
   if (CheckInSessionToken.looksLikeToken(segment)) {
     final claims = CheckInSessionToken.tryParse(
@@ -49,6 +53,8 @@ ResolvedCheckInSession? resolveCheckInSession({
   }
 
   // Legacy path: /checkin/location_x?date=YYYY-MM-DD
+  if (blockLegacy) return null;
+
   final legacyLocation = CheckInSessionToken.looksLikeLegacyLocationId(segment)
       ? segment
       : _trimOrNull(queryLocationId);

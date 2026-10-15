@@ -115,7 +115,8 @@ class _WebCameraCaptureDialogWidgetState
       }
       if (mediaDevices == null) {
         throw Exception(
-            'This browser does not support camera access. Please use Chrome, Edge, or Safari.');
+          'This browser does not support camera access. Please use Chrome, Edge, or Safari.',
+        );
       }
 
       final stream = await mediaDevices.getUserMedia({
@@ -158,8 +159,7 @@ class _WebCameraCaptureDialogWidgetState
       if (mounted) {
         setState(() {
           _isInitializing = false;
-          _errorMessage =
-              'Camera permission is required for face attendance. Allow camera access in your browser, or try again.';
+          _errorMessage = 'Camera permission is required for face attendance. Allow camera access in your browser, or try again.';
         });
       }
     }
@@ -218,7 +218,8 @@ class _WebCameraCaptureDialogWidgetState
 
   bool get _currentPoseWantsFrontal {
     final text = _currentPoseGuide.toLowerCase();
-    return text.contains('look at the camera') || text.contains('look straight');
+    return text.contains('look at the camera') ||
+        text.contains('look straight');
   }
 
   void _maybeAutoCapture() {
@@ -240,12 +241,18 @@ class _WebCameraCaptureDialogWidgetState
   }
 
   Future<void> _refreshLiveGuidance() async {
-    if (!mounted || _isInitializing || _errorMessage != null || _isCapturingBurst) {
+    if (!mounted ||
+        _isInitializing ||
+        _errorMessage != null ||
+        _isCapturingBurst) {
       return;
     }
     final bytes = _grabSingleFrame();
     if (bytes == null) return;
-    final assessed = await _assessJpeg(bytes, requireFrontal: _currentPoseWantsFrontal);
+    final assessed = await _assessJpeg(
+      bytes,
+      requireFrontal: _currentPoseWantsFrontal,
+    );
     if (!mounted || _isCapturingBurst) return;
     final guidance = assessed?['guidance']?.toString() ?? _currentPoseGuide;
     final ready = assessed?['ok'] == true;
@@ -272,8 +279,10 @@ class _WebCameraCaptureDialogWidgetState
         'minSharpness': 18,
         'requireFrontal': requireFrontal,
       });
-      final dynamic promise =
-          js.context.callMethod('assessLiveFaceFrame', [dataUrl, options]);
+      final dynamic promise = js.context.callMethod('assessLiveFaceFrame', [
+        dataUrl,
+        options,
+      ]);
       if (promise == null) return null;
       promise.callMethod('then', [
         js.JsFunction.withThis((_, dynamic result) {
@@ -301,13 +310,17 @@ class _WebCameraCaptureDialogWidgetState
     }
   }
 
-  Future<void> _waitUntilReady({Duration timeout = const Duration(seconds: 10)}) async {
+  Future<void> _waitUntilReady({
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
     final deadline = DateTime.now().add(timeout);
     while (mounted && DateTime.now().isBefore(deadline)) {
       final bytes = _grabSingleFrame();
       if (bytes != null) {
-        final assessed =
-            await _assessJpeg(bytes, requireFrontal: _currentPoseWantsFrontal);
+        final assessed = await _assessJpeg(
+          bytes,
+          requireFrontal: _currentPoseWantsFrontal,
+        );
         final ready = assessed?['ok'] == true;
         final guidance = assessed?['guidance']?.toString();
         if (mounted) {
@@ -521,27 +534,32 @@ class _WebCameraCaptureDialogWidgetState
                                   children: [
                                     OutlinedButton.icon(
                                       onPressed: _initWebcam,
-                                      icon: const Icon(Icons.refresh_rounded,
-                                          size: 16),
+                                      icon: const Icon(
+                                        Icons.refresh_rounded,
+                                        size: 16,
+                                      ),
                                       label: const Text('Try Again'),
                                       style: OutlinedButton.styleFrom(
                                         foregroundColor: Colors.white,
                                         side: const BorderSide(
-                                            color: Colors.white54),
+                                          color: Colors.white54,
+                                        ),
                                       ),
                                     ),
                                     const SizedBox(width: 10),
                                     if (widget.allowGallery)
                                       ElevatedButton.icon(
-                                      onPressed: _pickFromGallery,
-                                      icon: const Icon(Icons.image_outlined,
-                                          size: 16),
-                                      label: const Text('From Gallery'),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: AppColors.primary,
-                                        foregroundColor: Colors.white,
+                                        onPressed: _pickFromGallery,
+                                        icon: const Icon(
+                                          Icons.image_outlined,
+                                          size: 16,
+                                        ),
+                                        label: const Text('From Gallery'),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: AppColors.primary,
+                                          foregroundColor: Colors.white,
+                                        ),
                                       ),
-                                    ),
                                   ],
                                 ),
                               ],
@@ -618,7 +636,8 @@ class _WebCameraCaptureDialogWidgetState
                     Expanded(
                       flex: 2,
                       child: ElevatedButton(
-                        onPressed: (_isInitializing ||
+                        onPressed:
+                            (_isInitializing ||
                                 _errorMessage != null ||
                                 _isCapturingBurst)
                             ? null
@@ -640,14 +659,18 @@ class _WebCameraCaptureDialogWidgetState
                                 height: 22,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2.5,
-                                  valueColor:
-                                      AlwaysStoppedAnimation<Color>(Colors.white),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
+                                  ),
                                 ),
                               )
                             : Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const Icon(Icons.camera_alt_rounded, size: 18),
+                                  const Icon(
+                                    Icons.camera_alt_rounded,
+                                    size: 18,
+                                  ),
                                   const SizedBox(width: 8),
                                   Text(
                                     widget.isBurst

@@ -45,9 +45,7 @@ class CheckInRestrictionsToggle extends ConsumerWidget {
         enabled: enabled,
         isSaving: isSaving,
         tooltip: tooltip,
-        onChanged: isSaving
-            ? null
-            : (next) => _onToggle(context, ref, next),
+        onChanged: isSaving ? null : (next) => _onToggle(context, ref, next),
       ),
     );
   }
@@ -76,15 +74,12 @@ class CheckInRestrictionsToggle extends ConsumerWidget {
           Text(
             'Restrictions',
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(width: 4),
-          Switch.adaptive(
-            value: enabled,
-            onChanged: onChanged,
-          ),
+          Switch.adaptive(value: enabled, onChanged: onChanged),
         ],
       ),
     );
@@ -146,9 +141,7 @@ class CheckInRestrictionsToggle extends ConsumerWidget {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          nextEnabled
-              ? 'Check-in restrictions are ON'
-              : 'Check-in restrictions are OFF (any day / multi check-in / no GPS)',
+          nextEnabled ? 'Check-in restrictions are ON' : 'Check-in restrictions are OFF (any day / multi check-in / no GPS)',
         ),
       ),
     );

@@ -150,8 +150,8 @@ class FaceMatchingService {
   /// Converts Cosine similarity to confidence percentage (0% to 100%).
   double cosineToConfidence(double similarity, {double baseThreshold = 0.20}) {
     if (similarity <= baseThreshold) return 0.0;
-    final normalized =
-        ((similarity - baseThreshold) / (1.0 - baseThreshold)).clamp(0.0, 1.0);
+    final normalized = ((similarity - baseThreshold) / (1.0 - baseThreshold))
+        .clamp(0.0, 1.0);
     return double.parse((normalized * 100).toStringAsFixed(1));
   }
 
@@ -196,7 +196,8 @@ class FaceMatchingService {
 
     if (bestCandidate == null) return null;
 
-    final margin = (secondBestDistance.isFinite &&
+    final margin =
+        (secondBestDistance.isFinite &&
             secondBestCandidate != null &&
             secondBestCandidate.id != bestCandidate.id)
         ? (secondBestDistance - bestDistance)
@@ -276,7 +277,8 @@ class FaceMatchingService {
       for (var j = i + 1; j < templates.length; j++) {
         if (templates[i].length != templates[j].length) continue;
         pairs++;
-        if (calculateCosineSimilarity(templates[i], templates[j]) >= threshold) {
+        if (calculateCosineSimilarity(templates[i], templates[j]) >=
+            threshold) {
           good++;
         }
       }
@@ -415,15 +417,17 @@ class FaceMatchingService {
     }
 
     final matchFrames = frameMatches
-        .where((f) => f.status == FaceMatchStatus.match && f.bestCandidate != null)
+        .where(
+          (f) => f.status == FaceMatchStatus.match && f.bestCandidate != null,
+        )
         .toList();
     final ambiguousFrames = frameMatches
         .where((f) => f.status == FaceMatchStatus.ambiguous)
         .toList();
 
     if (matchFrames.length < minValidFrames) {
-      final retry = ambiguousFrames.isNotEmpty ||
-          frameMatches.length < minValidFrames;
+      final retry =
+          ambiguousFrames.isNotEmpty || frameMatches.length < minValidFrames;
       return MultiFrameMatchDecision(
         verified: false,
         averageScore: 0.0,
@@ -505,8 +509,9 @@ class FaceMatchingService {
     }
 
     if (bestMargin < FaceMatchingConfig.marginThreshold &&
-        matchFrames.any((f) =>
-            f.bestCandidate?.id == topId && f.secondBestCandidate != null)) {
+        matchFrames.any(
+          (f) => f.bestCandidate?.id == topId && f.secondBestCandidate != null,
+        )) {
       return MultiFrameMatchDecision(
         verified: false,
         averageScore: avgScore,
@@ -514,8 +519,7 @@ class FaceMatchingService {
         consistencyRate: consistencyRate,
         validFramesCount: matchFrames.length,
         totalFramesCount: totalFramesCount,
-        statusMessage:
-            'Face match ambiguous. Please look directly at the camera and try again.',
+        statusMessage: 'Face match ambiguous. Please look directly at the camera and try again.',
         shouldRetry: true,
       );
     }

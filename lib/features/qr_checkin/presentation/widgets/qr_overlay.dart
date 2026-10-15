@@ -49,9 +49,7 @@ class _QrOverlayState extends State<QrOverlay>
         // Cutout background
         CustomPaint(
           size: MediaQuery.sizeOf(context),
-          painter: _ScannerCutoutPainter(
-            scanWindowSize: widget.scanWindowSize,
-          ),
+          painter: _ScannerCutoutPainter(scanWindowSize: widget.scanWindowSize),
         ),
 
         // Centered scanning box with animated line and corners
@@ -70,7 +68,8 @@ class _QrOverlayState extends State<QrOverlay>
                     animation: _animationController,
                     builder: (context, child) {
                       return Positioned(
-                        top: _animationController.value *
+                        top:
+                            _animationController.value *
                             (widget.scanWindowSize - 4),
                         left: 8,
                         right: 8,

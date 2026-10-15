@@ -261,8 +261,9 @@ class _AttendanceOverviewScreenState
     }).toList();
 
     return Scaffold(
-      backgroundColor:
-          isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
+      backgroundColor: isDark
+          ? AppColors.backgroundDark
+          : AppColors.backgroundLight,
       body: Padding(
         padding: EdgeInsets.fromLTRB(
           isMobile ? 16 : 24,
@@ -277,8 +278,7 @@ class _AttendanceOverviewScreenState
             if (!isMobile) ...[
               const AppPageHeader(
                 title: 'Attendance Overview',
-                subtitle:
-                    'All members attendance matrix across all Thursdays (Sep 2026 – Sep 2027)',
+                subtitle: 'All members attendance matrix across all Thursdays (Sep 2026 – Sep 2027)',
               ),
               const SizedBox(height: 12),
             ],
@@ -333,9 +333,7 @@ class _AttendanceOverviewScreenState
                         vertical: 24.0,
                         horizontal: 16.0,
                       ),
-                      child: MetaPhiLoadingIndicator(
-                        showCard: false,
-                      ),
+                      child: MetaPhiLoadingIndicator(showCard: false),
                     ),
                   ),
                 ),
@@ -374,9 +372,7 @@ class _AttendanceOverviewScreenState
           hintText: 'Search member...',
           hintStyle: TextStyle(
             fontSize: 13,
-            color: isDark
-                ? const Color(0xFF64748B)
-                : const Color(0xFF94A3B8),
+            color: isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
           ),
           prefixIcon: const Icon(Icons.search, size: 18),
           suffixIcon: filterState.searchQuery.isNotEmpty
@@ -385,16 +381,13 @@ class _AttendanceOverviewScreenState
                   onPressed: () {
                     _searchController.clear();
                     ref
-                        .read(
-                            attendanceOverviewFilterProvider.notifier)
+                        .read(attendanceOverviewFilterProvider.notifier)
                         .setSearchQuery('');
                   },
                 )
               : null,
           filled: true,
-          fillColor: isDark
-              ? const Color(0xFF0F172A)
-              : const Color(0xFFF1F5F9),
+          fillColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
           contentPadding: const EdgeInsets.symmetric(horizontal: 12),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
@@ -415,9 +408,7 @@ class _AttendanceOverviewScreenState
       width: isMobile ? double.infinity : null,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: isDark
-            ? const Color(0xFF0F172A)
-            : const Color(0xFFF1F5F9),
+        color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: filterState.selectedMonth != null
@@ -438,18 +429,14 @@ class _AttendanceOverviewScreenState
             ),
           ),
           icon: const Icon(Icons.arrow_drop_down_rounded),
-          dropdownColor:
-              isDark ? const Color(0xFF1E293B) : Colors.white,
+          dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
           borderRadius: BorderRadius.circular(12),
           items: [
             const DropdownMenuItem<DateTime?>(
               value: null,
               child: Text(
                 'All Months (57 Thursdays)',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
               ),
             ),
             ...meetingMonths.map((m) {
@@ -512,11 +499,7 @@ class _AttendanceOverviewScreenState
                 const SizedBox(height: 8),
                 monthDropdown,
                 const SizedBox(height: 10),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 6,
-                  children: legendItems,
-                ),
+                Wrap(spacing: 12, runSpacing: 6, children: legendItems),
               ],
             )
           : Wrap(
@@ -558,10 +541,7 @@ class _AttendanceOverviewScreenState
         Container(
           width: 9,
           height: 9,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: 6),
         Text(
@@ -590,10 +570,10 @@ class _AttendanceOverviewScreenState
     const double rowHeight = 54.0;
     const double headerHeight = 52.0;
 
-    final borderColor =
-        isDark ? AppColors.outlineDark : const Color(0xFFE2E8F0);
-    final headerBg =
-        isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9);
+    final borderColor = isDark
+        ? AppColors.outlineDark
+        : const Color(0xFFE2E8F0);
+    final headerBg = isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9);
     final zebraBg = isDark
         ? const Color(0xFF1E293B).withAlpha(50)
         : const Color(0xFFF8FAFC);
@@ -782,7 +762,9 @@ class _AttendanceOverviewScreenState
       final date = thursdays[column - 1];
       final isCurrentWeek = now.difference(date).inDays.abs() < 4;
       return ColoredBox(
-        color: isCurrentWeek ? AppColors.primary.withAlpha(20) : Colors.transparent,
+        color: isCurrentWeek
+            ? AppColors.primary.withAlpha(20)
+            : Colors.transparent,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -800,7 +782,9 @@ class _AttendanceOverviewScreenState
               DateFormat('yyyy').format(date),
               style: TextStyle(
                 fontSize: 9,
-                color: isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
+                color: isDark
+                    ? const Color(0xFF64748B)
+                    : const Color(0xFF94A3B8),
               ),
             ),
           ],
@@ -941,7 +925,8 @@ class _AttendanceOverviewScreenState
           84,
           borderColor,
           isDark,
-          completedMeetings: memberRow.presentCount +
+          completedMeetings:
+              memberRow.presentCount +
               memberRow.substituteCount +
               memberRow.absentCount,
         );

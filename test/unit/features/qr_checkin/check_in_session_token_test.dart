@@ -18,10 +18,7 @@ void main() {
       expect(token.contains('2026-10-08'), isFalse);
       expect(token.contains('location_x'), isFalse);
 
-      final claims = CheckInSessionToken.parse(
-        token,
-        secretOverride: secret,
-      );
+      final claims = CheckInSessionToken.parse(token, secretOverride: secret);
       expect(claims.locationId, 'location_x');
       expect(claims.sessionDateStr, '2026-10-08');
       expect(claims.adminId, 'admin_1');
@@ -61,29 +58,31 @@ void main() {
       );
     });
 
-    test('rejects short non-empty signing secrets without bootstrap fallback',
-        () {
-      const short = 'short-secret'; // 12 chars
-      expect(short.length, lessThan(CheckInSessionToken.minSecretLength));
-      expect(
-        () => CheckInSessionToken.signingSecret(secretOverride: short),
-        throwsA(
-          isA<StateError>().having(
-            (e) => e.message,
-            'message',
-            contains('${CheckInSessionToken.minSecretLength}'),
+    test(
+      'rejects short non-empty signing secrets without bootstrap fallback',
+      () {
+        const short = 'short-secret'; // 12 chars
+        expect(short.length, lessThan(CheckInSessionToken.minSecretLength));
+        expect(
+          () => CheckInSessionToken.signingSecret(secretOverride: short),
+          throwsA(
+            isA<StateError>().having(
+              (e) => e.message,
+              'message',
+              contains('${CheckInSessionToken.minSecretLength}'),
+            ),
           ),
-        ),
-      );
-      expect(
-        () => CheckInSessionToken.create(
-          locationId: 'location_x',
-          sessionDate: '2026-10-08',
-          secretOverride: short,
-        ),
-        throwsA(isA<StateError>()),
-      );
-    });
+        );
+        expect(
+          () => CheckInSessionToken.create(
+            locationId: 'location_x',
+            sessionDate: '2026-10-08',
+            secretOverride: short,
+          ),
+          throwsA(isA<StateError>()),
+        );
+      },
+    );
 
     test('accepts secrets at the minimum length', () {
       final minSecret = 'a' * CheckInSessionToken.minSecretLength;
@@ -115,7 +114,10 @@ void main() {
       );
       expect(CheckInSessionToken.looksLikeToken(token), isTrue);
       expect(CheckInSessionToken.looksLikeLegacyLocationId(token), isFalse);
-      expect(CheckInSessionToken.looksLikeLegacyLocationId('location_x'), isTrue);
+      expect(
+        CheckInSessionToken.looksLikeLegacyLocationId('location_x'),
+        isTrue,
+      );
       expect(CheckInSessionToken.looksLikeToken('location_x'), isFalse);
     });
 
@@ -124,21 +126,23 @@ void main() {
         CheckInSessionToken.isUsingBootstrapSecret(secretOverride: secret),
         isFalse,
       );
-      expect(
-        CheckInSessionToken.signingSecret(secretOverride: secret),
-        secret,
-      );
+      expect(CheckInSessionToken.signingSecret(secretOverride: secret), secret);
     });
 
-    test('web release without dart-define uses bootstrap (QR must not blank)',
-        () {
+    test('web release without dart-define throws (P0 no bootstrap)', () {
       expect(
-        CheckInSessionToken.resolveSigningSecret(
+        () => CheckInSessionToken.resolveSigningSecret(
           fromDefine: '',
           isRelease: true,
           isWeb: true,
         ),
-        CheckInSessionToken.bootstrapSecret,
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('CHECKIN_SESSION_TOKEN_SECRET'),
+          ),
+        ),
       );
     });
 
@@ -190,24 +194,43 @@ void main() {
       expect(resolved.sessionToken, token);
     });
 
-    test('resolves legacy locationId + date query', () {
-      final resolved = resolveCheckInSession(
-        pathSegment: 'location_x',
-        queryDate: '2026-10-08',
-        queryAdminId: 'admin_9',
-        secretOverride: secret,
-      );
-      expect(resolved, isNotNull);
-      expect(resolved!.isLegacy, isTrue);
-      expect(resolved.locationId, 'location_x');
-      expect(resolved.sessionDateStr, '2026-10-08');
-      expect(resolved.adminId, 'admin_9');
-      expect(resolved.sessionToken, isNotNull);
-      expect(
-        CheckInSessionToken.looksLikeToken(resolved.sessionToken),
-        isTrue,
-      );
-    });
+    test(
+      'resolves legacy locationId + date query in debug (rejectLegacy false)',
+      () {
+        final resolved = resolveCheckInSession(
+          pathSegment: 'location_x',
+          queryDate: '2026-10-08',
+          queryAdminId: 'admin_9',
+          secretOverride: secret,
+          rejectLegacy: false,
+        );
+        expect(resolved, isNotNull);
+        expect(resolved!.isLegacy, isTrue);
+        expect(resolved.locationId, 'location_x');
+        expect(resolved.sessionDateStr, '2026-10-08');
+        expect(resolved.adminId, 'admin_9');
+        expect(resolved.sessionToken, isNotNull);
+        expect(
+          CheckInSessionToken.looksLikeToken(resolved.sessionToken),
+          isTrue,
+        );
+      },
+    );
+
+    test(
+      'rejects legacy locationId path when rejectLegacy is true (release)',
+      () {
+        expect(
+          resolveCheckInSession(
+            pathSegment: 'location_x',
+            queryDate: '2026-10-08',
+            secretOverride: secret,
+            rejectLegacy: true,
+          ),
+          isNull,
+        );
+      },
+    );
 
     test('returns null for forged opaque token', () {
       expect(

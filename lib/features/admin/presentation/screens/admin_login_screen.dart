@@ -42,7 +42,9 @@ class _AdminLoginScreenState extends ConsumerState<AdminLoginScreen> {
     if (ref.read(adminAuthProvider).isLoading) return;
     if (!_formKey.currentState!.validate()) return;
 
-    final success = await ref.read(adminAuthProvider.notifier).signIn(
+    final success = await ref
+        .read(adminAuthProvider.notifier)
+        .signIn(
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
         );
@@ -153,7 +155,8 @@ class _AdminLoginScreenState extends ConsumerState<AdminLoginScreen> {
                             ),
                             onPressed: () {
                               setState(
-                                  () => _obscurePassword = !_obscurePassword);
+                                () => _obscurePassword = !_obscurePassword,
+                              );
                             },
                           ),
                           validator: (val) => val == null || val.isEmpty
@@ -168,7 +171,9 @@ class _AdminLoginScreenState extends ConsumerState<AdminLoginScreen> {
                           child: TextButton(
                             onPressed: authState.isLoading
                                 ? null
-                                : () => context.go(RouteNames.adminForgotPassword),
+                                : () => context.go(
+                                    RouteNames.adminForgotPassword,
+                                  ),
                             style: TextButton.styleFrom(
                               foregroundColor: AppColors.primary,
                               padding: const EdgeInsets.fromLTRB(8, 8, 4, 8),
@@ -194,8 +199,11 @@ class _AdminLoginScreenState extends ConsumerState<AdminLoginScreen> {
                             ),
                             child: Row(
                               children: [
-                                const Icon(Icons.error_outline_rounded,
-                                    color: AppColors.error, size: 18),
+                                const Icon(
+                                  Icons.error_outline_rounded,
+                                  color: AppColors.error,
+                                  size: 18,
+                                ),
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(

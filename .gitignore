@@ -67,6 +67,12 @@ scratch/
 *.ses
 .pytest_cache/
 
+# Local data exports (may contain PII)
+/exports/
+
+# Seed photo payloads (large base64 / PII) — generate locally
+supabase/seed/phase3_photos.sql
+
 # Firebase logs & cache
 .firebase/
 firebase-debug.log*

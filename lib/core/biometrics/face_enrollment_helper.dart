@@ -1,8 +1,10 @@
 import 'dart:io';
 import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image/image.dart' as img;
+
 import 'face_detector_service.dart';
 import 'face_embedding_service.dart';
 
@@ -66,7 +68,9 @@ class FaceEnrollmentHelper {
     // 2. Validate face orientation & angle
     final quality = detectorService.validateFace(face);
     if (!quality.isValid) {
-      throw Exception(quality.errorMessage ?? 'Please take a clearer front-facing photo.');
+      throw Exception(
+        quality.errorMessage ?? 'Please take a clearer front-facing photo.',
+      );
     }
 
     // 3. Decode image to pure Dart Image for manipulation
@@ -80,7 +84,9 @@ class FaceEnrollmentHelper {
 
     // 4. Horizontally level face via eye landmarks and crop with contrast normalization
     final alignedCropped = embeddingService.alignAndCropFace(oriented, face);
-    final croppedJpg = Uint8List.fromList(img.encodeJpg(alignedCropped, quality: 85));
+    final croppedJpg = Uint8List.fromList(
+      img.encodeJpg(alignedCropped, quality: 85),
+    );
 
     // 5. Ensure embedding model is initialized
     if (!embeddingService.isInitialized) {

@@ -1,10 +1,8 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 import '../../../../core/constants/app_constants.dart';
 import '../../domain/entities/location_config.dart';
 
 /// Data model for serializing and deserializing location configuration
-/// to and from Cloud Firestore documents.
+/// to and from plain maps (Supabase rows / JSON).
 class LocationConfigModel extends LocationConfig {
   const LocationConfigModel({
     required super.id,
@@ -16,14 +14,6 @@ class LocationConfigModel extends LocationConfig {
     super.address,
   });
 
-  /// Factory constructor to deserialize from a Firestore [DocumentSnapshot].
-  factory LocationConfigModel.fromFirestore(
-    DocumentSnapshot<Map<String, dynamic>> doc,
-  ) {
-    final data = doc.data() ?? {};
-    return LocationConfigModel.fromMap(doc.id, data);
-  }
-
   /// Factory constructor to deserialize from a raw Map with an ID.
   factory LocationConfigModel.fromMap(String id, Map<String, dynamic> map) {
     return LocationConfigModel(
@@ -31,13 +21,16 @@ class LocationConfigModel extends LocationConfig {
       name: map['name']?.toString() ?? 'Unnamed Location',
       latitude: _parseDouble(map['latitude']),
       longitude: _parseDouble(map['longitude']),
-      radiusMeters: _parseDouble(map['radiusMeters'], fallback: AppConstants.defaultRadiusMeters),
+      radiusMeters: _parseDouble(
+        map['radiusMeters'],
+        fallback: AppConstants.defaultRadiusMeters,
+      ),
       isActive: map['isActive'] as bool? ?? true,
       address: map['address']?.toString(),
     );
   }
 
-  /// Serializes the model to a Firestore-compatible Map.
+  /// Serializes the model to a plain Map.
   Map<String, dynamic> toMap() {
     return {
       'name': name,

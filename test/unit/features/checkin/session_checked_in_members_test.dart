@@ -44,11 +44,14 @@ void main() {
     expect(available.map((e) => e.id), ['emp_avnish', 'emp_rohan']);
   });
 
-  test('substitute-for target member id is excluded like a member check-in', () {
-    final available = availableMembersForSession(
-      employees: employees,
-      checkedInMemberIds: {'emp_rohan'},
-    );
-    expect(available.map((e) => e.id), ['emp_avnish']);
-  });
+  test(
+    'substitute-for target member id is excluded like a member check-in',
+    () {
+      final available = availableMembersForSession(
+        employees: employees,
+        checkedInMemberIds: {'emp_rohan'},
+      );
+      expect(available.map((e) => e.id), ['emp_avnish']);
+    },
+  );
 }

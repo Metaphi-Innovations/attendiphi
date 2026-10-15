@@ -40,9 +40,13 @@ _CategoryBadgeStyle _getCategoryBadgeStyle(String category, bool isDark) {
       norm.contains('medic') ||
       norm.contains('pharma')) {
     return _CategoryBadgeStyle(
-      bg: isDark ? const Color(0xFF064E3B).withAlpha(140) : const Color(0xFFECFDF5),
+      bg: isDark
+          ? const Color(0xFF064E3B).withAlpha(140)
+          : const Color(0xFFECFDF5),
       fg: isDark ? const Color(0xFF34D399) : const Color(0xFF047857),
-      border: isDark ? const Color(0xFF059669).withAlpha(100) : const Color(0xFFA7F3D0),
+      border: isDark
+          ? const Color(0xFF059669).withAlpha(100)
+          : const Color(0xFFA7F3D0),
     );
   }
 
@@ -52,9 +56,13 @@ _CategoryBadgeStyle _getCategoryBadgeStyle(String category, bool isDark) {
       norm.contains('food') ||
       norm.contains('restaur')) {
     return _CategoryBadgeStyle(
-      bg: isDark ? const Color(0xFF78350F).withAlpha(140) : const Color(0xFFFFFBEB),
+      bg: isDark
+          ? const Color(0xFF78350F).withAlpha(140)
+          : const Color(0xFFFFFBEB),
       fg: isDark ? const Color(0xFFFBBF24) : const Color(0xFFB45309),
-      border: isDark ? const Color(0xFFD97706).withAlpha(100) : const Color(0xFFFDE68A),
+      border: isDark
+          ? const Color(0xFFD97706).withAlpha(100)
+          : const Color(0xFFFDE68A),
     );
   }
 
@@ -64,9 +72,13 @@ _CategoryBadgeStyle _getCategoryBadgeStyle(String category, bool isDark) {
       norm.contains('infra') ||
       norm.contains('realt')) {
     return _CategoryBadgeStyle(
-      bg: isDark ? const Color(0xFF4C1D95).withAlpha(140) : const Color(0xFFF5F3FF),
+      bg: isDark
+          ? const Color(0xFF4C1D95).withAlpha(140)
+          : const Color(0xFFF5F3FF),
       fg: isDark ? const Color(0xFFA78BFA) : const Color(0xFF6D28D9),
-      border: isDark ? const Color(0xFF7C3AED).withAlpha(100) : const Color(0xFFDDD6FE),
+      border: isDark
+          ? const Color(0xFF7C3AED).withAlpha(100)
+          : const Color(0xFFDDD6FE),
     );
   }
 
@@ -76,9 +88,13 @@ _CategoryBadgeStyle _getCategoryBadgeStyle(String category, bool isDark) {
       norm.contains('cloud') ||
       norm.contains('tech')) {
     return _CategoryBadgeStyle(
-      bg: isDark ? const Color(0xFF312E81).withAlpha(140) : const Color(0xFFEEF2FF),
+      bg: isDark
+          ? const Color(0xFF312E81).withAlpha(140)
+          : const Color(0xFFEEF2FF),
       fg: isDark ? const Color(0xFF818CF8) : const Color(0xFF4338CA),
-      border: isDark ? AppColors.primary.withAlpha(100) : const Color(0xFFC7D2FE),
+      border: isDark
+          ? AppColors.primary.withAlpha(100)
+          : const Color(0xFFC7D2FE),
     );
   }
 
@@ -88,9 +104,13 @@ _CategoryBadgeStyle _getCategoryBadgeStyle(String category, bool isDark) {
       norm.contains('industr') ||
       norm.contains('steel')) {
     return _CategoryBadgeStyle(
-      bg: isDark ? const Color(0xFF1E293B).withAlpha(160) : const Color(0xFFF1F5F9),
+      bg: isDark
+          ? const Color(0xFF1E293B).withAlpha(160)
+          : const Color(0xFFF1F5F9),
       fg: isDark ? const Color(0xFFCBD5E1) : const Color(0xFF334155),
-      border: isDark ? const Color(0xFF475569).withAlpha(120) : const Color(0xFFCBD5E1),
+      border: isDark
+          ? const Color(0xFF475569).withAlpha(120)
+          : const Color(0xFFCBD5E1),
     );
   }
 
@@ -101,9 +121,13 @@ _CategoryBadgeStyle _getCategoryBadgeStyle(String category, bool isDark) {
       norm.contains('media') ||
       norm.contains('advert')) {
     return _CategoryBadgeStyle(
-      bg: isDark ? const Color(0xFF164E63).withAlpha(140) : const Color(0xFFECFEFF),
+      bg: isDark
+          ? const Color(0xFF164E63).withAlpha(140)
+          : const Color(0xFFECFEFF),
       fg: isDark ? const Color(0xFF22D3EE) : const Color(0xFF0E7490),
-      border: isDark ? const Color(0xFF0891B2).withAlpha(100) : const Color(0xFFA5F3FC),
+      border: isDark
+          ? const Color(0xFF0891B2).withAlpha(100)
+          : const Color(0xFFA5F3FC),
     );
   }
 
@@ -115,9 +139,13 @@ _CategoryBadgeStyle _getCategoryBadgeStyle(String category, bool isDark) {
       norm.contains('account') ||
       norm.contains('bank')) {
     return _CategoryBadgeStyle(
-      bg: isDark ? const Color(0xFF881337).withAlpha(140) : const Color(0xFFFFF1F2),
+      bg: isDark
+          ? const Color(0xFF881337).withAlpha(140)
+          : const Color(0xFFFFF1F2),
       fg: isDark ? const Color(0xFFFB7185) : const Color(0xFFBE123C),
-      border: isDark ? const Color(0xFFE11D48).withAlpha(100) : const Color(0xFFFECDD3),
+      border: isDark
+          ? const Color(0xFFE11D48).withAlpha(100)
+          : const Color(0xFFFECDD3),
     );
   }
 
@@ -127,9 +155,13 @@ _CategoryBadgeStyle _getCategoryBadgeStyle(String category, bool isDark) {
       norm.contains('transport') ||
       norm.contains('cargo')) {
     return _CategoryBadgeStyle(
-      bg: isDark ? const Color(0xFF7C2D12).withAlpha(140) : const Color(0xFFFFEDD5),
+      bg: isDark
+          ? const Color(0xFF7C2D12).withAlpha(140)
+          : const Color(0xFFFFEDD5),
       fg: isDark ? const Color(0xFFFB923C) : const Color(0xFFC2410C),
-      border: isDark ? const Color(0xFFEA580C).withAlpha(100) : const Color(0xFFFED7AA),
+      border: isDark
+          ? const Color(0xFFEA580C).withAlpha(100)
+          : const Color(0xFFFED7AA),
     );
   }
 
@@ -139,9 +171,13 @@ _CategoryBadgeStyle _getCategoryBadgeStyle(String category, bool isDark) {
       norm.contains('design') ||
       norm.contains('decor')) {
     return _CategoryBadgeStyle(
-      bg: isDark ? const Color(0xFF365314).withAlpha(140) : const Color(0xFFF7FEE7),
+      bg: isDark
+          ? const Color(0xFF365314).withAlpha(140)
+          : const Color(0xFFF7FEE7),
       fg: isDark ? const Color(0xFFA3E635) : const Color(0xFF4D7C0F),
-      border: isDark ? const Color(0xFF65A30D).withAlpha(100) : const Color(0xFFD9F99D),
+      border: isDark
+          ? const Color(0xFF65A30D).withAlpha(100)
+          : const Color(0xFFD9F99D),
     );
   }
 
@@ -149,24 +185,40 @@ _CategoryBadgeStyle _getCategoryBadgeStyle(String category, bool isDark) {
   final hash = norm.hashCode.abs();
   final palettes = [
     _CategoryBadgeStyle(
-      bg: isDark ? const Color(0xFF312E81).withAlpha(140) : const Color(0xFFEEF2FF),
+      bg: isDark
+          ? const Color(0xFF312E81).withAlpha(140)
+          : const Color(0xFFEEF2FF),
       fg: isDark ? const Color(0xFF818CF8) : const Color(0xFF4338CA),
-      border: isDark ? AppColors.primary.withAlpha(100) : const Color(0xFFC7D2FE),
+      border: isDark
+          ? AppColors.primary.withAlpha(100)
+          : const Color(0xFFC7D2FE),
     ),
     _CategoryBadgeStyle(
-      bg: isDark ? const Color(0xFF064E3B).withAlpha(140) : const Color(0xFFECFDF5),
+      bg: isDark
+          ? const Color(0xFF064E3B).withAlpha(140)
+          : const Color(0xFFECFDF5),
       fg: isDark ? const Color(0xFF34D399) : const Color(0xFF047857),
-      border: isDark ? const Color(0xFF059669).withAlpha(100) : const Color(0xFFA7F3D0),
+      border: isDark
+          ? const Color(0xFF059669).withAlpha(100)
+          : const Color(0xFFA7F3D0),
     ),
     _CategoryBadgeStyle(
-      bg: isDark ? const Color(0xFF4C1D95).withAlpha(140) : const Color(0xFFF5F3FF),
+      bg: isDark
+          ? const Color(0xFF4C1D95).withAlpha(140)
+          : const Color(0xFFF5F3FF),
       fg: isDark ? const Color(0xFFA78BFA) : const Color(0xFF6D28D9),
-      border: isDark ? const Color(0xFF7C3AED).withAlpha(100) : const Color(0xFFDDD6FE),
+      border: isDark
+          ? const Color(0xFF7C3AED).withAlpha(100)
+          : const Color(0xFFDDD6FE),
     ),
     _CategoryBadgeStyle(
-      bg: isDark ? const Color(0xFF164E63).withAlpha(140) : const Color(0xFFECFEFF),
+      bg: isDark
+          ? const Color(0xFF164E63).withAlpha(140)
+          : const Color(0xFFECFEFF),
       fg: isDark ? const Color(0xFF22D3EE) : const Color(0xFF0E7490),
-      border: isDark ? const Color(0xFF0891B2).withAlpha(100) : const Color(0xFFA5F3FC),
+      border: isDark
+          ? const Color(0xFF0891B2).withAlpha(100)
+          : const Color(0xFFA5F3FC),
     ),
   ];
   return palettes[hash % palettes.length];
@@ -246,7 +298,9 @@ class _VisitorManagementScreenState
               decoration: BoxDecoration(
                 color: const Color(0xFFEF4444).withAlpha(isDark ? 35 : 20),
                 borderRadius: AppRadius.mdAll,
-                border: Border.all(color: const Color(0xFFEF4444).withAlpha(60)),
+                border: Border.all(
+                  color: const Color(0xFFEF4444).withAlpha(60),
+                ),
               ),
               child: const Row(
                 children: [
@@ -274,7 +328,9 @@ class _VisitorManagementScreenState
           _buildDetailTextRow(
             context,
             'Company Name',
-            visitor.companyName?.isNotEmpty == true ? visitor.companyName! : '—',
+            visitor.companyName?.isNotEmpty == true
+                ? visitor.companyName!
+                : '—',
           ),
           if (visitor.category?.isNotEmpty == true)
             _buildDetailRow(
@@ -285,7 +341,9 @@ class _VisitorManagementScreenState
           _buildDetailTextRow(
             context,
             'Invited By Member',
-            visitor.invitedByMember?.isNotEmpty == true ? visitor.invitedByMember! : '—',
+            visitor.invitedByMember?.isNotEmpty == true
+                ? visitor.invitedByMember!
+                : '—',
             color: AppColors.primary,
           ),
           _buildDetailTextRow(
@@ -353,8 +411,9 @@ class _VisitorManagementScreenState
                 child: OutlinedButton(
                   onPressed: () => Navigator.of(modalCtx).pop(),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor:
-                        isDark ? const Color(0xFFCBD5E1) : const Color(0xFF475569),
+                    foregroundColor: isDark
+                        ? const Color(0xFFCBD5E1)
+                        : const Color(0xFF475569),
                     side: BorderSide(
                       color: isDark
                           ? const Color(0xFF334155)
@@ -365,8 +424,10 @@ class _VisitorManagementScreenState
                     ),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
-                  child: const Text('Close',
-                      style: TextStyle(fontWeight: FontWeight.w600)),
+                  child: const Text(
+                    'Close',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                 ),
               ),
             ],
@@ -386,7 +447,9 @@ class _VisitorManagementScreenState
             constraints: const BoxConstraints(maxWidth: 480, maxHeight: 620),
             child: Padding(
               padding: const EdgeInsets.all(24),
-              child: SingleChildScrollView(child: buildDetailContent(dialogCtx)),
+              child: SingleChildScrollView(
+                child: buildDetailContent(dialogCtx),
+              ),
             ),
           ),
         ),
@@ -407,29 +470,28 @@ class _VisitorManagementScreenState
                 top: Radius.circular(20),
               ),
             ),
-            child: SingleChildScrollView(
-              child: buildDetailContent(sheetCtx),
-            ),
+            child: SingleChildScrollView(child: buildDetailContent(sheetCtx)),
           ),
         ),
       );
     }
   }
 
-  void _showEditVisitorDialog(
-    BuildContext context,
-    CheckInSubmission visitor,
-  ) {
+  void _showEditVisitorDialog(BuildContext context, CheckInSubmission visitor) {
     final nameController = TextEditingController(text: visitor.userName);
     final phoneController = TextEditingController(text: visitor.userPhone);
-    final emailController =
-        TextEditingController(text: visitor.userEmail ?? '');
-    final companyController =
-        TextEditingController(text: visitor.companyName ?? '');
-    final categoryController =
-        TextEditingController(text: visitor.category ?? '');
-    final invitedByController =
-        TextEditingController(text: visitor.invitedByMember ?? '');
+    final emailController = TextEditingController(
+      text: visitor.userEmail ?? '',
+    );
+    final companyController = TextEditingController(
+      text: visitor.companyName ?? '',
+    );
+    final categoryController = TextEditingController(
+      text: visitor.category ?? '',
+    );
+    final invitedByController = TextEditingController(
+      text: visitor.invitedByMember ?? '',
+    );
     final venueController = TextEditingController(text: visitor.locationName);
     final formKey = GlobalKey<FormState>();
 
@@ -442,14 +504,18 @@ class _VisitorManagementScreenState
           final screenWidth = MediaQuery.of(ctx).size.width;
           final isMobile = screenWidth < 600;
 
-          final fieldBgColor =
-              isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC);
-          final defaultBorderColor =
-              isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
-          final labelColor =
-              isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569);
-          final iconColor =
-              isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+          final fieldBgColor = isDark
+              ? const Color(0xFF1E293B)
+              : const Color(0xFFF8FAFC);
+          final defaultBorderColor = isDark
+              ? const Color(0xFF334155)
+              : const Color(0xFFE2E8F0);
+          final labelColor = isDark
+              ? const Color(0xFF94A3B8)
+              : const Color(0xFF475569);
+          final iconColor = isDark
+              ? const Color(0xFF94A3B8)
+              : const Color(0xFF64748B);
 
           InputDecoration buildDecoration({
             required String hint,
@@ -563,8 +629,11 @@ class _VisitorManagementScreenState
                         style: const TextStyle(fontSize: 14),
                         decoration: buildDecoration(
                           hint: 'Enter visitor name',
-                          prefixIcon: Icon(Icons.person_outline_rounded,
-                              size: 18, color: iconColor),
+                          prefixIcon: Icon(
+                            Icons.person_outline_rounded,
+                            size: 18,
+                            color: iconColor,
+                          ),
                         ),
                         validator: (val) => val == null || val.trim().isEmpty
                             ? 'Please enter visitor name'
@@ -588,8 +657,11 @@ class _VisitorManagementScreenState
                         style: const TextStyle(fontSize: 14),
                         decoration: buildDecoration(
                           hint: 'Enter phone number',
-                          prefixIcon: Icon(Icons.phone_outlined,
-                              size: 18, color: iconColor),
+                          prefixIcon: Icon(
+                            Icons.phone_outlined,
+                            size: 18,
+                            color: iconColor,
+                          ),
                         ),
                         validator: (val) => val == null || val.trim().isEmpty
                             ? 'Please enter phone number'
@@ -613,8 +685,11 @@ class _VisitorManagementScreenState
                         style: const TextStyle(fontSize: 14),
                         decoration: buildDecoration(
                           hint: 'Enter email address (optional)',
-                          prefixIcon: Icon(Icons.email_outlined,
-                              size: 18, color: iconColor),
+                          prefixIcon: Icon(
+                            Icons.email_outlined,
+                            size: 18,
+                            color: iconColor,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 14),
@@ -641,8 +716,11 @@ class _VisitorManagementScreenState
                                   style: const TextStyle(fontSize: 14),
                                   decoration: buildDecoration(
                                     hint: 'e.g. FireAI',
-                                    prefixIcon: Icon(Icons.business_outlined,
-                                        size: 18, color: iconColor),
+                                    prefixIcon: Icon(
+                                      Icons.business_outlined,
+                                      size: 18,
+                                      color: iconColor,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -667,8 +745,11 @@ class _VisitorManagementScreenState
                                   style: const TextStyle(fontSize: 14),
                                   decoration: buildDecoration(
                                     hint: 'e.g. IT Services',
-                                    prefixIcon: Icon(Icons.category_outlined,
-                                        size: 18, color: iconColor),
+                                    prefixIcon: Icon(
+                                      Icons.category_outlined,
+                                      size: 18,
+                                      color: iconColor,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -690,8 +771,9 @@ class _VisitorManagementScreenState
                       const SizedBox(height: 6),
                       Consumer(
                         builder: (consumerCtx, consumerRef, _) {
-                          final employeesAsync =
-                              consumerRef.watch(employeesStreamProvider);
+                          final employeesAsync = consumerRef.watch(
+                            employeesStreamProvider,
+                          );
                           final members = employeesAsync.value ?? [];
 
                           return TextFormField(
@@ -713,8 +795,7 @@ class _VisitorManagementScreenState
                                       tooltip: 'Select registered member',
                                       onSelected: (String memberName) {
                                         setDialogState(() {
-                                          invitedByController.text =
-                                              memberName;
+                                          invitedByController.text = memberName;
                                         });
                                       },
                                       itemBuilder: (popupCtx) => members
@@ -758,8 +839,11 @@ class _VisitorManagementScreenState
                         style: const TextStyle(fontSize: 14),
                         decoration: buildDecoration(
                           hint: 'Enter venue / chapter location',
-                          prefixIcon: Icon(Icons.location_on_outlined,
-                              size: 18, color: iconColor),
+                          prefixIcon: Icon(
+                            Icons.location_on_outlined,
+                            size: 18,
+                            color: iconColor,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 24),
@@ -773,8 +857,9 @@ class _VisitorManagementScreenState
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: labelColor,
                                 side: BorderSide(color: defaultBorderColor),
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 13),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 13,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -793,20 +878,20 @@ class _VisitorManagementScreenState
                                   userPhone: phoneController.text.trim(),
                                   userEmail:
                                       emailController.text.trim().isNotEmpty
-                                          ? emailController.text.trim()
-                                          : null,
+                                      ? emailController.text.trim()
+                                      : null,
                                   companyName:
                                       companyController.text.trim().isNotEmpty
-                                          ? companyController.text.trim()
-                                          : '',
+                                      ? companyController.text.trim()
+                                      : '',
                                   category:
                                       categoryController.text.trim().isNotEmpty
-                                          ? categoryController.text.trim()
-                                          : '',
-                                  invitedByMember: invitedByController
-                                          .text.trim().isNotEmpty
-                                          ? invitedByController.text.trim()
-                                          : null,
+                                      ? categoryController.text.trim()
+                                      : '',
+                                  invitedByMember:
+                                      invitedByController.text.trim().isNotEmpty
+                                      ? invitedByController.text.trim()
+                                      : null,
                                   locationName: venueController.text.trim(),
                                   isEdited: true,
                                   editedAt: now,
@@ -817,8 +902,9 @@ class _VisitorManagementScreenState
 
                                 final messenger = ScaffoldMessenger.of(context);
                                 try {
-                                  final repo =
-                                      ref.read(checkInRepositoryProvider);
+                                  final repo = ref.read(
+                                    checkInRepositoryProvider,
+                                  );
                                   await repo.updateCheckIn(updated);
 
                                   if (mounted) {
@@ -851,8 +937,9 @@ class _VisitorManagementScreenState
                               },
                               style: FilledButton.styleFrom(
                                 backgroundColor: AppColors.primary,
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 13),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 13,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -864,8 +951,9 @@ class _VisitorManagementScreenState
                                   SizedBox(width: 6),
                                   Text(
                                     'Save Changes',
-                                    style:
-                                        TextStyle(fontWeight: FontWeight.bold),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -905,10 +993,7 @@ class _VisitorManagementScreenState
           ),
           const SizedBox(width: 16),
           Flexible(
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: valueWidget,
-            ),
+            child: Align(alignment: Alignment.centerRight, child: valueWidget),
           ),
         ],
       ),
@@ -941,10 +1026,7 @@ class _VisitorManagementScreenState
     return Tooltip(
       message: 'Business Category: $category',
       child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 8,
-          vertical: 4,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
           color: style.bg,
           borderRadius: BorderRadius.circular(6),
@@ -1042,8 +1124,9 @@ class _VisitorManagementScreenState
     final filterState = ref.watch(visitorFilterProvider);
 
     return Scaffold(
-      backgroundColor:
-          isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
+      backgroundColor: isDark
+          ? AppColors.backgroundDark
+          : AppColors.backgroundLight,
       body: Padding(
         padding: EdgeInsets.fromLTRB(
           isMobile ? 16 : 24,
@@ -1058,19 +1141,13 @@ class _VisitorManagementScreenState
             if (!isMobile) ...[
               const AppPageHeader(
                 title: 'Visitors Overview',
-                subtitle:
-                    'All guest check-in records with company, category, and member invitation details',
+                subtitle: 'All guest check-in records with company, category, and member invitation details',
               ),
               const SizedBox(height: 12),
             ],
 
             // 2. Fixed Filters Toolbar
-            _buildToolbar(
-              context,
-              theme,
-              isDark,
-              filterState,
-            ),
+            _buildToolbar(context, theme, isDark, filterState),
             const SizedBox(height: 12),
 
             // 3. ONLY Data Table is Scrollable with Pagination!
@@ -1081,7 +1158,8 @@ class _VisitorManagementScreenState
                     return AppCard(
                       child: AppEmptyView(
                         icon: Icons.search_off_rounded,
-                        message: filterState.searchQuery.isNotEmpty ||
+                        message:
+                            filterState.searchQuery.isNotEmpty ||
                                 filterState.selectedDate != null ||
                                 filterState.selectedCategory != null
                             ? 'No visitor records match the selected filters.'
@@ -1106,12 +1184,7 @@ class _VisitorManagementScreenState
                     );
                   }
 
-                  return _buildVisitorsTable(
-                    context,
-                    theme,
-                    isDark,
-                    visitors,
-                  );
+                  return _buildVisitorsTable(context, theme, isDark, visitors);
                 },
                 loading: () => const AppCard(
                   child: Center(
@@ -1120,9 +1193,7 @@ class _VisitorManagementScreenState
                         vertical: 24.0,
                         horizontal: 16.0,
                       ),
-                      child: MetaPhiLoadingIndicator(
-                        showCard: false,
-                      ),
+                      child: MetaPhiLoadingIndicator(showCard: false),
                     ),
                   ),
                 ),
@@ -1167,9 +1238,7 @@ class _VisitorManagementScreenState
               selectedDate: selectedDate,
               allThursdays: allThursdays,
               onDateSelected: (date) {
-                ref
-                    .read(visitorFilterProvider.notifier)
-                    .setSelectedDate(date);
+                ref.read(visitorFilterProvider.notifier).setSelectedDate(date);
               },
             );
           },
@@ -1180,12 +1249,16 @@ class _VisitorManagementScreenState
             decoration: BoxDecoration(
               color: isSelected
                   ? AppColors.primary.withAlpha(isDark ? 40 : 20)
-                  : (isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9)),
+                  : (isDark
+                        ? const Color(0xFF0F172A)
+                        : const Color(0xFFF1F5F9)),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: isSelected
                     ? AppColors.primary
-                    : (isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
+                    : (isDark
+                          ? const Color(0xFF334155)
+                          : const Color(0xFFCBD5E1)),
                 width: isSelected ? 1.5 : 1,
               ),
             ),
@@ -1198,8 +1271,8 @@ class _VisitorManagementScreenState
                   color: isSelected
                       ? AppColors.primary
                       : (isDark
-                          ? const Color(0xFF94A3B8)
-                          : const Color(0xFF64748B)),
+                            ? const Color(0xFF94A3B8)
+                            : const Color(0xFF64748B)),
                 ),
                 const SizedBox(width: 8),
                 Text(
@@ -1210,8 +1283,8 @@ class _VisitorManagementScreenState
                     color: isSelected
                         ? AppColors.primary
                         : (isDark
-                            ? const Color(0xFFCBD5E1)
-                            : const Color(0xFF334155)),
+                              ? const Color(0xFFCBD5E1)
+                              : const Color(0xFF334155)),
                   ),
                 ),
                 if (isMobile) const Spacer(),
@@ -1270,9 +1343,7 @@ class _VisitorManagementScreenState
           hintText: 'Search visitor, company, member...',
           hintStyle: TextStyle(
             fontSize: 13,
-            color: isDark
-                ? const Color(0xFF64748B)
-                : const Color(0xFF94A3B8),
+            color: isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
           ),
           prefixIcon: const Icon(Icons.search, size: 18),
           suffixIcon: filterState.searchQuery.isNotEmpty
@@ -1280,15 +1351,12 @@ class _VisitorManagementScreenState
                   icon: const Icon(Icons.clear, size: 16),
                   onPressed: () {
                     _searchController.clear();
-                    ref
-                        .read(visitorFilterProvider.notifier)
-                        .setSearchQuery('');
+                    ref.read(visitorFilterProvider.notifier).setSearchQuery('');
                   },
                 )
               : null,
           filled: true,
-          fillColor:
-              isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+          fillColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
           contentPadding: const EdgeInsets.symmetric(horizontal: 12),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
@@ -1322,20 +1390,13 @@ class _VisitorManagementScreenState
       child: isMobile
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                searchInput,
-                const SizedBox(height: 8),
-                dateDropdown,
-              ],
+              children: [searchInput, const SizedBox(height: 8), dateDropdown],
             )
           : Wrap(
               spacing: 14,
               runSpacing: 12,
               crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                searchInput,
-                dateDropdown,
-              ],
+              children: [searchInput, dateDropdown],
             ),
     );
   }
@@ -1360,12 +1421,15 @@ class _VisitorManagementScreenState
     const int flexCheckInTime = 3;
     const int flexGpsStatus = 3;
 
-    final borderColor =
-        isDark ? AppColors.outlineDark : const Color(0xFFE2E8F0);
+    final borderColor = isDark
+        ? AppColors.outlineDark
+        : const Color(0xFFE2E8F0);
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final double minTableWidth = constraints.maxWidth < 1050 ? 1050.0 : constraints.maxWidth;
+        final double minTableWidth = constraints.maxWidth < 1050
+            ? 1050.0
+            : constraints.maxWidth;
         final hasBoundedHeight = constraints.maxHeight.isFinite;
 
         final tableContent = Container(
@@ -1382,131 +1446,233 @@ class _VisitorManagementScreenState
             children: [
               // Table Header (Fixed - No vertical scroll)
               Container(
-            height: headerHeight,
-            decoration: BoxDecoration(
-              color: isDark
-                  ? const Color(0xFF0F172A)
-                  : const Color(0xFFF1F5F9),
-              border: Border(
-                bottom: BorderSide(color: borderColor, width: 1.5),
-              ),
-            ),
-            child: Row(
-              children: [
-                _buildHeaderCol('#', colIndexWidth, isDark),
-                _buildHeaderColFlex('VISITOR', flexVisitor, isDark),
-                _buildHeaderColFlex('PHONE', flexPhone, isDark),
-                _buildHeaderColFlex('COMPANY', flexCompany, isDark),
-                _buildHeaderColFlex('CATEGORY', flexCategory, isDark),
-                _buildHeaderColFlex('INVITED BY', flexInvitedBy, isDark),
-                _buildHeaderColFlex('CHECK-IN TIME', flexCheckInTime, isDark),
-                _buildHeaderColFlex('GPS STATUS', flexGpsStatus, isDark),
-                _buildHeaderCol(
-                  'ACTIONS',
-                  colActionsWidth,
-                  isDark,
-                  alignment: Alignment.center,
+                height: headerHeight,
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? const Color(0xFF0F172A)
+                      : const Color(0xFFF1F5F9),
+                  border: Border(
+                    bottom: BorderSide(color: borderColor, width: 1.5),
+                  ),
                 ),
-              ],
-            ),
-          ),
-
-          // Only Vertical Scroll for Data Rows
-          Expanded(
-            child: Scrollbar(
-              controller: _verticalScrollController,
-              thumbVisibility: true,
-              child: ListView.builder(
-                controller: _verticalScrollController,
-                physics: const AlwaysScrollableScrollPhysics(),
-                itemCount: visitors.length,
-                itemBuilder: (context, index) {
-                  final globalIndex = index + 1;
-                  final v = visitors[index];
-                  final isEven = index % 2 == 0;
-                  final rowBg = isEven
-                      ? Colors.transparent
-                      : (isDark
-                          ? const Color(0xFF1E293B).withAlpha(50)
-                          : const Color(0xFFF8FAFC));
-
-                  return Container(
-                    height: rowHeight,
-                    decoration: BoxDecoration(
-                      color: v.isFlagged
-                          ? const Color(0xFFEF4444)
-                              .withAlpha(isDark ? 25 : 12)
-                          : rowBg,
-                      border: Border(
-                        bottom: BorderSide(
-                          color: borderColor.withAlpha(60),
-                        ),
-                      ),
+                child: Row(
+                  children: [
+                    _buildHeaderCol('#', colIndexWidth, isDark),
+                    _buildHeaderColFlex('VISITOR', flexVisitor, isDark),
+                    _buildHeaderColFlex('PHONE', flexPhone, isDark),
+                    _buildHeaderColFlex('COMPANY', flexCompany, isDark),
+                    _buildHeaderColFlex('CATEGORY', flexCategory, isDark),
+                    _buildHeaderColFlex('INVITED BY', flexInvitedBy, isDark),
+                    _buildHeaderColFlex(
+                      'CHECK-IN TIME',
+                      flexCheckInTime,
+                      isDark,
                     ),
-                    child: Row(
-                      children: [
-                        // Index
-                        Container(
-                          width: colIndexWidth,
-                          alignment: Alignment.center,
-                          child: Text(
-                            '$globalIndex',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: isDark
-                                  ? const Color(0xFF64748B)
-                                  : const Color(0xFF94A3B8),
+                    _buildHeaderColFlex('GPS STATUS', flexGpsStatus, isDark),
+                    _buildHeaderCol(
+                      'ACTIONS',
+                      colActionsWidth,
+                      isDark,
+                      alignment: Alignment.center,
+                    ),
+                  ],
+                ),
+              ),
+
+              // Only Vertical Scroll for Data Rows
+              Expanded(
+                child: Scrollbar(
+                  controller: _verticalScrollController,
+                  thumbVisibility: true,
+                  child: ListView.builder(
+                    controller: _verticalScrollController,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    itemCount: visitors.length,
+                    itemBuilder: (context, index) {
+                      final globalIndex = index + 1;
+                      final v = visitors[index];
+                      final isEven = index % 2 == 0;
+                      final rowBg = isEven
+                          ? Colors.transparent
+                          : (isDark
+                                ? const Color(0xFF1E293B).withAlpha(50)
+                                : const Color(0xFFF8FAFC));
+
+                      return Container(
+                        height: rowHeight,
+                        decoration: BoxDecoration(
+                          color: v.isFlagged
+                              ? const Color(0xFFEF4444)
+                                    .withAlpha(isDark ? 25 : 12)
+                              : rowBg,
+                          border: Border(
+                            bottom: BorderSide(
+                              color: borderColor.withAlpha(60),
                             ),
                           ),
                         ),
+                        child: Row(
+                          children: [
+                            // Index
+                            Container(
+                              width: colIndexWidth,
+                              alignment: Alignment.center,
+                              child: Text(
+                                '$globalIndex',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark
+                                      ? const Color(0xFF64748B)
+                                      : const Color(0xFF94A3B8),
+                                ),
+                              ),
+                            ),
 
-                        // Visitor Name & Email
-                        Expanded(
-                          flex: flexVisitor,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 32,
-                                  height: 32,
-                                  decoration: BoxDecoration(
-                                    color: (v.isFlagged
-                                            ? const Color(0xFFEF4444)
-                                            : AppColors.primary)
-                                        .withAlpha(25),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Center(
-                                    child: Text(
-                                      v.userName.isNotEmpty
-                                          ? v.userName[0].toUpperCase()
-                                          : 'V',
-                                      style: TextStyle(
-                                        color: v.isFlagged
-                                            ? const Color(0xFFEF4444)
-                                            : AppColors.primary,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 13,
+                            // Visitor Name & Email
+                            Expanded(
+                              flex: flexVisitor,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 32,
+                                      height: 32,
+                                      decoration: BoxDecoration(
+                                        color:
+                                            (v.isFlagged
+                                                    ? const Color(0xFFEF4444)
+                                                    : AppColors.primary)
+                                                .withAlpha(25),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          v.userName.isNotEmpty
+                                              ? v.userName[0].toUpperCase()
+                                              : 'V',
+                                          style: TextStyle(
+                                            color: v.isFlagged
+                                                ? const Color(0xFFEF4444)
+                                                : AppColors.primary,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                          ),
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Row(
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
                                         children: [
-                                          Flexible(
-                                            child: Text(
-                                              v.userName,
+                                          Row(
+                                            children: [
+                                              Flexible(
+                                                child: Text(
+                                                  v.userName,
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.w700,
+                                                    fontSize: 13,
+                                                    color: isDark
+                                                        ? Colors.white
+                                                        : const Color(
+                                                            0xFF0F172A,
+                                                          ),
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                              if (v.isFlagged) ...[
+                                                const SizedBox(width: 4),
+                                                const Tooltip(
+                                                  message: 'Flagged as suspicious / invalid check-in',
+                                                  child: Icon(
+                                                    Icons.flag_rounded,
+                                                    size: 14,
+                                                    color: Color(0xFFEF4444),
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                          if (v.userEmail != null &&
+                                              v.userEmail!.isNotEmpty)
+                                            Text(
+                                              v.userEmail!,
                                               style: TextStyle(
-                                                fontWeight: FontWeight.w700,
+                                                fontSize: 11,
+                                                color: isDark
+                                                    ? const Color(0xFF64748B)
+                                                    : const Color(0xFF94A3B8),
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+
+                            // Phone
+                            Expanded(
+                              flex: flexPhone,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                ),
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  v.userPhone,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                    color: isDark
+                                        ? const Color(0xFFCBD5E1)
+                                        : const Color(0xFF334155),
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+
+                            // Company
+                            Expanded(
+                              flex: flexCompany,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                ),
+                                alignment: Alignment.centerLeft,
+                                child: v.companyName?.isNotEmpty == true
+                                    ? Row(
+                                        children: [
+                                          Icon(
+                                            Icons.business_rounded,
+                                            size: 14,
+                                            color: isDark
+                                                ? const Color(0xFF94A3B8)
+                                                : const Color(0xFF64748B),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Expanded(
+                                            child: Text(
+                                              v.companyName!,
+                                              style: TextStyle(
                                                 fontSize: 13,
+                                                fontWeight: FontWeight.w600,
                                                 color: isDark
                                                     ? Colors.white
                                                     : const Color(0xFF0F172A),
@@ -1515,297 +1681,249 @@ class _VisitorManagementScreenState
                                               overflow: TextOverflow.ellipsis,
                                             ),
                                           ),
-                                          if (v.isFlagged) ...[
-                                             const SizedBox(width: 4),
-                                            const Tooltip(
-                                              message:
-                                                  'Flagged as suspicious / invalid check-in',
-                                              child: Icon(
-                                                Icons.flag_rounded,
-                                                size: 14,
-                                                color: Color(0xFFEF4444),
+                                        ],
+                                      )
+                                    : const Text(
+                                        '—',
+                                        style: TextStyle(
+                                          color: Color(0xFF94A3B8),
+                                        ),
+                                      ),
+                              ),
+                            ),
+
+                            // Category
+                            Expanded(
+                              flex: flexCategory,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                ),
+                                alignment: Alignment.centerLeft,
+                                child: v.category?.isNotEmpty == true
+                                    ? _buildCategoryBadge(v.category!, isDark)
+                                    : const Text(
+                                        '—',
+                                        style: TextStyle(
+                                          color: Color(0xFF94A3B8),
+                                        ),
+                                      ),
+                              ),
+                            ),
+
+                            // Invited By (Interactive Filter Link with Hover Affordance)
+                            Expanded(
+                              flex: flexInvitedBy,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                ),
+                                alignment: Alignment.centerLeft,
+                                child: v.invitedByMember?.isNotEmpty == true
+                                    ? Tooltip(
+                                        message:
+                                            'Filter visitors invited by ${v.invitedByMember!}',
+                                        child: Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            borderRadius: BorderRadius.circular(
+                                              6,
+                                            ),
+                                            mouseCursor:
+                                                SystemMouseCursors.click,
+                                            onTap: () {
+                                              _searchController.text =
+                                                  v.invitedByMember!;
+                                              ref
+                                                  .read(
+                                                    visitorFilterProvider
+                                                        .notifier,
+                                                  )
+                                                  .setSearchQuery(
+                                                    v.invitedByMember!,
+                                                  );
+                                            },
+                                            child: Padding(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 4,
+                                                    vertical: 2,
+                                                  ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  const Icon(
+                                                    Icons.person_rounded,
+                                                    size: 14,
+                                                    color: AppColors.primary,
+                                                  ),
+                                                  const SizedBox(width: 5),
+                                                  Flexible(
+                                                    child: Text(
+                                                      v.invitedByMember!,
+                                                      style: const TextStyle(
+                                                        fontSize: 13,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                        color:
+                                                            AppColors.primary,
+                                                        decoration:
+                                                            TextDecoration
+                                                                .underline,
+                                                        decorationStyle:
+                                                            TextDecorationStyle
+                                                                .dotted,
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
                                             ),
-                                          ],
-                                        ],
-                                      ),
-                                      if (v.userEmail != null &&
-                                          v.userEmail!.isNotEmpty)
-                                        Text(
-                                          v.userEmail!,
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: isDark
-                                                ? const Color(0xFF64748B)
-                                                : const Color(0xFF94A3B8),
                                           ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-
-                        // Phone
-                        Expanded(
-                          flex: flexPhone,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              v.userPhone,
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                                color: isDark
-                                    ? const Color(0xFFCBD5E1)
-                                    : const Color(0xFF334155),
+                                      )
+                                    : const Text(
+                                        '—',
+                                        style: TextStyle(
+                                          color: Color(0xFF94A3B8),
+                                        ),
+                                      ),
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
                             ),
-                          ),
-                        ),
 
-                        // Company
-                        Expanded(
-                          flex: flexCompany,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            alignment: Alignment.centerLeft,
-                            child: v.companyName?.isNotEmpty == true
-                                ? Row(
-                                    children: [
-                                      Icon(
-                                        Icons.business_rounded,
-                                        size: 14,
+                            // Check-In Time
+                            Expanded(
+                              flex: flexCheckInTime,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                ),
+                                alignment: Alignment.centerLeft,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      DateFormat('dd MMM yyyy')
+                                          .format(v.timestamp),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: isDark
+                                            ? Colors.white
+                                            : const Color(0xFF0F172A),
+                                      ),
+                                    ),
+                                    Text(
+                                      DateFormat('hh:mm a').format(v.timestamp),
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: isDark
+                                            ? const Color(0xFF64748B)
+                                            : const Color(0xFF94A3B8),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+
+                            // GPS Status
+                            Expanded(
+                              flex: flexGpsStatus,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                ),
+                                alignment: Alignment.centerLeft,
+                                child: _buildGpsStatusBadge(
+                                  v.distanceMeters,
+                                  isDark,
+                                ),
+                              ),
+                            ),
+
+                            // Actions (Edit Details & View Details)
+                            Container(
+                              width: colActionsWidth,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                              ),
+                              alignment: Alignment.center,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Semantics(
+                                    label:
+                                        'Edit visitor details for ${v.userName}',
+                                    button: true,
+                                    child: IconButton(
+                                      icon: const Icon(
+                                        Icons.edit_outlined,
+                                        size: 17,
+                                        color: AppColors.primary,
+                                      ),
+                                      tooltip: 'Edit Visitor Details',
+                                      padding: const EdgeInsets.all(4),
+                                      constraints: const BoxConstraints(
+                                        minWidth: 28,
+                                        minHeight: 28,
+                                      ),
+                                      style: IconButton.styleFrom(
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                      ),
+                                      visualDensity: VisualDensity.compact,
+                                      splashRadius: 16,
+                                      onPressed: () =>
+                                          _showEditVisitorDialog(context, v),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 2),
+                                  Semantics(
+                                    label:
+                                        'View visitor details for ${v.userName}',
+                                    button: true,
+                                    child: IconButton(
+                                      icon: Icon(
+                                        Icons.visibility_outlined,
+                                        size: 18,
                                         color: isDark
                                             ? const Color(0xFF94A3B8)
                                             : const Color(0xFF64748B),
                                       ),
-                                      const SizedBox(width: 6),
-                                      Expanded(
-                                        child: Text(
-                                          v.companyName!,
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w600,
-                                            color: isDark
-                                                ? Colors.white
-                                                : const Color(0xFF0F172A),
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
+                                      tooltip: 'View Visitor Details',
+                                      padding: const EdgeInsets.all(4),
+                                      constraints: const BoxConstraints(
+                                        minWidth: 28,
+                                        minHeight: 28,
                                       ),
-                                    ],
-                                  )
-                                : const Text(
-                                    '—',
-                                    style: TextStyle(color: Color(0xFF94A3B8)),
-                                  ),
-                          ),
-                        ),
-
-                        // Category
-                        Expanded(
-                          flex: flexCategory,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            alignment: Alignment.centerLeft,
-                            child: v.category?.isNotEmpty == true
-                                ? _buildCategoryBadge(v.category!, isDark)
-                                : const Text(
-                                    '—',
-                                    style: TextStyle(color: Color(0xFF94A3B8)),
-                                  ),
-                          ),
-                        ),
-
-                        // Invited By (Interactive Filter Link with Hover Affordance)
-                        Expanded(
-                          flex: flexInvitedBy,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            alignment: Alignment.centerLeft,
-                            child: v.invitedByMember?.isNotEmpty == true
-                                ? Tooltip(
-                                    message: 'Filter visitors invited by ${v.invitedByMember!}',
-                                    child: Material(
-                                      color: Colors.transparent,
-                                      child: InkWell(
-                                        borderRadius: BorderRadius.circular(6),
-                                        mouseCursor: SystemMouseCursors.click,
-                                        onTap: () {
-                                          _searchController.text = v.invitedByMember!;
-                                          ref
-                                              .read(visitorFilterProvider.notifier)
-                                              .setSearchQuery(v.invitedByMember!);
-                                        },
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 4,
-                                            vertical: 2,
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              const Icon(
-                                                Icons.person_rounded,
-                                                size: 14,
-                                                color: AppColors.primary,
-                                              ),
-                                              const SizedBox(width: 5),
-                                              Flexible(
-                                                child: Text(
-                                                  v.invitedByMember!,
-                                                  style: const TextStyle(
-                                                    fontSize: 13,
-                                                    fontWeight: FontWeight.w600,
-                                                    color: AppColors.primary,
-                                                    decoration: TextDecoration.underline,
-                                                    decorationStyle: TextDecorationStyle.dotted,
-                                                  ),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
+                                      style: IconButton.styleFrom(
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
                                       ),
+                                      visualDensity: VisualDensity.compact,
+                                      splashRadius: 16,
+                                      onPressed: () =>
+                                          _showVisitorDetailsDialog(context, v),
                                     ),
-                                  )
-                                : const Text(
-                                    '—',
-                                    style: TextStyle(color: Color(0xFF94A3B8)),
                                   ),
-                          ),
-                        ),
-
-                        // Check-In Time
-                        Expanded(
-                          flex: flexCheckInTime,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            alignment: Alignment.centerLeft,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  DateFormat('dd MMM yyyy').format(v.timestamp),
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    color: isDark
-                                        ? Colors.white
-                                        : const Color(0xFF0F172A),
-                                  ),
-                                ),
-                                Text(
-                                  DateFormat('hh:mm a').format(v.timestamp),
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: isDark
-                                        ? const Color(0xFF64748B)
-                                        : const Color(0xFF94A3B8),
-                                  ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
+                          ],
                         ),
-
-                        // GPS Status
-                        Expanded(
-                          flex: flexGpsStatus,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            alignment: Alignment.centerLeft,
-                            child: _buildGpsStatusBadge(
-                                v.distanceMeters, isDark),
-                          ),
-                        ),
-
-                        // Actions (Edit Details & View Details)
-                        Container(
-                          width: colActionsWidth,
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          alignment: Alignment.center,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Semantics(
-                                label: 'Edit visitor details for ${v.userName}',
-                                button: true,
-                                child: IconButton(
-                                  icon: const Icon(
-                                    Icons.edit_outlined,
-                                    size: 17,
-                                    color: AppColors.primary,
-                                  ),
-                                  tooltip: 'Edit Visitor Details',
-                                  padding: const EdgeInsets.all(4),
-                                  constraints: const BoxConstraints(
-                                    minWidth: 28,
-                                    minHeight: 28,
-                                  ),
-                                  style: IconButton.styleFrom(
-                                    tapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                  ),
-                                  visualDensity: VisualDensity.compact,
-                                  splashRadius: 16,
-                                  onPressed: () =>
-                                      _showEditVisitorDialog(context, v),
-                                ),
-                              ),
-                              const SizedBox(width: 2),
-                              Semantics(
-                                label: 'View visitor details for ${v.userName}',
-                                button: true,
-                                child: IconButton(
-                                  icon: Icon(
-                                    Icons.visibility_outlined,
-                                    size: 18,
-                                    color: isDark
-                                        ? const Color(0xFF94A3B8)
-                                        : const Color(0xFF64748B),
-                                  ),
-                                  tooltip: 'View Visitor Details',
-                                  padding: const EdgeInsets.all(4),
-                                  constraints: const BoxConstraints(
-                                    minWidth: 28,
-                                    minHeight: 28,
-                                  ),
-                                  style: IconButton.styleFrom(
-                                    tapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                  ),
-                                  visualDensity: VisualDensity.compact,
-                                  splashRadius: 16,
-                                  onPressed: () =>
-                                      _showVisitorDetailsDialog(context, v),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
+                      );
+                    },
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
-        ],
-      ),
-    );
+        );
 
         if (constraints.maxWidth < 950) {
           return SingleChildScrollView(
@@ -1845,10 +1963,11 @@ class _VisitorManagementScreenState
                     width: 34,
                     height: 34,
                     decoration: BoxDecoration(
-                      color: (v.isFlagged
-                              ? const Color(0xFFEF4444)
-                              : AppColors.primary)
-                          .withAlpha(25),
+                      color:
+                          (v.isFlagged
+                                  ? const Color(0xFFEF4444)
+                                  : AppColors.primary)
+                              .withAlpha(25),
                       shape: BoxShape.circle,
                     ),
                     child: Center(

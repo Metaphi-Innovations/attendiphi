@@ -9,8 +9,18 @@ void setWebCookie(String key, String value, {int maxAgeSeconds = 315360000}) {
     final expiry = now.add(Duration(seconds: maxAgeSeconds));
     final days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     final months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     final dayName = days[expiry.toUtc().weekday % 7];
     final monthName = months[expiry.toUtc().month - 1];

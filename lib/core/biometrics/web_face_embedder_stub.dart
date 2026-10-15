@@ -30,7 +30,8 @@ class ValidatedFaceFrame {
         sharpness: sharpness,
         brightness: brightness,
         faceSizeRatio: faceSizeRatio,
-      ) == null;
+      ) ==
+      null;
 }
 
 /// Stub for non-web platforms.

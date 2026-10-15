@@ -16,11 +16,8 @@ import 'package:flutter/foundation.dart';
 ///   `scripts/build_web_release.sh`)
 /// - Tests may pass [secretOverride]
 /// - Debug/profile without a define uses [bootstrapSecret]
-/// - **Flutter Web release** without a define also uses [bootstrapSecret]:
-///   dart-defines are extractable from the JS bundle, so an empty define
-///   must not blank QR Standee / check-in. Prefer injecting a long random
-///   define in production Hosting builds anyway.
-/// - **Non-web release** without a define still throws [StateError]
+/// - **Any release** (including web) without a define throws [StateError]
+///   (P0: no bootstrap HMAC in production JS bundles).
 class CheckInSessionToken {
   CheckInSessionToken._();
 
@@ -30,8 +27,7 @@ class CheckInSessionToken {
     defaultValue: '',
   );
 
-  /// Fallback integrity key for debug and for Web release when no dart-define
-  /// was baked in. Not a confidential server secret.
+  /// Fallback integrity key for **debug/profile only**. Not a production secret.
   static const bootstrapSecret = 'attendiphi-checkin-session-hmac-v1';
 
   /// Matches [scripts/build_web_release.sh] minimum length.
@@ -54,7 +50,7 @@ class CheckInSessionToken {
     if (override.isNotEmpty) return false;
     final fromDefine = dartDefineSecret.trim();
     if (fromDefine.isNotEmpty) return false;
-    return !kReleaseMode || kIsWeb;
+    return !kReleaseMode;
   }
 
   /// Resolves the HMAC key. Extracted for unit tests of release/web policy.
@@ -72,20 +68,18 @@ class CheckInSessionToken {
     }
     final defined = fromDefine.trim();
     if (defined.isNotEmpty) {
-      _assertMinSecretLength(
-        defined,
-        source: 'CHECKIN_SESSION_TOKEN_SECRET',
-      );
+      _assertMinSecretLength(defined, source: 'CHECKIN_SESSION_TOKEN_SECRET');
       return defined;
     }
-    // Web bundles already expose dart-defines; prefer working check-in over
-    // a blank QR Standee when Hosting was deployed without the define.
-    if (isRelease && !isWeb) {
+    // P0: release (web + native) must ship with an explicit secret.
+    if (isRelease) {
       throw StateError(
         'CHECKIN_SESSION_TOKEN_SECRET dart-define is required for release '
-        'builds. Pass --dart-define=CHECKIN_SESSION_TOKEN_SECRET=<secret> '
+        'builds${isWeb ? ' (including Flutter web)' : ''}. '
+        'Pass --dart-define=CHECKIN_SESSION_TOKEN_SECRET=<secret> '
         'with at least $minSecretLength characters '
-        '(see scripts/build_web_release.sh).',
+        '(see scripts/build_web_release.sh). Also set the same value in '
+        'public.app_secrets for submit_public_check_in HMAC verify.',
       );
     }
     return bootstrapSecret;
@@ -173,10 +167,7 @@ class CheckInSessionToken {
   }
 
   /// Parses and verifies a token. Throws [FormatException] when invalid.
-  static CheckInSessionClaims parse(
-    String? token, {
-    String? secretOverride,
-  }) {
+  static CheckInSessionClaims parse(String? token, {String? secretOverride}) {
     final raw = token?.trim() ?? '';
     if (!looksLikeToken(raw)) {
       throw const FormatException('Not a check-in session token');

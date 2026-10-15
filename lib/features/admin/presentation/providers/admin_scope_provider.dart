@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../domain/entities/admin_user.dart';
 import 'admin_auth_provider.dart';
 import 'admin_management_provider.dart';
@@ -21,8 +22,9 @@ class AdminScopeNotifier extends Notifier<AdminUser?> {
     // Does NOT auto-select — SA must explicitly open a workspace.
     final allAdmins = ref.watch(allAdminsStreamProvider).value;
     if (_inspectedAdminId != null && allAdmins != null) {
-      final match =
-          allAdmins.where((a) => a.id == _inspectedAdminId).firstOrNull;
+      final match = allAdmins
+          .where((a) => a.id == _inspectedAdminId)
+          .firstOrNull;
       if (match != null) return match;
     }
     // Super Admin starts with no workspace selected (shows Admins Directory only).
@@ -50,8 +52,8 @@ class AdminScopeNotifier extends Notifier<AdminUser?> {
 /// Provider for the active Admin scope.
 final activeAdminScopeProvider =
     NotifierProvider<AdminScopeNotifier, AdminUser?>(() {
-  return AdminScopeNotifier();
-});
+      return AdminScopeNotifier();
+    });
 
 /// Indicates whether the Super Admin is currently inspecting an Admin's workspace.
 final isInspectingAdminWorkspaceProvider = Provider<bool>((ref) {
@@ -59,4 +61,3 @@ final isInspectingAdminWorkspaceProvider = Provider<bool>((ref) {
   final activeScope = ref.watch(activeAdminScopeProvider);
   return isSuper && activeScope != null;
 });
-

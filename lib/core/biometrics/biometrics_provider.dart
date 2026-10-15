@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import 'cloud_face_recognition_service.dart';
 import 'face_detector_service.dart';
 import 'face_embedding_service.dart';
@@ -28,14 +29,18 @@ final faceMatchingServiceProvider = Provider<FaceMatchingService>((ref) {
 /// Provider for [CloudFaceRecognitionService] (used primarily on Web).
 final cloudFaceRecognitionServiceProvider =
     Provider<CloudFaceRecognitionService>((ref) {
-  final matchingService = ref.watch(faceMatchingServiceProvider);
-  final service = CloudFaceRecognitionService(matchingService: matchingService);
-  ref.onDispose(service.dispose);
-  return service;
-});
+      final matchingService = ref.watch(faceMatchingServiceProvider);
+      final service = CloudFaceRecognitionService(
+        matchingService: matchingService,
+      );
+      ref.onDispose(service.dispose);
+      return service;
+    });
 
 /// Provider for the abstract [FaceVerificationService].
-final faceVerificationServiceProvider = Provider<FaceVerificationService>((ref) {
+final faceVerificationServiceProvider = Provider<FaceVerificationService>((
+  ref,
+) {
   return ref.watch(cloudFaceRecognitionServiceProvider);
 });
 
@@ -48,4 +53,3 @@ final faceEnrollmentHelperProvider = Provider<FaceEnrollmentHelper>((ref) {
     embeddingService: embedding,
   );
 });
-

@@ -30,72 +30,72 @@ void main() {
     ];
 
     testWidgets(
-        'renders Admin Management and allows admin to see only admins created by himself',
-        (tester) async {
-      const currentAdminUser = AdminUser(
-        id: 'adm-omkar',
-        name: 'Omkar Anarse',
-        email: 'omkar@metaphi.com',
-        phone: '9998887776',
-        role: AdminRole.admin,
-        createdBy: 'super_admin_master',
-      );
-
-      final adminsList = [
-        const AdminUser(
-          id: 'adm-super-created',
-          name: 'Super Created Admin',
-          email: 'super_created@example.com',
-          phone: '9000000001',
+      'renders Admin Management and allows admin to see only admins created by himself',
+      (tester) async {
+        const currentAdminUser = AdminUser(
+          id: 'adm-omkar',
+          name: 'Omkar Anarse',
+          email: 'omkar@metaphi.com',
+          phone: '9998887776',
+          role: AdminRole.admin,
           createdBy: 'super_admin_master',
-        ),
-        const AdminUser(
-          id: 'adm-omkar-created',
-          name: 'Omkar Sub Admin',
-          email: 'omkar_sub@example.com',
-          phone: '9000000002',
-          createdBy: 'adm-omkar',
-        ),
-      ];
+        );
 
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            isSuperAdminProvider.overrideWithValue(false),
-            currentAdminUserProvider.overrideWithValue(currentAdminUser),
-            allAdminsStreamProvider
-                .overrideWith((ref) => Stream.value(adminsList)),
-          ],
-          child: const MaterialApp(
-            home: AdminManagementScreen(),
+        final adminsList = [
+          const AdminUser(
+            id: 'adm-super-created',
+            name: 'Super Created Admin',
+            email: 'super_created@example.com',
+            phone: '9000000001',
+            createdBy: 'super_admin_master',
           ),
-        ),
-      );
+          const AdminUser(
+            id: 'adm-omkar-created',
+            name: 'Omkar Sub Admin',
+            email: 'omkar_sub@example.com',
+            phone: '9000000002',
+            createdBy: 'adm-omkar',
+          ),
+        ];
 
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              isSuperAdminProvider.overrideWithValue(false),
+              currentAdminUserProvider.overrideWithValue(currentAdminUser),
+              allAdminsStreamProvider.overrideWith(
+                (ref) => Stream.value(adminsList),
+              ),
+            ],
+            child: const MaterialApp(home: AdminManagementScreen()),
+          ),
+        );
 
-      expect(find.text('Admin Management'), findsOneWidget);
-      expect(find.text('Create Admin'), findsWidgets);
+        await tester.pumpAndSettle();
 
-      // Can see admin created by himself
-      expect(find.text('Omkar Sub Admin'), findsOneWidget);
+        expect(find.text('Admin Management'), findsOneWidget);
+        expect(find.text('Create Admin'), findsWidgets);
 
-      // Cannot see admin created by Super Admin
-      expect(find.text('Super Created Admin'), findsNothing);
-    });
+        // Can see admin created by himself
+        expect(find.text('Omkar Sub Admin'), findsOneWidget);
 
-    testWidgets('renders Admin Management and admin table for Super Admin',
-        (tester) async {
+        // Cannot see admin created by Super Admin
+        expect(find.text('Super Created Admin'), findsNothing);
+      },
+    );
+
+    testWidgets('renders Admin Management and admin table for Super Admin', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
             isSuperAdminProvider.overrideWithValue(true),
-            allAdminsStreamProvider
-                .overrideWith((ref) => Stream.value(mockAdmins)),
+            allAdminsStreamProvider.overrideWith(
+              (ref) => Stream.value(mockAdmins),
+            ),
           ],
-          child: const MaterialApp(
-            home: AdminManagementScreen(),
-          ),
+          child: const MaterialApp(home: AdminManagementScreen()),
         ),
       );
 
@@ -106,18 +106,18 @@ void main() {
       expect(find.text('Sneha Patil'), findsOneWidget);
     });
 
-    testWidgets('clicking Create Admin opens dialog with form fields',
-        (tester) async {
+    testWidgets('clicking Create Admin opens dialog with form fields', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
             isSuperAdminProvider.overrideWithValue(true),
-            allAdminsStreamProvider
-                .overrideWith((ref) => Stream.value(mockAdmins)),
+            allAdminsStreamProvider.overrideWith(
+              (ref) => Stream.value(mockAdmins),
+            ),
           ],
-          child: const MaterialApp(
-            home: AdminManagementScreen(),
-          ),
+          child: const MaterialApp(home: AdminManagementScreen()),
         ),
       );
 
@@ -139,18 +139,18 @@ void main() {
       expect(find.textContaining('Gmail will not open'), findsNothing);
     });
 
-    testWidgets('renders action menus and info for each listed admin',
-        (tester) async {
+    testWidgets('renders action menus and info for each listed admin', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
             isSuperAdminProvider.overrideWithValue(true),
-            allAdminsStreamProvider
-                .overrideWith((ref) => Stream.value(mockAdmins)),
+            allAdminsStreamProvider.overrideWith(
+              (ref) => Stream.value(mockAdmins),
+            ),
           ],
-          child: const MaterialApp(
-            home: AdminManagementScreen(),
-          ),
+          child: const MaterialApp(home: AdminManagementScreen()),
         ),
       );
 
@@ -160,41 +160,43 @@ void main() {
       expect(find.byIcon(Icons.more_vert_rounded), findsNWidgets(2));
     });
 
-    testWidgets('renders persistent search input and table without stat cards',
-        (tester) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            isSuperAdminProvider.overrideWithValue(true),
-            allAdminsStreamProvider
-                .overrideWith((ref) => Stream.value(mockAdmins)),
-          ],
-          child: const MaterialApp(
-            home: AdminManagementScreen(),
+    testWidgets(
+      'renders persistent search input and table without stat cards',
+      (tester) async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              isSuperAdminProvider.overrideWithValue(true),
+              allAdminsStreamProvider.overrideWith(
+                (ref) => Stream.value(mockAdmins),
+              ),
+            ],
+            child: const MaterialApp(home: AdminManagementScreen()),
           ),
-        ),
-      );
+        );
 
-      await tester.pumpAndSettle();
+        await tester.pumpAndSettle();
 
-      expect(find.text('Total Admins'), findsNothing);
-      expect(find.text('Active Admins'), findsNothing);
-      expect(find.text('Inactive Admins'), findsNothing);
-      expect(find.text('SUPER ADMIN ONLY'), findsNothing);
+        expect(find.text('Total Admins'), findsNothing);
+        expect(find.text('Active Admins'), findsNothing);
+        expect(find.text('Inactive Admins'), findsNothing);
+        expect(find.text('SUPER ADMIN ONLY'), findsNothing);
 
-      expect(find.byIcon(Icons.search), findsOneWidget);
-      expect(find.text('Search admin by name, email...'), findsOneWidget);
+        expect(find.byIcon(Icons.search), findsOneWidget);
+        expect(find.text('Search admin by name, email...'), findsOneWidget);
 
-      expect(find.text('ADMIN (2)'), findsOneWidget);
-      expect(find.text('EMAIL'), findsOneWidget);
-      expect(find.text('PHONE'), findsOneWidget);
-      expect(find.text('STATUS'), findsOneWidget);
-      expect(find.text('CREATED ON'), findsOneWidget);
-      expect(find.text('ACTIONS'), findsOneWidget);
-    });
+        expect(find.text('ADMIN (2)'), findsOneWidget);
+        expect(find.text('EMAIL'), findsOneWidget);
+        expect(find.text('PHONE'), findsOneWidget);
+        expect(find.text('STATUS'), findsOneWidget);
+        expect(find.text('CREATED ON'), findsOneWidget);
+        expect(find.text('ACTIONS'), findsOneWidget);
+      },
+    );
 
-    testWidgets('does not list Super Admin profiles in the admin table',
-        (tester) async {
+    testWidgets('does not list Super Admin profiles in the admin table', (
+      tester,
+    ) async {
       const superAdmin = AdminUser(
         id: 'uid-super',
         name: 'Super Admin',
@@ -210,12 +212,11 @@ void main() {
           overrides: [
             isSuperAdminProvider.overrideWithValue(true),
             currentAdminUserProvider.overrideWithValue(superAdmin),
-            allAdminsStreamProvider
-                .overrideWith((ref) => Stream.value(listWithSuper)),
+            allAdminsStreamProvider.overrideWith(
+              (ref) => Stream.value(listWithSuper),
+            ),
           ],
-          child: const MaterialApp(
-            home: AdminManagementScreen(),
-          ),
+          child: const MaterialApp(home: AdminManagementScreen()),
         ),
       );
 

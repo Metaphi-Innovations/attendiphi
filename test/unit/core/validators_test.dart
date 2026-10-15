@@ -32,18 +32,33 @@ void main() {
 
   group('Validators - validatePhone', () {
     test('returns error when phone is null or empty', () {
-      expect(Validators.validatePhone(null), AppStrings.validationPhoneRequired);
+      expect(
+        Validators.validatePhone(null),
+        AppStrings.validationPhoneRequired,
+      );
       expect(Validators.validatePhone(''), AppStrings.validationPhoneRequired);
     });
 
     test('returns error when phone number has incorrect length', () {
-      expect(Validators.validatePhone('98765'), AppStrings.validationPhoneInvalid);
-      expect(Validators.validatePhone('9876543210123'), AppStrings.validationPhoneInvalid);
+      expect(
+        Validators.validatePhone('98765'),
+        AppStrings.validationPhoneInvalid,
+      );
+      expect(
+        Validators.validatePhone('9876543210123'),
+        AppStrings.validationPhoneInvalid,
+      );
     });
 
     test('returns error for invalid starting digit in India (not 6-9)', () {
-      expect(Validators.validatePhone('1234567890'), AppStrings.validationPhoneInvalid);
-      expect(Validators.validatePhone('5555555555'), AppStrings.validationPhoneInvalid);
+      expect(
+        Validators.validatePhone('1234567890'),
+        AppStrings.validationPhoneInvalid,
+      );
+      expect(
+        Validators.validatePhone('5555555555'),
+        AppStrings.validationPhoneInvalid,
+      );
     });
 
     test('returns null for valid Indian phone numbers', () {
@@ -66,9 +81,18 @@ void main() {
     });
 
     test('formatPhoneWithCountryCode formats with +91', () {
-      expect(Validators.formatPhoneWithCountryCode('9876543210'), '+919876543210');
-      expect(Validators.formatPhoneWithCountryCode('09876543210'), '+919876543210');
-      expect(Validators.formatPhoneWithCountryCode('+91 98765-43210'), '+919876543210');
+      expect(
+        Validators.formatPhoneWithCountryCode('9876543210'),
+        '+919876543210',
+      );
+      expect(
+        Validators.formatPhoneWithCountryCode('09876543210'),
+        '+919876543210',
+      );
+      expect(
+        Validators.formatPhoneWithCountryCode('+91 98765-43210'),
+        '+919876543210',
+      );
     });
 
     test('maskPhone masks middle digits for privacy', () {

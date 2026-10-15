@@ -39,10 +39,7 @@ class CheckInFormNotifier extends Notifier<CheckInFormState> {
 
   void setSubstituteForMember(String? member, {String? memberId}) {
     if (member == null || member.trim().isEmpty) {
-      state = state.copyWith(
-        clearSubstituteFor: true,
-        clearError: true,
-      );
+      state = state.copyWith(clearSubstituteFor: true, clearError: true);
       return;
     }
     state = state.copyWith(
@@ -97,6 +94,7 @@ class CheckInFormNotifier extends Notifier<CheckInFormState> {
     required LocationConfig location,
     required ProximityResult proximityResult,
     String? sessionDateStr,
+    String? sessionToken,
   }) async {
     // Disable Check-In before any async device probes (H4 double-submit).
     if (state.isSubmitting) return false;
@@ -111,58 +109,41 @@ class CheckInFormNotifier extends Notifier<CheckInFormState> {
     final restrictionsEnabled = ref.read(restrictionsEnabledProvider);
 
     try {
-      // One device = one check-in only while production restrictions are ON.
-      if (restrictionsEnabled) {
-        final existingSubmission = await deviceService.getSubmissionForSession(
-          sessionDateStr: sessionDateStr,
-          locationId: location.id,
-          probeServer: true,
-        );
-
-        if (existingSubmission != null) {
-          state = state.copyWith(
-            isSubmitting: false,
-            error: DuplicateCheckInException(
-              userMessage:
-                  'This device has already recorded attendance for today.',
-              existingSubmissionData: existingSubmission.toMap(),
-            ),
-            submissionResult: existingSubmission,
-          );
-          return false;
-        }
-      }
+      // Never block submit because this browser/tablet already checked someone
+      // else in. Shared venue devices are expected; uniqueness is per phone /
+      // member on the server (DuplicateCheckInException from SubmitCheckIn).
 
       final deviceId = await deviceService.getOrCreateDeviceId();
       final submitUseCase = ref.read(submitCheckInUseCaseProvider);
-      final submission = await submitUseCase(
-        name: state.name,
-        phone: state.phone,
-        type: state.type!,
-        location: location,
-        proximityResult: proximityResult,
-        email: state.email,
-        substituteForMember: state.substituteForMember,
-        substituteForMemberId: state.substituteForMemberId,
-        companyName: state.companyName,
-        category: state.category,
-        invitedByMember: state.invitedByMember,
-        photoBase64: state.photoBase64,
-        adminId: state.adminId,
-        sessionDateStr: sessionDateStr,
-        deviceId: deviceId,
-        recognizedMemberId: state.recognizedMemberId,
-        restrictionsEnabled: restrictionsEnabled,
-      ).timeout(
-        const Duration(seconds: 12),
-        onTimeout: () {
-          throw const ServerException(
-            userMessage:
-                'Network is slow. Your face was verified — tap Member to try saving again.',
-            technicalMessage: 'SubmitCheckIn timed out after 12s',
+      final submission =
+          await submitUseCase(
+            name: state.name,
+            phone: state.phone,
+            type: state.type!,
+            location: location,
+            proximityResult: proximityResult,
+            email: state.email,
+            substituteForMember: state.substituteForMember,
+            substituteForMemberId: state.substituteForMemberId,
+            companyName: state.companyName,
+            category: state.category,
+            invitedByMember: state.invitedByMember,
+            photoBase64: state.photoBase64,
+            adminId: state.adminId,
+            sessionDateStr: sessionDateStr,
+            sessionToken: sessionToken,
+            deviceId: deviceId,
+            recognizedMemberId: state.recognizedMemberId,
+            restrictionsEnabled: restrictionsEnabled,
+          ).timeout(
+            const Duration(seconds: 12),
+            onTimeout: () {
+              throw const ServerException(
+                userMessage: 'Network is slow. Your face was verified — tap Member to try saving again.',
+                technicalMessage: 'SubmitCheckIn timed out after 12s',
+              );
+            },
           );
-        },
-      );
 
       // 2. Persist submission locally on device to prevent future duplicate submissions
       await deviceService.recordSubmission(
@@ -170,10 +151,7 @@ class CheckInFormNotifier extends Notifier<CheckInFormState> {
         submission: submission,
       );
 
-      state = state.copyWith(
-        isSubmitting: false,
-        submissionResult: submission,
-      );
+      state = state.copyWith(isSubmitting: false, submissionResult: submission);
 
       AppLogger.info(
         'Check-in success for ${submission.userName} (${submission.type.displayName}) at ${submission.locationName}',
@@ -222,9 +200,8 @@ class CheckInFormNotifier extends Notifier<CheckInFormState> {
   }
 }
 
-
 /// Provider for [CheckInFormNotifier].
 final checkInFormProvider =
     NotifierProvider<CheckInFormNotifier, CheckInFormState>(() {
-  return CheckInFormNotifier();
-});
+      return CheckInFormNotifier();
+    });

@@ -15,6 +15,7 @@ class RouteNames {
   static const adminAttendanceOverview = '/attendance-overview';
   static const adminVisitors = '/visitors';
   static const adminMembers = '/members';
+  static const adminSubstitutes = '/substitutes';
   static const venueQr = '/qr-standee';
   static const adminAdmins = '/admins';
 
@@ -26,14 +27,21 @@ class RouteNames {
       '/attendiphi-by-metaphi/attendance-overview';
   static const legacyAttendiphiVisitors = '/attendiphi-by-metaphi/visitors';
   static const legacyAttendiphiMembers = '/attendiphi-by-metaphi/members';
+  static const legacyAttendiphiSubstitutes =
+      '/attendiphi-by-metaphi/substitutes';
   static const legacyAttendiphiVenueQr = '/attendiphi-by-metaphi/qr-standee';
   static const legacyAttendiphiAdmins = '/attendiphi-by-metaphi/admins';
   static const legacyAdminDashboard = '/admin-dashboard';
   static const legacyAdminAttendanceOverview = '/admin-attendance-overview';
   static const legacyAdminVisitors = '/admin-visitors';
   static const legacyAdminMembers = '/admin-members';
+  static const legacyAdminSubstitutes = '/admin-substitutes';
   static const legacyVenueQr = '/venue-qr';
   static const legacyAdminAdmins = '/admin-admins';
+
+  /// Detail path for a substitute identity key (`p:…` / `n:…` / `id:…`).
+  static String substituteDetailPath(String identityKey) =>
+      '$adminSubstitutes/${Uri.encodeComponent(identityKey)}';
 
   // ── Mobile Check-In Flow ──────────────────────────────────────────────
   static const qrScanner = '/scanner';

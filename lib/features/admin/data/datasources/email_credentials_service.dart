@@ -23,39 +23,37 @@ class SendCredentialsResult {
 /// FLOW 1 — New Admin credentials via Supabase Edge Function → SMTP.
 class EmailCredentialsService {
   EmailCredentialsService({
-    this.auth,
-    this.firestore,
     this.sendWelcomeEmailFn,
     this.emailService,
     this.sendFn,
   });
 
-  final Object? auth;
-  final Object? firestore;
   final Future<void> Function({
     required AdminUser admin,
     required String password,
     required String portalUrl,
-  })? sendWelcomeEmailFn;
+  })?
+  sendWelcomeEmailFn;
   final AttendiphiEmailService? emailService;
   final Future<AttendiphiEmailResult> Function({
     required AdminUser admin,
     required String password,
     required String portalUrl,
-  })? sendFn;
+  })?
+  sendFn;
 
   static const String defaultPortalUrl = '${AppUrl.productionOrigin}/';
 
-  /// Prefer the host the Super Admin is currently using (web.app or metaphi.in).
-  static String resolvePortalUrl() => '${AppUrl.portalOrigin}/';
+  /// Production portal — welcome emails must not point at localhost.
+  static String resolvePortalUrl() => '${AppUrl.productionOrigin}/';
   static const String credentialsSubject =
-      'Attendiphi - Your QR Check-in Admin Login Credentials';
+      'Attendiphi - Set up your admin login';
 
   /// Public logo used in HTML email headers (must be hosted, not a local path).
   static const String credentialsLogoUrl =
-      'https://attendiphi-by-metaphi.web.app/email/attendiphi_logo.png';
+      'https://attendiphi.metaphi.in/email/attendiphi_logo.png';
 
-  /// Deletes the admin user from Firebase Authentication.
+  /// Deletes the admin user from Supabase Authentication.
   Future<({bool success, String userMessage})> deleteAuthAdmin({
     required String uid,
     String? email,
@@ -64,29 +62,48 @@ class EmailCredentialsService {
     return service.deleteAuthAdmin(uid: uid, email: email);
   }
 
+  /// Creates/updates Supabase Auth for an admin and links `auth_user_id`.
+  Future<({bool success, String userMessage, String authUserId})>
+  provisionAuthAdmin({
+    required String email,
+    required String password,
+    String? adminId,
+  }) async {
+    final service = emailService ?? AttendiphiEmailService.instance;
+    return service.provisionAuthAdmin(
+      email: email,
+      password: password,
+      adminId: adminId,
+    );
+  }
+
+  /// Plaintext template for tests / logs — never include passwords (P2 invite link).
   static String generatePlainEmailBody({
     required String name,
     required String email,
     required String password,
     required String portalUrl,
     String roleLabel = 'Admin',
+    String? actionLink,
   }) {
+    // [password] retained in signature for call-site compatibility; unused.
+    final _ = password;
+    final linkLine = (actionLink != null && actionLink.trim().isNotEmpty)
+        ? 'Set your password: ${actionLink.trim()}\n'
+        : 'Open the Set password button in the HTML email to choose a password.\n';
     return '''Hello $name,
 
-You have been granted Administrator access to the QR Check-in & Attendance Portal.
+You have been granted $roleLabel access to the Attendiphi QR Check-in portal.
 
-Your Login Credentials:
-────────────────────────────────────
-• Portal URL: $portalUrl
-• Login Email id: $email
-• Password: $password
-• Access Role: $roleLabel
-────────────────────────────────────
+$linkLine
+Portal URL: $portalUrl
+Login Email: $email
+Access Role: $roleLabel
 
-Please sign in using the Portal URL above and keep your login credentials secure.
+We never email passwords in plaintext.
 
 Best regards,
-Super Admin
+Attendiphi Super Admin
 ''';
   }
 
@@ -99,7 +116,8 @@ Super Admin
     String portalUrl = defaultPortalUrl,
     void Function(String phase)? onProgress,
   }) async {
-    final resolvedPortal = portalUrl.trim().isEmpty || portalUrl == defaultPortalUrl
+    final resolvedPortal =
+        portalUrl.trim().isEmpty || portalUrl == defaultPortalUrl
         ? resolvePortalUrl()
         : portalUrl;
     final recipient = admin.email.trim().toLowerCase();
@@ -139,12 +157,12 @@ Super Admin
               portalUrl: resolvedPortal,
             )
           : await (emailService ?? AttendiphiEmailService.instance)
-              .sendAdminWelcome(
-              admin: admin,
-              password: password,
-              subject: credentialsSubject,
-              portalUrl: resolvedPortal,
-            );
+                .sendAdminWelcome(
+                  admin: admin,
+                  password: password,
+                  subject: credentialsSubject,
+                  portalUrl: resolvedPortal,
+                );
 
       if (!result.success) {
         AppLogger.warning(
@@ -171,10 +189,7 @@ Super Admin
         'SEND MAIL FAILURE recipient: $recipient code: ${e.code}',
         tag: 'EmailCredentialsService',
       );
-      return SendCredentialsResult(
-        success: false,
-        userMessage: e.userMessage,
-      );
+      return SendCredentialsResult(success: false, userMessage: e.userMessage);
     } catch (_) {
       AppLogger.warning(
         'SEND MAIL FAILURE recipient: $recipient',

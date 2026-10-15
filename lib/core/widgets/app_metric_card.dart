@@ -105,8 +105,8 @@ class AppMetricCard extends StatelessWidget {
                       color: isCompact
                           ? accentColor
                           : (isDark
-                              ? const Color(0xFF64748B)
-                              : const Color(0xFF94A3B8)),
+                                ? const Color(0xFF64748B)
+                                : const Color(0xFF94A3B8)),
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

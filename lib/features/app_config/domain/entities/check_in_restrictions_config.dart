@@ -29,8 +29,7 @@ class CheckInRestrictionsConfig {
     String? updatedByEmail,
   }) {
     return CheckInRestrictionsConfig(
-      restrictionsEnabled:
-          restrictionsEnabled ?? this.restrictionsEnabled,
+      restrictionsEnabled: restrictionsEnabled ?? this.restrictionsEnabled,
       updatedAt: updatedAt ?? this.updatedAt,
       updatedBy: updatedBy ?? this.updatedBy,
       updatedByEmail: updatedByEmail ?? this.updatedByEmail,

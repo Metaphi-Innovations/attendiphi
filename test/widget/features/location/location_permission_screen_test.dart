@@ -18,8 +18,7 @@ void main() {
     latitude: 18.9888622,
     longitude: 72.8152475,
     radiusMeters: 500.0,
-    address:
-        'Jade Luxury Banquets, Nehru Centre, Dr Annie Besant Rd, Worli, Mumbai, Maharashtra 400018',
+    address: 'Jade Luxury Banquets, Nehru Centre, Dr Annie Besant Rd, Worli, Mumbai, Maharashtra 400018',
   );
 
   Widget createWidgetUnderTest({
@@ -31,9 +30,7 @@ void main() {
       overrides: [
         checkInRestrictionsConfigProvider.overrideWith(
           (ref) => Stream.value(
-            CheckInRestrictionsConfig(
-              restrictionsEnabled: restrictionsEnabled,
-            ),
+            CheckInRestrictionsConfig(restrictionsEnabled: restrictionsEnabled),
           ),
         ),
       ],
@@ -50,8 +47,9 @@ void main() {
   }
 
   group('LocationPermissionScreen Date Validation Widget Tests', () {
-    testWidgets('shows THURSDAY ONLY notice when opened on a non-Thursday',
-        (tester) async {
+    testWidgets('shows THURSDAY ONLY notice when opened on a non-Thursday', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         createWidgetUnderTest(
           sessionDateStr: null,
@@ -66,8 +64,9 @@ void main() {
       expect(find.text('Allowed Perimeter:'), findsNothing);
     });
 
-    testWidgets('shows SESSION EXPIRED when scanned QR date has passed',
-        (tester) async {
+    testWidgets('shows SESSION EXPIRED when scanned QR date has passed', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         createWidgetUnderTest(sessionDateStr: '2026-08-27'),
       );
@@ -81,51 +80,58 @@ void main() {
       expect(find.text('Allowed Perimeter:'), findsNothing);
     });
 
-    testWidgets('activates session and initiates location check for today Thursday',
-        (tester) async {
-      await tester.pumpWidget(
-        createWidgetUnderTest(sessionDateStr: '2026-09-03'),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 200));
+    testWidgets(
+      'activates session and initiates location check for today Thursday',
+      (tester) async {
+        await tester.pumpWidget(
+          createWidgetUnderTest(sessionDateStr: '2026-09-03'),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 200));
 
-      expect(find.text('SESSION EXPIRED'), findsNothing);
-      expect(find.text('UPCOMING SESSION'), findsNothing);
-      expect(find.text('Allowed Perimeter:'), findsOneWidget);
-    });
+        expect(find.text('SESSION EXPIRED'), findsNothing);
+        expect(find.text('UPCOMING SESSION'), findsNothing);
+        expect(find.text('Allowed Perimeter:'), findsOneWidget);
+      },
+    );
 
-    testWidgets('shows SESSION EXPIRED for past Thursday QR when today is later',
-        (tester) async {
-      await tester.pumpWidget(
-        createWidgetUnderTest(
-          sessionDateStr: '2026-09-03',
-          nowProvider: () => DateTime(2026, 9, 24, 10, 0),
-        ),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 200));
+    testWidgets(
+      'shows SESSION EXPIRED for past Thursday QR when today is later',
+      (tester) async {
+        await tester.pumpWidget(
+          createWidgetUnderTest(
+            sessionDateStr: '2026-09-03',
+            nowProvider: () => DateTime(2026, 9, 24, 10, 0),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 200));
 
-      expect(find.text('SESSION EXPIRED'), findsOneWidget);
-      expect(find.text('QR Standee Expired'), findsOneWidget);
-      expect(find.text('Allowed Perimeter:'), findsNothing);
-    });
+        expect(find.text('SESSION EXPIRED'), findsOneWidget);
+        expect(find.text('QR Standee Expired'), findsOneWidget);
+        expect(find.text('Allowed Perimeter:'), findsNothing);
+      },
+    );
 
-    testWidgets('shows UPCOMING SESSION when scanned QR date is in the future',
-        (tester) async {
-      await tester.pumpWidget(
-        createWidgetUnderTest(sessionDateStr: '2027-09-24'),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 200));
+    testWidgets(
+      'shows UPCOMING SESSION when scanned QR date is in the future',
+      (tester) async {
+        await tester.pumpWidget(
+          createWidgetUnderTest(sessionDateStr: '2027-09-24'),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 200));
 
-      expect(find.text('UPCOMING SESSION'), findsOneWidget);
-      expect(find.text('Session Not Active Yet'), findsOneWidget);
-      expect(find.text('Scan Another QR'), findsNothing);
-      expect(find.text('Allowed Perimeter:'), findsNothing);
-    });
+        expect(find.text('UPCOMING SESSION'), findsOneWidget);
+        expect(find.text('Session Not Active Yet'), findsOneWidget);
+        expect(find.text('Scan Another QR'), findsNothing);
+        expect(find.text('Allowed Perimeter:'), findsNothing);
+      },
+    );
 
-    testWidgets('skips Thursday/expired gates when restrictions are OFF',
-        (tester) async {
+    testWidgets('skips Thursday/expired gates when restrictions are OFF', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         createWidgetUnderTest(
           sessionDateStr: '2026-08-27',
@@ -143,8 +149,9 @@ void main() {
       expect(find.text('Outside Allowed Radius'), findsNothing);
     });
 
-    testWidgets('allows upcoming QR date when restrictions are OFF',
-        (tester) async {
+    testWidgets('allows upcoming QR date when restrictions are OFF', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         createWidgetUnderTest(
           sessionDateStr: '2026-10-15',

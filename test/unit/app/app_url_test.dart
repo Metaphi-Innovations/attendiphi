@@ -3,73 +3,58 @@ import 'package:qr_checkin/app/router/app_url.dart';
 import 'package:qr_checkin/app/router/route_names.dart';
 
 void main() {
-  test('password reset action handler is the Flutter /admin-reset-password URL',
-      () {
+  test('password reset action handler uses branded production origin', () {
     expect(
       AppUrl.passwordResetActionHandler,
-      'https://attendiphi-by-metaphi.web.app/admin-reset-password',
+      'https://attendiphi.metaphi.in/admin-reset-password',
     );
-    expect(AppUrl.passwordResetActionHandler.contains('/__/auth/action'), isFalse);
+    expect(
+      AppUrl.passwordResetActionHandler.contains('/__/auth/action'),
+      isFalse,
+    );
   });
 
-  test('both production hosts are recognized', () {
+  test('production origin and allowed hosts', () {
+    expect(AppUrl.productionOrigin, 'https://attendiphi.metaphi.in');
     expect(
       AppUrl.productionOrigins,
       containsAll([
-        'https://attendiphi-by-metaphi.web.app',
         'https://attendiphi.metaphi.in',
+        'http://localhost',
+        'http://127.0.0.1',
       ]),
     );
-    expect(AppUrl.isAllowedHost('attendiphi-by-metaphi.web.app'), isTrue);
     expect(AppUrl.isAllowedHost('attendiphi.metaphi.in'), isTrue);
+    expect(AppUrl.isAllowedHost('attendiphi-by-metaphi.web.app'), isFalse);
   });
 
-  test('detects Firebase resetPassword mode', () {
-    expect(AppUrl.isFirebasePasswordResetMode('resetPassword'), isTrue);
-    expect(AppUrl.isFirebasePasswordResetMode('recoverEmail'), isFalse);
-    expect(AppUrl.isFirebasePasswordResetMode(null), isFalse);
-  });
-
-  test('rewrites Firebase hosted oob links onto /admin-reset-password', () {
-    const firebaseLink =
-        'https://qr-checkin-dev.firebaseapp.com/__/auth/action?mode=resetPassword&oobCode=OOB123&apiKey=AIzaPublic&lang=en';
-    final landing = AppUrl.flutterResetUrlFromFirebaseOobLink(firebaseLink);
+  test('passwordResetLanding builds query on admin-reset-password', () {
+    final landing = AppUrl.passwordResetLanding(
+      oobCode: 'OOB123',
+      apiKey: 'public-anon',
+    );
     expect(landing.startsWith(AppUrl.passwordResetActionHandler), isTrue);
-    expect(landing.contains('mode=resetPassword'), isTrue);
     expect(landing.contains('oobCode=OOB123'), isTrue);
-    expect(landing.contains('apiKey=AIzaPublic'), isTrue);
+    expect(landing.contains('apiKey=public-anon'), isTrue);
     expect(landing.contains('/__/auth/action'), isFalse);
   });
 
-  test('password reset landing requires oobCode', () {
-    expect(
-      () => AppUrl.flutterResetUrlFromFirebaseOobLink(
-        'https://qr-checkin-dev.firebaseapp.com/__/auth/action?mode=resetPassword',
-      ),
-      throwsA(isA<FormatException>()),
-    );
-  });
-
-  test('builds public URLs without a hash fragment', () {
-    final url = AppUrl.public(
-      path: RouteNames.adminMembers,
-    );
-    expect(url.contains('#'), isFalse);
-    expect(url.endsWith('/members'), isTrue);
-  });
-
-  test('builds check-in URLs with query parameters and no hash', () {
-    final url = AppUrl.public(
+  test('checkInPublic always uses production origin', () {
+    final url = AppUrl.checkInPublic(
       path: RouteNames.locationPermission,
-      queryParameters: {
-        'date': '2026-09-03',
-        'locationId': 'location_x',
-      },
+      queryParameters: {'date': '2026-09-03', 'locationId': 'location_x'},
     );
+    expect(url.startsWith('https://attendiphi.metaphi.in'), isTrue);
     expect(url.contains('#'), isFalse);
     expect(url, contains('/checkin-permission?'));
     expect(url, contains('date=2026-09-03'));
     expect(url, contains('locationId=location_x'));
+  });
+
+  test('builds public URLs without a hash fragment', () {
+    final url = AppUrl.public(path: RouteNames.adminMembers);
+    expect(url.contains('#'), isFalse);
+    expect(url.endsWith('/members'), isTrue);
   });
 
   test('check-in result path carries memberId instead of a name', () {

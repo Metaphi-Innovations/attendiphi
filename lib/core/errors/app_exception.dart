@@ -31,8 +31,7 @@ sealed class AppException implements Exception {
 /// Location permission was denied by the user.
 class LocationPermissionDeniedException extends AppException {
   const LocationPermissionDeniedException({
-    super.userMessage =
-        'Location was denied. Tap Allow Location to try again — you need it to verify you are at the venue.',
+    super.userMessage = 'Location was denied. Tap Allow Location to try again — you need it to verify you are at the venue.',
     super.technicalMessage = 'Location permission denied by user.',
     super.originalError,
     super.stackTrace,
@@ -42,8 +41,7 @@ class LocationPermissionDeniedException extends AppException {
 /// Location permission was permanently denied (requires settings).
 class LocationPermissionPermanentlyDeniedException extends AppException {
   const LocationPermissionPermanentlyDeniedException({
-    super.userMessage =
-        'Location is blocked for this site/app. Enable it, then tap Allow Location to continue check-in.',
+    super.userMessage = 'Location is blocked for this site/app. Enable it, then tap Allow Location to continue check-in.',
     super.technicalMessage =
         'Location permission permanently denied. Requires settings change.',
     super.originalError,
@@ -65,8 +63,7 @@ class LocationServiceDisabledException extends AppException {
 /// Unable to obtain a GPS position.
 class LocationUnavailableException extends AppException {
   const LocationUnavailableException({
-    super.userMessage =
-        'Unable to determine your location. Please check your GPS and try again.',
+    super.userMessage = 'Unable to determine your location. Please check your GPS and try again.',
     super.technicalMessage = 'GPS position unavailable.',
     super.originalError,
     super.stackTrace,
@@ -76,8 +73,7 @@ class LocationUnavailableException extends AppException {
 /// GPS location request timed out.
 class LocationTimeoutException extends AppException {
   const LocationTimeoutException({
-    super.userMessage =
-        'Unable to determine your location. Please check your GPS and try again.',
+    super.userMessage = 'Unable to determine your location. Please check your GPS and try again.',
     super.technicalMessage = 'Location request timed out.',
     super.originalError,
     super.stackTrace,
@@ -95,9 +91,9 @@ class LocationAccuracyTooLowException extends AppException {
     super.originalError,
     super.stackTrace,
   }) : super(
-          technicalMessage:
-              technicalMessage ?? 'GPS accuracy too low: ${accuracy}m.',
-        );
+         technicalMessage:
+             technicalMessage ?? 'GPS accuracy too low: ${accuracy}m.',
+       );
 }
 
 // ── QR Code ───────────────────────────────────────────────────────────────
@@ -123,12 +119,11 @@ class MalformedQrPayloadException extends AppException {
   });
 }
 
-/// The locationId from the QR code was not found in Firestore.
+/// The locationId from the QR code was not found.
 class LocationNotFoundException extends AppException {
   const LocationNotFoundException({
-    super.userMessage =
-        'This check-in location was not found. Please contact your administrator.',
-    super.technicalMessage = 'Location not found in Firestore.',
+    super.userMessage = 'This check-in location was not found. Please contact your administrator.',
+    super.technicalMessage = 'Location not found.',
     super.originalError,
     super.stackTrace,
   });
@@ -156,14 +151,16 @@ class OutsideAllowedRadiusException extends AppException {
     super.originalError,
     super.stackTrace,
   }) : super(
-          userMessage: userMessage ??
-              'You are approximately ${distanceMeters.round()} meters away '
-                  'from the check-in location.\n\n'
-                  'Please move closer and try again.',
-          technicalMessage: technicalMessage ??
-              'User is ${distanceMeters.round()}m away, '
-                  'allowed radius is ${allowedRadiusMeters}m.',
-        );
+         userMessage:
+             userMessage ??
+             'You are approximately ${distanceMeters.round()} meters away '
+                 'from the check-in location.\n\n'
+                 'Please move closer and try again.',
+         technicalMessage:
+             technicalMessage ??
+             'User is ${distanceMeters.round()}m away, '
+                 'allowed radius is ${allowedRadiusMeters}m.',
+       );
 
   final double distanceMeters;
   final double allowedRadiusMeters;
@@ -196,8 +193,7 @@ class CheckInSubmissionFailedException extends AppException {
 /// Substitute check-in is missing a face photo.
 class MissingSubstitutePhotoException extends AppException {
   const MissingSubstitutePhotoException({
-    super.userMessage =
-        'A face photo is required for substitute check-in.',
+    super.userMessage = 'A face photo is required for substitute check-in.',
     super.technicalMessage = 'Substitute check-in missing photo.',
     super.originalError,
     super.stackTrace,
@@ -227,11 +223,11 @@ class PhotoCaptureFailedException extends AppException {
   });
 }
 
-/// Photo upload to Firebase Storage failed.
+/// Photo upload to storage failed.
 class PhotoUploadFailedException extends AppException {
   const PhotoUploadFailedException({
     super.userMessage = 'Photo upload failed. Please try again.',
-    super.technicalMessage = 'Photo upload to Firebase Storage failed.',
+    super.technicalMessage = 'Photo upload to storage failed.',
     super.originalError,
     super.stackTrace,
   });

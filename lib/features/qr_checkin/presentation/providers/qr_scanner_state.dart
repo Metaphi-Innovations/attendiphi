@@ -21,10 +21,7 @@ class QrScannerProcessing extends QrScannerState {
 
 /// QR payload validated and location verified active in Firestore.
 class QrScannerSuccess extends QrScannerState {
-  const QrScannerSuccess({
-    required this.payload,
-    required this.location,
-  });
+  const QrScannerSuccess({required this.payload, required this.location});
 
   final QrPayload payload;
   final LocationConfig location;
@@ -32,10 +29,7 @@ class QrScannerSuccess extends QrScannerState {
 
 /// QR scan or location verification failed.
 class QrScannerError extends QrScannerState {
-  const QrScannerError({
-    required this.exception,
-    this.rawCode,
-  });
+  const QrScannerError({required this.exception, this.rawCode});
 
   final AppException exception;
   final String? rawCode;

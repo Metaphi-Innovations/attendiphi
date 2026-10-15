@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'dart:ui';
+
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
@@ -32,8 +33,10 @@ class FaceDetectorService {
   void _initDetector() {
     if (kIsWeb) return;
     final options = FaceDetectorOptions(
-      enableLandmarks: true, // Extract eyes, nose, mouth landmarks for 2D facial alignment
-      enableClassification: true, // Needed for eye open and smile probability (liveness)
+      enableLandmarks:
+          true, // Extract eyes, nose, mouth landmarks for 2D facial alignment
+      enableClassification:
+          true, // Needed for eye open and smile probability (liveness)
       enableTracking: true,
       performanceMode: FaceDetectorMode.accurate,
       minFaceSize: 0.15,
@@ -108,9 +111,12 @@ class FaceDetectorService {
     }
 
     // 2. Check bounding box size if preview size is known
-    if (previewSize != null && previewSize.width > 0 && previewSize.height > 0) {
+    if (previewSize != null &&
+        previewSize.width > 0 &&
+        previewSize.height > 0) {
       final box = face.boundingBox;
-      final faceRatio = (box.width * box.height) / (previewSize.width * previewSize.height);
+      final faceRatio =
+          (box.width * box.height) / (previewSize.width * previewSize.height);
       if (faceRatio < 0.04) {
         return const FaceValidationResult(
           isValid: false,

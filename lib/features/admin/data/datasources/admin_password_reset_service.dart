@@ -1,12 +1,11 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../../core/constants/app_constants.dart';
+import '../../../../app/router/app_url.dart';
 import '../../../../core/logger/app_logger.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../services/attendiphi_email_service.dart';
 import '../../domain/admin_password_hasher.dart';
+import 'supabase_admin_remote_data_source.dart';
 
 class PasswordResetRequestResult {
   const PasswordResetRequestResult({
@@ -37,32 +36,35 @@ class PasswordResetCompleteResult {
   final String userMessage;
 }
 
-/// Unauthenticated Forgot Password: Flutter → Supabase Edge Function →
-/// Firebase Admin oob link → SMTP. Firebase Auth remains the password store.
+/// Forgot Password via Edge Function (Gmail SMTP) + Supabase recovery link.
+///
+/// The Edge Function creates an Auth recovery `action_link` and emails it from
+/// Attendiphi mail. Completing the reset uses the recovery session with
+/// `updateUser`.
 class AdminPasswordResetService {
   AdminPasswordResetService({
-    this.auth,
-    this.firestore,
-    this.emailService,
     this.sendPasswordResetEmailFn,
-    this.verifyPasswordResetCodeFn,
-    this.confirmPasswordResetFn,
+    this.currentSessionFn,
+    this.updatePasswordFn,
+    this.emailService,
   });
-
-  final FirebaseAuth? auth;
-  final FirebaseFirestore? firestore;
-  final AttendiphiEmailService? emailService;
 
   /// Test hook for the unauthenticated reset-mail request.
   final Future<void> Function(String email)? sendPasswordResetEmailFn;
-  final Future<String> Function(String code)? verifyPasswordResetCodeFn;
-  final Future<void> Function({
-    required String code,
-    required String newPassword,
-  })? confirmPasswordResetFn;
+
+  /// Test hook for reading the current (recovery) session.
+  final Session? Function()? currentSessionFn;
+
+  /// Test hook for applying the new password.
+  final Future<void> Function(String newPassword)? updatePasswordFn;
+
+  final AttendiphiEmailService? emailService;
 
   static const genericAcceptedMessage =
       'If an account exists for this email, a password reset link has been sent.';
+
+  static const _requestNewLinkMessage =
+      'This password reset link is no longer valid. Please request a new one.';
 
   Future<PasswordResetRequestResult> requestReset({
     required String email,
@@ -79,33 +81,35 @@ class AdminPasswordResetService {
     try {
       if (sendPasswordResetEmailFn != null) {
         await sendPasswordResetEmailFn!(normalized);
-        return const PasswordResetRequestResult(
-          accepted: true,
-          userMessage: genericAcceptedMessage,
-        );
+      } else {
+        final result = await (emailService ?? AttendiphiEmailService.instance)
+            .requestPasswordReset(
+              email: normalized,
+              portalUrl: '${AppUrl.portalOrigin}/',
+            );
+        if (!result.success) {
+          return PasswordResetRequestResult(
+            accepted: false,
+            userMessage: result.userMessage.isNotEmpty
+                ? result.userMessage
+                : 'Could not send a reset email. Please try again.',
+          );
+        }
       }
-      final result = await (emailService ?? AttendiphiEmailService.instance)
-          .requestPasswordReset(email: normalized);
-      if (result.success) {
-        return const PasswordResetRequestResult(
-          accepted: true,
-          userMessage: genericAcceptedMessage,
-        );
-      }
-      if (result.statusCode == 429) {
-        return const PasswordResetRequestResult(
-          accepted: false,
-          userMessage: 'Too many attempts. Please try again later.',
-        );
-      }
-      final message = result.userMessage.trim();
+      return const PasswordResetRequestResult(
+        accepted: true,
+        userMessage: genericAcceptedMessage,
+      );
+    } on AttendiphiEmailException catch (e) {
+      AppLogger.warning(
+        'Password reset request failed code: ${e.code}',
+        tag: 'AdminPasswordReset',
+      );
       return PasswordResetRequestResult(
         accepted: false,
-        userMessage: message.isEmpty
-            ? 'Could not send a reset email. Please try again.'
-            : message,
+        userMessage: e.userMessage,
       );
-    } catch (e) {
+    } catch (_) {
       AppLogger.warning(
         'Password reset request failed',
         tag: 'AdminPasswordReset',
@@ -117,13 +121,18 @@ class AdminPasswordResetService {
     }
   }
 
+  /// Valid when the Supabase recovery redirect established a session.
+  ///
+  /// [token] is only a leftover `oobCode` from legacy links; it cannot be
+  /// verified, so without a session the link is treated as invalid.
   Future<PasswordResetTokenStatus> verifyToken(String token) async {
-    if (token.trim().isEmpty) {
-      return const PasswordResetTokenStatus(valid: false);
-    }
     try {
-      final email = await _verifyCode(token.trim());
-      return PasswordResetTokenStatus(valid: true, email: email.trim());
+      final session = _currentSession();
+      final email = (session?.user.email ?? '').trim();
+      if (session == null || email.isEmpty) {
+        return const PasswordResetTokenStatus(valid: false);
+      }
+      return PasswordResetTokenStatus(valid: true, email: email);
     } catch (_) {
       return const PasswordResetTokenStatus(valid: false);
     }
@@ -136,18 +145,33 @@ class AdminPasswordResetService {
     final password = newPassword.trim();
     final policy = AdminPasswordHasher.policyError(password);
     if (policy != null) {
-      return PasswordResetCompleteResult(
+      return PasswordResetCompleteResult(success: false, userMessage: policy);
+    }
+
+    final session = _currentSession();
+    if (session == null) {
+      return const PasswordResetCompleteResult(
         success: false,
-        userMessage: policy,
+        invalidOrExpired: true,
+        userMessage: _requestNewLinkMessage,
       );
     }
+
     try {
-      final email = await _verifyCode(token.trim());
-      await _confirmCode(code: token.trim(), newPassword: password);
-      await _syncAdminPasswordMetadata(email: email, password: password);
+      if (updatePasswordFn != null) {
+        await updatePasswordFn!(password);
+      } else {
+        await Supabase.instance.client.auth.updateUser(
+          UserAttributes(password: password),
+        );
+      }
+      await _syncAdminPasswordMetadata(
+        email: session.user.email ?? '',
+        password: password,
+      );
       return const PasswordResetCompleteResult(success: true);
-    } on FirebaseAuthException catch (e) {
-      return _completeError(e.code);
+    } on AuthException catch (e) {
+      return _completeError(e);
     } catch (_) {
       return const PasswordResetCompleteResult(
         success: false,
@@ -156,83 +180,71 @@ class AdminPasswordResetService {
     }
   }
 
-  Future<String> _verifyCode(String code) {
-    if (verifyPasswordResetCodeFn != null) {
-      return verifyPasswordResetCodeFn!(code);
-    }
-    final auth = this.auth ?? FirebaseAuth.instance;
-    return auth.verifyPasswordResetCode(code);
+  Session? _currentSession() {
+    if (currentSessionFn != null) return currentSessionFn!();
+    return Supabase.instance.client.auth.currentSession;
   }
 
-  Future<void> _confirmCode({
-    required String code,
-    required String newPassword,
-  }) {
-    if (confirmPasswordResetFn != null) {
-      return confirmPasswordResetFn!(code: code, newPassword: newPassword);
+  PasswordResetCompleteResult _completeError(AuthException e) {
+    final msg = e.message.toLowerCase();
+    if (e.code == 'weak_password' || msg.contains('weak')) {
+      return const PasswordResetCompleteResult(
+        success: false,
+        userMessage: 'Please choose a stronger password.',
+      );
     }
-    final auth = this.auth ?? FirebaseAuth.instance;
-    return auth.confirmPasswordReset(code: code, newPassword: newPassword);
+    if (msg.contains('network') || msg.contains('fetch')) {
+      return const PasswordResetCompleteResult(
+        success: false,
+        userMessage: 'Network error. Please try again.',
+      );
+    }
+    if (msg.contains('same') && msg.contains('password')) {
+      return const PasswordResetCompleteResult(
+        success: false,
+        userMessage: 'Please choose a different password.',
+      );
+    }
+    return const PasswordResetCompleteResult(
+      success: false,
+      invalidOrExpired: true,
+      userMessage: _requestNewLinkMessage,
+    );
   }
 
-  PasswordResetCompleteResult _completeError(String code) {
-    switch (code) {
-      case 'expired-action-code':
-        return const PasswordResetCompleteResult(
-          success: false,
-          invalidOrExpired: true,
-          userMessage: 'This password reset link has expired.',
-        );
-      case 'invalid-action-code':
-        return const PasswordResetCompleteResult(
-          success: false,
-          invalidOrExpired: true,
-          userMessage: 'This password reset link is no longer valid.',
-        );
-      case 'weak-password':
-        return const PasswordResetCompleteResult(
-          success: false,
-          userMessage: 'Please choose a stronger password.',
-        );
-      case 'network-request-failed':
-        return const PasswordResetCompleteResult(
-          success: false,
-          userMessage: 'Network error. Please try again.',
-        );
-      default:
-        return const PasswordResetCompleteResult(
-          success: false,
-          invalidOrExpired: true,
-          userMessage: 'This password reset link is no longer valid.',
-        );
-    }
-  }
-
-  /// Hash/salt + mustResetPassword only. Never writes plaintext passwords.
+  /// Hash/salt + clear must_reset_password via SECURITY DEFINER RPC
+  /// (regular admins cannot UPDATE public.admins under RLS).
   Future<void> _syncAdminPasswordMetadata({
     required String email,
     required String password,
   }) async {
-    if (firestore == null || email.trim().isEmpty) return;
+    final cleanEmail = email.trim().toLowerCase();
+    if (cleanEmail.isEmpty || updatePasswordFn != null) return;
     try {
-      final snapshot = await firestore!
-          .collection(AppConstants.adminsCollection)
-          .where('email', isEqualTo: email.trim().toLowerCase())
-          .limit(1)
-          .get();
-      if (snapshot.docs.isEmpty) return;
       final salt = AdminPasswordHasher.generateSalt();
-      await snapshot.docs.first.reference.update({
-        'passwordHash': AdminPasswordHasher.hash(password, salt),
-        'passwordSalt': salt,
-        'plainPassword': FieldValue.delete(),
-        'mustResetPassword': false,
-        'passwordUpdatedAt': FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('Password metadata sync skipped');
+      final hash = AdminPasswordHasher.hash(password, salt);
+      final client = Supabase.instance.client;
+      try {
+        await client.rpc('link_own_admin_auth');
+      } catch (_) {}
+      await client.rpc(
+        'complete_own_password_reset',
+        params: {'p_password_hash': hash, 'p_password_salt': salt},
+      );
+
+      final ds = SupabaseAdminRemoteDataSource();
+      final admin = await ds.getAdminByEmail(cleanEmail);
+      if (admin != null && admin.mustResetPassword) {
+        throw StateError(
+          'must_reset_password still true after complete_own_password_reset',
+        );
       }
+    } catch (e) {
+      AppLogger.warning(
+        'Password metadata sync failed (flag may stay true): $e',
+        tag: 'AdminPasswordReset',
+      );
+      rethrow;
     }
   }
 }

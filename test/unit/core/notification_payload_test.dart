@@ -33,7 +33,10 @@ void main() {
     test('handles default fallbacks for missing fields', () {
       final payload = NotificationPayload.fromMap({});
       expect(payload.title, equals('New Attendance Submission'));
-      expect(payload.body, equals('A new user has submitted the attendance form.'));
+      expect(
+        payload.body,
+        equals('A new user has submitted the attendance form.'),
+      );
       expect(payload.submissionId, isEmpty);
     });
   });

@@ -27,26 +27,8 @@ import '../../../employee/domain/entities/employee.dart';
 import '../../../employee/presentation/providers/employee_providers.dart';
 import '../providers/admin_auth_provider.dart';
 import '../providers/admin_scope_provider.dart';
+import '../providers/member_list_filters.dart';
 import '../providers/visitor_management_provider.dart';
-
-enum MemberSortOption {
-  mostVisitors('Rank (Most Visitors)'),
-  nameAsc('Name (A-Z)'),
-  nameDesc('Name (Z-A)'),
-  newest('Recently Added');
-
-  const MemberSortOption(this.label);
-  final String label;
-}
-
-enum MemberStatusFilter {
-  all('All Statuses'),
-  active('Active Only'),
-  inactive('Inactive Only');
-
-  const MemberStatusFilter(this.label);
-  final String label;
-}
 
 /// Member / Employee Management Screen managing registered attendees for check-in.
 class UserManagementScreen extends ConsumerStatefulWidget {
@@ -132,10 +114,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
       decoration: BoxDecoration(
         color: avatarColor.withAlpha(30),
         borderRadius: effectiveBorderRadius,
-        border: Border.all(
-          color: avatarColor.withAlpha(70),
-          width: 1,
-        ),
+        border: Border.all(color: avatarColor.withAlpha(70), width: 1),
       ),
       child: ClipRRect(
         borderRadius: effectiveBorderRadius,
@@ -158,7 +137,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
       'Sep',
       'Oct',
       'Nov',
-      'Dec'
+      'Dec',
     ];
     final day = dt.day.toString().padLeft(2, '0');
     final month = months[dt.month - 1];
@@ -176,12 +155,15 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
 
   void _showAddEditMemberDialog({Employee? existingMember}) {
     final isEditing = existingMember != null;
-    final nameController =
-        TextEditingController(text: existingMember?.name ?? '');
-    final phoneController =
-        TextEditingController(text: existingMember?.phone ?? '');
-    final emailController =
-        TextEditingController(text: existingMember?.email ?? '');
+    final nameController = TextEditingController(
+      text: existingMember?.name ?? '',
+    );
+    final phoneController = TextEditingController(
+      text: existingMember?.phone ?? '',
+    );
+    final emailController = TextEditingController(
+      text: existingMember?.email ?? '',
+    );
     final selectedRole = existingMember?.role.isNotEmpty == true
         ? existingMember!.role
         : 'Member';
@@ -195,7 +177,8 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
     Uint8List? enrolledImageBytes;
     File? enrolledImageFile;
     bool isProcessingFace = false;
-    String? faceStatusMessage = existingMember != null &&
+    String? faceStatusMessage =
+        existingMember != null &&
             existingMember.faceEnrolled &&
             !existingMember.hasSfaceTemplates
         ? 'This member needs a live web re-enrollment (camera) before face check-in will work in the browser.'
@@ -210,14 +193,18 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
           final screenWidth = MediaQuery.of(dialogCtx).size.width;
           final isMobile = screenWidth < 600;
 
-          final fieldBgColor =
-              isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC);
-          final defaultBorderColor =
-              isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
-          final labelColor =
-              isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569);
-          final iconColor =
-              isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+          final fieldBgColor = isDark
+              ? const Color(0xFF1E293B)
+              : const Color(0xFFF8FAFC);
+          final defaultBorderColor = isDark
+              ? const Color(0xFF334155)
+              : const Color(0xFFE2E8F0);
+          final labelColor = isDark
+              ? const Color(0xFF94A3B8)
+              : const Color(0xFF475569);
+          final iconColor = isDark
+              ? const Color(0xFF94A3B8)
+              : const Color(0xFF64748B);
 
           Future<void> pickFacePhoto(ImageSource source) async {
             try {
@@ -263,12 +250,14 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
 
               setDialogState(() {
                 isProcessingFace = true;
-                faceStatusMessage = 'Extracting and validating SFace biometrics...';
+                faceStatusMessage =
+                    'Extracting and validating SFace biometrics...';
               });
 
               if (kIsWeb) {
                 final validTemplates = <List<double>>[];
-                final candidateFrames = (burstFrames != null && burstFrames.isNotEmpty)
+                final candidateFrames =
+                    (burstFrames != null && burstFrames.isNotEmpty)
                     ? burstFrames
                     : [rawBytes];
 
@@ -282,9 +271,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                       frame.meetsQuality(forEnrollment: true) &&
                       frame.embedding != null &&
                       frame.embedding!.length == 128) {
-                    validTemplates.add(
-                      List<double>.from(frame.embedding!),
-                    );
+                    validTemplates.add(List<double>.from(frame.embedding!));
                   }
                 }
 
@@ -295,10 +282,13 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                 }
 
                 final matchingService = ref.read(faceMatchingServiceProvider);
-                final pruned = matchingService.pruneEnrollmentOutliers(validTemplates);
+                final pruned = matchingService.pruneEnrollmentOutliers(
+                  validTemplates,
+                );
                 if (!matchingService.isEnrollmentTemplateSetValid(pruned)) {
                   throw Exception(
-                    pruned.length < FaceMatchingConfig.minimumEnrollmentTemplates
+                    pruned.length <
+                            FaceMatchingConfig.minimumEnrollmentTemplates
                         ? 'Need at least ${FaceMatchingConfig.minimumEnrollmentTemplates} clear frames. Please keep your face in the oval in good lighting and try again.'
                         : 'Could not get a consistent set of face samples. Please retry the live capture.',
                   );
@@ -311,7 +301,9 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                   final resized = oriented.width > 600 || oriented.height > 600
                       ? img.copyResize(oriented, width: 600)
                       : oriented;
-                  compressedJpg = Uint8List.fromList(img.encodeJpg(resized, quality: 80));
+                  compressedJpg = Uint8List.fromList(
+                    img.encodeJpg(resized, quality: 80),
+                  );
                 }
                 final base64Photo = ImageUtils.bytesToBase64(compressedJpg);
 
@@ -329,9 +321,13 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
 
               // Native Android / iOS: Full ML Kit face detection + TFLite biometric extraction
               final enrollmentHelper = ref.read(faceEnrollmentHelperProvider);
-              final result = await enrollmentHelper.processEnrollmentPhoto(photoFile!.path);
+              final result = await enrollmentHelper.processEnrollmentPhoto(
+                photoFile!.path,
+              );
 
-              final compressedBytes = await ImageUtils.compressImageFile(photoFile);
+              final compressedBytes = await ImageUtils.compressImageFile(
+                photoFile,
+              );
               final base64Photo = compressedBytes != null
                   ? ImageUtils.bytesToBase64(compressedBytes)
                   : null;
@@ -360,7 +356,9 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
               hintText: hint,
               hintStyle: TextStyle(
                 fontSize: 14,
-                color: isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
+                color: isDark
+                    ? const Color(0xFF64748B)
+                    : const Color(0xFF94A3B8),
                 fontWeight: FontWeight.w400,
               ),
               prefixIcon: prefixIcon,
@@ -391,14 +389,16 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
               ),
               focusedErrorBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: AppColors.error, width: 1.5),
+                borderSide: const BorderSide(
+                  color: AppColors.error,
+                  width: 1.5,
+                ),
               ),
             );
           }
 
           return Dialog(
-            backgroundColor:
-                isDark ? const Color(0xFF0F172A) : Colors.white,
+            backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
             elevation: 8,
             shadowColor: Colors.black.withAlpha(isDark ? 80 : 30),
             insetPadding: EdgeInsets.symmetric(
@@ -441,7 +441,9 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
-                              isEditing ? 'Edit Member Details' : 'Add New Member',
+                              isEditing
+                                  ? 'Edit Member Details'
+                                  : 'Add New Member',
                               style: TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 20,
@@ -468,7 +470,9 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                       Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                          color: isDark
+                              ? const Color(0xFF1E293B)
+                              : const Color(0xFFF8FAFC),
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(color: defaultBorderColor),
                         ),
@@ -484,7 +488,8 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                     shape: BoxShape.circle,
                                     color: AppColors.primaryLight.withAlpha(30),
                                     border: Border.all(
-                                      color: (enrolledEmbedding != null ||
+                                      color:
+                                          (enrolledEmbedding != null ||
                                               enrolledPhotoUrl != null ||
                                               enrolledImageBytes != null)
                                           ? AppColors.success
@@ -512,28 +517,41 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                           return Image.network(
                                             ImageUtils.cacheBustedUrl(
                                               photo,
-                                              version: existingMember?.updatedAt,
+                                              version:
+                                                  existingMember?.updatedAt,
                                             ),
                                             fit: BoxFit.cover,
-                                            errorBuilder: (context, error, stackTrace) =>
-                                                const Icon(
-                                              Icons.face_retouching_natural_rounded,
-                                              color: AppColors.primary,
-                                              size: 26,
-                                            ),
+                                            errorBuilder:
+                                                (
+                                                  context,
+                                                  error,
+                                                  stackTrace,
+                                                ) => const Icon(
+                                                  Icons
+                                                      .face_retouching_natural_rounded,
+                                                  color: AppColors.primary,
+                                                  size: 26,
+                                                ),
                                           );
                                         }
-                                        final bytes = ImageUtils.base64ToBytes(photo);
+                                        final bytes = ImageUtils.base64ToBytes(
+                                          photo,
+                                        );
                                         if (bytes != null) {
                                           return Image.memory(
                                             bytes,
                                             fit: BoxFit.cover,
-                                            errorBuilder: (context, error, stackTrace) =>
-                                                const Icon(
-                                              Icons.face_retouching_natural_rounded,
-                                              color: AppColors.primary,
-                                              size: 26,
-                                            ),
+                                            errorBuilder:
+                                                (
+                                                  context,
+                                                  error,
+                                                  stackTrace,
+                                                ) => const Icon(
+                                                  Icons
+                                                      .face_retouching_natural_rounded,
+                                                  color: AppColors.primary,
+                                                  size: 26,
+                                                ),
                                           );
                                         }
                                       }
@@ -550,7 +568,8 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                 // Action Buttons
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       const Text(
                                         'Member Face Photo (Optional)',
@@ -574,14 +593,17 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                             onTap: isProcessingFace
                                                 ? null
                                                 : () => pickFacePhoto(
-                                                    ImageSource.camera),
-                                            borderRadius:
-                                                BorderRadius.circular(8),
+                                                    ImageSource.camera,
+                                                  ),
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
                                             child: Container(
-                                              padding: const EdgeInsets.symmetric(
-                                                horizontal: 10,
-                                                vertical: 5,
-                                              ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 10,
+                                                    vertical: 5,
+                                                  ),
                                               decoration: BoxDecoration(
                                                 color: AppColors.primary,
                                                 borderRadius:
@@ -614,14 +636,17 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                             onTap: isProcessingFace
                                                 ? null
                                                 : () => pickFacePhoto(
-                                                    ImageSource.gallery),
-                                            borderRadius:
-                                                BorderRadius.circular(8),
+                                                    ImageSource.gallery,
+                                                  ),
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
                                             child: Container(
-                                              padding: const EdgeInsets.symmetric(
-                                                horizontal: 10,
-                                                vertical: 5,
-                                              ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 10,
+                                                    vertical: 5,
+                                                  ),
                                               decoration: BoxDecoration(
                                                 color: isDark
                                                     ? const Color(0xFF334155)
@@ -633,7 +658,8 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                                 mainAxisSize: MainAxisSize.min,
                                                 children: [
                                                   Icon(
-                                                    Icons.photo_library_outlined,
+                                                    Icons
+                                                        .photo_library_outlined,
                                                     size: 14,
                                                     color: labelColor,
                                                   ),
@@ -708,7 +734,8 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                   ),
                                 ),
                               ),
-                            ] else if (enrolledEmbedding != null || enrolledPhotoUrl != null) ...[
+                            ] else if (enrolledEmbedding != null ||
+                                enrolledPhotoUrl != null) ...[
                               const SizedBox(height: 10),
                               Container(
                                 width: double.infinity,
@@ -841,12 +868,16 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                           if (trimmed.isEmpty) {
                             return 'Please enter phone number';
                           }
-                          final cleaned = trimmed.replaceAll(RegExp(r'[\s\-\(\)\+]'), '');
-                          final digits = (cleaned.startsWith('91') && cleaned.length == 12)
+                          final cleaned = trimmed.replaceAll(
+                            RegExp(r'[\s\-\(\)\+]'),
+                            '',
+                          );
+                          final digits =
+                              (cleaned.startsWith('91') && cleaned.length == 12)
                               ? cleaned.substring(2)
                               : (cleaned.startsWith('0') && cleaned.length == 11
-                                  ? cleaned.substring(1)
-                                  : cleaned);
+                                    ? cleaned.substring(1)
+                                    : cleaned);
 
                           if (digits.length != 10) {
                             return 'Phone number must be exactly 10 digits';
@@ -953,26 +984,32 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                           return;
                                         }
                                         setDialogState(
-                                            () => isSubmitting = true);
+                                          () => isSubmitting = true,
+                                        );
                                         final name = nameController.text.trim();
-                                        final phone =
-                                            phoneController.text.trim();
-                                        final email =
-                                            emailController.text.trim();
+                                        final phone = phoneController.text
+                                            .trim();
+                                        final email = emailController.text
+                                            .trim();
                                         try {
-                                          final activeScope =
-                                              ref.read(activeAdminScopeProvider);
-                                          final isSuperAdmin =
-                                              ref.read(isSuperAdminProvider);
-                                          final currentAdmin =
-                                              ref.read(currentAdminUserProvider);
-                                          final targetAdminId = activeScope?.id ??
+                                          final activeScope = ref.read(
+                                            activeAdminScopeProvider,
+                                          );
+                                          final isSuperAdmin = ref.read(
+                                            isSuperAdminProvider,
+                                          );
+                                          final currentAdmin = ref.read(
+                                            currentAdminUserProvider,
+                                          );
+                                          final targetAdminId =
+                                              activeScope?.id ??
                                               (isSuperAdmin
                                                   ? null
                                                   : currentAdmin?.id);
 
                                           final repo = ref.read(
-                                              employeeRepositoryProvider);
+                                            employeeRepositoryProvider,
+                                          );
                                           final bool hasFaceBiometrics =
                                               (enrolledPhotoUrl != null &&
                                                   enrolledPhotoUrl!
@@ -991,39 +1028,42 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                               email: email,
                                               role: selectedRole,
                                               isActive: isActive,
-                                              adminId: existingMember.adminId ??
+                                              adminId:
+                                                  existingMember.adminId ??
                                                   targetAdminId,
                                               photoUrl: enrolledPhotoUrl,
                                               faceEmbedding: enrolledEmbedding,
                                               faceTemplates: enrolledTemplates,
                                               faceEnrolled: hasFaceBiometrics,
-                                              faceModel: enrolledTemplates !=
-                                                          null &&
+                                              faceModel:
+                                                  enrolledTemplates != null &&
                                                       enrolledTemplates!
                                                           .isNotEmpty
                                                   ? FaceMatchingConfig.modelName
                                                   : null,
                                               faceModelVersion:
                                                   enrolledTemplates != null &&
-                                                          enrolledTemplates!
-                                                              .isNotEmpty
-                                                      ? FaceMatchingConfig
-                                                          .modelVersion
-                                                      : null,
+                                                      enrolledTemplates!
+                                                          .isNotEmpty
+                                                  ? FaceMatchingConfig
+                                                        .modelVersion
+                                                  : null,
                                             );
                                             if (ctx.mounted) {
                                               Navigator.pop(ctx);
                                             }
                                             if (mounted) {
-                                              ScaffoldMessenger.of(context)
-                                                  .showSnackBar(
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
                                                 SnackBar(
                                                   content: Text(
-                                                      'Updated "$name" successfully'),
+                                                    'Updated "$name" successfully',
+                                                  ),
                                                   backgroundColor:
                                                       AppColors.success,
-                                                  behavior: SnackBarBehavior
-                                                      .floating,
+                                                  behavior:
+                                                      SnackBarBehavior.floating,
                                                 ),
                                               );
                                             }
@@ -1039,49 +1079,53 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                               faceEmbedding: enrolledEmbedding,
                                               faceTemplates: enrolledTemplates,
                                               faceEnrolled: hasFaceBiometrics,
-                                              faceModel: enrolledTemplates !=
-                                                          null &&
+                                              faceModel:
+                                                  enrolledTemplates != null &&
                                                       enrolledTemplates!
                                                           .isNotEmpty
                                                   ? FaceMatchingConfig.modelName
                                                   : null,
                                               faceModelVersion:
                                                   enrolledTemplates != null &&
-                                                          enrolledTemplates!
-                                                              .isNotEmpty
-                                                      ? FaceMatchingConfig
-                                                          .modelVersion
-                                                      : null,
+                                                      enrolledTemplates!
+                                                          .isNotEmpty
+                                                  ? FaceMatchingConfig
+                                                        .modelVersion
+                                                  : null,
                                             );
                                             if (ctx.mounted) {
                                               Navigator.pop(ctx);
                                             }
                                             if (mounted) {
-                                              ScaffoldMessenger.of(context)
-                                                  .showSnackBar(
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
                                                 SnackBar(
                                                   content: Text(
-                                                      'Added "$name" successfully'),
+                                                    'Added "$name" successfully',
+                                                  ),
                                                   backgroundColor:
                                                       AppColors.success,
-                                                  behavior: SnackBarBehavior
-                                                      .floating,
+                                                  behavior:
+                                                      SnackBarBehavior.floating,
                                                 ),
                                               );
                                             }
                                           }
                                         } catch (e) {
                                           setDialogState(
-                                              () => isSubmitting = false);
+                                            () => isSubmitting = false,
+                                          );
                                           if (mounted) {
-                                            ScaffoldMessenger.of(context)
-                                                .showSnackBar(
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
                                               SnackBar(
                                                 content: Text('Error: $e'),
                                                 backgroundColor:
                                                     AppColors.error,
-                                                behavior: SnackBarBehavior
-                                                    .floating,
+                                                behavior:
+                                                    SnackBarBehavior.floating,
                                               ),
                                             );
                                           }
@@ -1095,8 +1139,8 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                           strokeWidth: 2,
                                           valueColor:
                                               AlwaysStoppedAnimation<Color>(
-                                            Colors.white,
-                                          ),
+                                                Colors.white,
+                                              ),
                                         ),
                                       )
                                     : Text(
@@ -1137,8 +1181,10 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
     Map<String, int> visitorCounts,
   ) {
     final list = rawList.where((u) {
-      if (_statusFilter == MemberStatusFilter.active && !u.isActive) return false;
-      if (_statusFilter == MemberStatusFilter.inactive && u.isActive) return false;
+      if (_statusFilter == MemberStatusFilter.active && !u.isActive)
+        return false;
+      if (_statusFilter == MemberStatusFilter.inactive && u.isActive)
+        return false;
       if (_searchQuery.isEmpty) return true;
       final query = _searchQuery.toLowerCase();
       return u.name.toLowerCase().contains(query) ||
@@ -1169,9 +1215,13 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
           return a.id.compareTo(b.id);
         });
       case MemberSortOption.nameAsc:
-        list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+        list.sort(
+          (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+        );
       case MemberSortOption.nameDesc:
-        list.sort((a, b) => b.name.toLowerCase().compareTo(a.name.toLowerCase()));
+        list.sort(
+          (a, b) => b.name.toLowerCase().compareTo(a.name.toLowerCase()),
+        );
       case MemberSortOption.newest:
         list.sort((a, b) {
           final da = a.createdAt ?? DateTime(2020);
@@ -1280,9 +1330,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
     Widget buildMainContent(bool useExpanded) {
       return Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(
-            maxWidth: 1920,
-          ),
+          constraints: const BoxConstraints(maxWidth: 1920),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -1296,10 +1344,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                       width: double.infinity,
                       child: FilledButton.icon(
                         onPressed: _showAddEditMemberDialog,
-                        icon: const Icon(
-                          Icons.person_add_rounded,
-                          size: 18,
-                        ),
+                        icon: const Icon(Icons.person_add_rounded, size: 18),
                         label: const Text(
                           'Add Member',
                           style: TextStyle(
@@ -1327,8 +1372,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                   actions: [
                     FilledButton.icon(
                       onPressed: _showAddEditMemberDialog,
-                      icon:
-                          const Icon(Icons.person_add_rounded, size: 18),
+                      icon: const Icon(Icons.person_add_rounded, size: 18),
                       label: const Text('Add Member'),
                       style: FilledButton.styleFrom(
                         backgroundColor: AppColors.primary,
@@ -1416,8 +1460,11 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline_rounded,
-                  size: 40, color: AppColors.error),
+              const Icon(
+                Icons.error_outline_rounded,
+                size: 40,
+                color: AppColors.error,
+              ),
               const SizedBox(height: 12),
               Text(
                 'Error loading members: $err',
@@ -1440,8 +1487,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
           return _buildEmptyState(context);
         }
 
-        final filtered =
-            _filterAndSort(membersList, visitorCounts);
+        final filtered = _filterAndSort(membersList, visitorCounts);
 
         return AppCard(
           elevation: 2,
@@ -1465,15 +1511,12 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
               else if (isDesktop)
                 if (useExpanded)
                   Expanded(
-                    child: _buildDesktopTable(
-                        context, filtered, visitorCounts),
+                    child: _buildDesktopTable(context, filtered, visitorCounts),
                   )
                 else
-                  _buildDesktopTable(
-                      context, filtered, visitorCounts)
+                  _buildDesktopTable(context, filtered, visitorCounts)
               else
-                _buildMobileList(
-                    context, filtered, visitorCounts),
+                _buildMobileList(context, filtered, visitorCounts),
             ],
           ),
         );
@@ -1492,9 +1535,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: isDark
-            ? Colors.white.withAlpha(6)
-            : Colors.grey.withAlpha(12),
+        color: isDark ? Colors.white.withAlpha(6) : Colors.grey.withAlpha(12),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
       ),
       child: isDesktop
@@ -1504,7 +1545,8 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                   width: 280,
                   child: TextField(
                     controller: _searchController,
-                    onChanged: (val) => setState(() => _searchQuery = val.trim()),
+                    onChanged: (val) =>
+                        setState(() => _searchQuery = val.trim()),
                     decoration: InputDecoration(
                       hintText: 'Search by member name or phone...',
                       prefixIcon: const Icon(Icons.search_rounded, size: 18),
@@ -1533,8 +1575,10 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                 ),
                 const SizedBox(width: 12),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.primary.withAlpha(18),
                     borderRadius: AppRadius.fullAll,
@@ -1598,7 +1642,9 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                     hintText: 'Search name or phone...',
                     hintStyle: TextStyle(
                       fontSize: 12.5,
-                      color: isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
+                      color: isDark
+                          ? const Color(0xFF64748B)
+                          : const Color(0xFF94A3B8),
                     ),
                     prefixIcon: const Icon(Icons.search_rounded, size: 18),
                     suffixIcon: _searchQuery.isNotEmpty
@@ -1622,13 +1668,17 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                     border: OutlineInputBorder(
                       borderRadius: AppRadius.mdAll,
                       borderSide: BorderSide(
-                        color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+                        color: isDark
+                            ? AppColors.outlineDark
+                            : AppColors.outlineLight,
                       ),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: AppRadius.mdAll,
                       borderSide: BorderSide(
-                        color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+                        color: isDark
+                            ? AppColors.outlineDark
+                            : AppColors.outlineLight,
                       ),
                     ),
                     focusedBorder: const OutlineInputBorder(
@@ -1812,9 +1862,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
               ? AppColors.surfaceVariantDark.withAlpha(120)
               : AppColors.surfaceVariantLight.withAlpha(160),
           border: Border(
-            bottom: BorderSide(
-              color: theme.dividerColor.withAlpha(40),
-            ),
+            bottom: BorderSide(color: theme.dividerColor.withAlpha(40)),
           ),
         ),
         child: const Row(
@@ -1823,7 +1871,10 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
             Expanded(flex: 1, child: Text('MEMBER NAME', style: headerStyle)),
             Expanded(flex: 1, child: Text('PHONE NUMBER', style: headerStyle)),
             Expanded(flex: 1, child: Text('VISITORS', style: headerStyle)),
-            Expanded(flex: 1, child: Text('ACCOUNT STATUS', style: headerStyle)),
+            Expanded(
+              flex: 1,
+              child: Text('ACCOUNT STATUS', style: headerStyle),
+            ),
             Expanded(flex: 1, child: Text('STATUS', style: headerStyle)),
             Expanded(flex: 1, child: Text('DATE', style: headerStyle)),
             SizedBox(
@@ -1852,9 +1903,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
               ? (isDark ? Colors.white.withAlpha(4) : Colors.black.withAlpha(3))
               : Colors.transparent,
           border: Border(
-            bottom: BorderSide(
-              color: theme.dividerColor.withAlpha(40),
-            ),
+            bottom: BorderSide(color: theme.dividerColor.withAlpha(40)),
           ),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -1909,9 +1958,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: member.phone.isNotEmpty
-                        ? (isDark
-                            ? Colors.white70
-                            : const Color(0xFF334155))
+                        ? (isDark ? Colors.white70 : const Color(0xFF334155))
                         : Colors.grey,
                   ),
                 ),
@@ -1948,15 +1995,15 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                           color: visitorCount > 0
                               ? const Color(0xFF0284C7).withAlpha(18)
                               : (isDark
-                                  ? Colors.white.withAlpha(8)
-                                  : Colors.grey.withAlpha(15)),
+                                    ? Colors.white.withAlpha(8)
+                                    : Colors.grey.withAlpha(15)),
                           borderRadius: AppRadius.fullAll,
                           border: Border.all(
                             color: visitorCount > 0
                                 ? const Color(0xFF0284C7).withAlpha(55)
                                 : (isDark
-                                    ? Colors.white.withAlpha(15)
-                                    : Colors.grey.withAlpha(30)),
+                                      ? Colors.white.withAlpha(15)
+                                      : Colors.grey.withAlpha(30)),
                           ),
                         ),
                         child: Row(
@@ -1978,8 +2025,8 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                 color: visitorCount > 0
                                     ? const Color(0xFF0284C7)
                                     : (isDark
-                                        ? Colors.white60
-                                        : Colors.grey[700]),
+                                          ? Colors.white60
+                                          : Colors.grey[700]),
                               ),
                             ),
                             if (visitorCount > 0) ...[
@@ -2010,9 +2057,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    color: (member.isActive
-                            ? AppColors.success
-                            : Colors.grey)
+                    color: (member.isActive ? AppColors.success : Colors.grey)
                         .withAlpha(18),
                     borderRadius: AppRadius.fullAll,
                   ),
@@ -2070,8 +2115,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                         inactiveTrackColor: isDark
                             ? const Color(0xFF334155)
                             : const Color(0xFFCBD5E1),
-                        materialTapTargetSize:
-                            MaterialTapTargetSize.shrinkWrap,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         onChanged: (bool _) => _toggleMemberStatus(member),
                       ),
                     ),
@@ -2092,9 +2136,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                     style: TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w600,
-                      color: isDark
-                          ? Colors.white
-                          : const Color(0xFF1E293B),
+                      color: isDark ? Colors.white : const Color(0xFF1E293B),
                     ),
                   ),
                   if (member.createdAt != null) ...[
@@ -2103,8 +2145,9 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                       _formatTime(member.createdAt),
                       style: TextStyle(
                         fontSize: 11,
-                        color: theme.colorScheme.onSurfaceVariant
-                            .withAlpha(180),
+                        color: theme.colorScheme.onSurfaceVariant.withAlpha(
+                          180,
+                        ),
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -2142,8 +2185,9 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final tableWidth =
-            constraints.maxWidth > 1120 ? constraints.maxWidth : 1120.0;
+        final tableWidth = constraints.maxWidth > 1120
+            ? constraints.maxWidth
+            : 1120.0;
         final hasBoundedHeight = constraints.maxHeight.isFinite;
 
         return SingleChildScrollView(
@@ -2170,8 +2214,8 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                   )
                 else
                   ...members.asMap().entries.map(
-                        (entry) => buildDataRow(entry.key, entry.value),
-                      ),
+                    (entry) => buildDataRow(entry.key, entry.value),
+                  ),
               ],
             ),
           ),
@@ -2231,8 +2275,8 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                           color: rank == 1 && visitorCount > 0
                               ? const Color(0xFFF59E0B)
                               : (isDark
-                                  ? const Color(0xFF334155)
-                                  : const Color(0xFF64748B)),
+                                    ? const Color(0xFF334155)
+                                    : const Color(0xFF64748B)),
                           borderRadius: BorderRadius.circular(8),
                           boxShadow: AppShadows.sm,
                         ),
@@ -2330,16 +2374,18 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                 vertical: 3,
                               ),
                               decoration: BoxDecoration(
-                                color: (member.isActive
-                                        ? AppColors.success
-                                        : Colors.grey)
-                                    .withAlpha(18),
+                                color:
+                                    (member.isActive
+                                            ? AppColors.success
+                                            : Colors.grey)
+                                        .withAlpha(18),
                                 borderRadius: AppRadius.fullAll,
                                 border: Border.all(
-                                  color: (member.isActive
-                                          ? AppColors.success
-                                          : Colors.grey)
-                                      .withAlpha(40),
+                                  color:
+                                      (member.isActive
+                                              ? AppColors.success
+                                              : Colors.grey)
+                                          .withAlpha(40),
                                   width: 1,
                                 ),
                               ),
@@ -2363,8 +2409,9 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                 child: Switch.adaptive(
                                   value: member.isActive,
                                   activeThumbColor: AppColors.success,
-                                  activeTrackColor:
-                                      AppColors.success.withAlpha(140),
+                                  activeTrackColor: AppColors.success.withAlpha(
+                                    140,
+                                  ),
                                   inactiveThumbColor: isDark
                                       ? const Color(0xFF94A3B8)
                                       : const Color(0xFF64748B),
@@ -2487,8 +2534,9 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
             content: Text(
               '${member.name} is now ${newStatus ? "Active" : "Inactive"}',
             ),
-            backgroundColor:
-                newStatus ? AppColors.success : const Color(0xFF64748B),
+            backgroundColor: newStatus
+                ? AppColors.success
+                : const Color(0xFF64748B),
             duration: const Duration(seconds: 2),
             behavior: SnackBarBehavior.floating,
           ),
@@ -2561,4 +2609,3 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
     );
   }
 }
-

@@ -63,8 +63,7 @@ class AppButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveOnPressed =
-        (enabled && !isLoading) ? onPressed : null;
+    final effectiveOnPressed = (enabled && !isLoading) ? onPressed : null;
 
     final child = isLoading
         ? const SizedBox(
@@ -76,60 +75,35 @@ class AppButton extends StatelessWidget {
             ),
           )
         : icon != null
-            ? Row(
-                mainAxisSize:
-                    fullWidth ? MainAxisSize.max : MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(icon, size: 20),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      label,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              )
-            : Text(
-                label,
-                overflow: TextOverflow.ellipsis,
-              );
+        ? Row(
+            mainAxisSize: fullWidth ? MainAxisSize.max : MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 20),
+              const SizedBox(width: 8),
+              Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
+            ],
+          )
+        : Text(label, overflow: TextOverflow.ellipsis);
 
     Widget button;
 
     switch (variant) {
       case AppButtonVariant.primary:
-        button = ElevatedButton(
-          onPressed: effectiveOnPressed,
-          child: child,
-        );
+        button = ElevatedButton(onPressed: effectiveOnPressed, child: child);
       case AppButtonVariant.secondary:
-        button = OutlinedButton(
-          onPressed: effectiveOnPressed,
-          child: child,
-        );
+        button = OutlinedButton(onPressed: effectiveOnPressed, child: child);
       case AppButtonVariant.text:
-        button = TextButton(
-          onPressed: effectiveOnPressed,
-          child: child,
-        );
+        button = TextButton(onPressed: effectiveOnPressed, child: child);
     }
 
     if (!fullWidth) {
       return button;
     }
 
-    return SizedBox(
-      width: double.infinity,
-      child: button,
-    );
+    return SizedBox(width: double.infinity, child: button);
   }
 }
 
 /// Button style variants.
-enum AppButtonVariant {
-  primary,
-  secondary,
-  text,
-}
+enum AppButtonVariant { primary, secondary, text }

@@ -49,10 +49,15 @@ class DeviceCheckInService {
         deviceId = CookieHelper.getCookie(_deviceIdKey);
       }
       if (deviceId == null || deviceId.isEmpty) {
-        deviceId = fingerprint.isNotEmpty ? 'fp_$fingerprint' : const Uuid().v4();
+        deviceId = fingerprint.isNotEmpty
+            ? 'fp_$fingerprint'
+            : const Uuid().v4();
         await prefs.setString(_deviceIdKey, deviceId);
         CookieHelper.setCookie(_deviceIdKey, deviceId);
-        AppLogger.info('Generated permanent device ID: $deviceId', tag: 'DeviceCheckInService');
+        AppLogger.info(
+          'Generated permanent device ID: $deviceId',
+          tag: 'DeviceCheckInService',
+        );
       } else {
         // Sync across storage mechanisms
         await prefs.setString(_deviceIdKey, deviceId);
@@ -60,7 +65,10 @@ class DeviceCheckInService {
       }
       return deviceId;
     } catch (e) {
-      AppLogger.warning('Error accessing device ID from storage: $e', tag: 'DeviceCheckInService');
+      AppLogger.warning(
+        'Error accessing device ID from storage: $e',
+        tag: 'DeviceCheckInService',
+      );
       final fallbackFp = await DeviceFingerprintHelper.getDeviceFingerprint();
       return fallbackFp.isNotEmpty ? 'fp_$fallbackFp' : const Uuid().v4();
     }
@@ -104,12 +112,13 @@ class DeviceCheckInService {
     String? locationId,
   }) async {
     try {
-      final key =
-          getSessionKey(sessionDateStr: sessionDateStr, locationId: locationId);
+      final key = getSessionKey(
+        sessionDateStr: sessionDateStr,
+        locationId: locationId,
+      );
       final prefs = await _getPrefs();
       final prefsVal = prefs.getString(key);
-      final hasPrefsJson =
-          prefsVal != null && prefsVal.trim().startsWith('{');
+      final hasPrefsJson = prefsVal != null && prefsVal.trim().startsWith('{');
       if (hasPrefsJson) return;
 
       final cookie = CookieHelper.getCookie(key);
@@ -151,8 +160,10 @@ class DeviceCheckInService {
   }) async {
     try {
       final prefs = await _getPrefs();
-      final key =
-          getSessionKey(sessionDateStr: sessionDateStr, locationId: locationId);
+      final key = getSessionKey(
+        sessionDateStr: sessionDateStr,
+        locationId: locationId,
+      );
 
       // 1. Check SharedPreferences for this specific session key
       String? jsonStr = prefs.getString(key);
@@ -230,14 +241,8 @@ class DeviceCheckInService {
         final deviceId = await getOrCreateDeviceId();
         final sessionDate = _parseSessionDate(sessionDateStr);
         final serverSubmission = await _remoteDataSource
-            .getDeviceSubmission(
-              deviceId,
-              sessionDate,
-            )
-            .timeout(
-              const Duration(milliseconds: 1500),
-              onTimeout: () => null,
-            );
+            .getDeviceSubmission(deviceId, sessionDate)
+            .timeout(const Duration(milliseconds: 1500), onTimeout: () => null);
         if (serverSubmission != null) {
           await recordSubmission(
             sessionDateStr: sessionDateStr,
@@ -343,9 +348,9 @@ class DeviceCheckInService {
   Future<void> clearSessionRecords() async {
     try {
       final prefs = await _getPrefs();
-      final keys = prefs
-          .getKeys()
-          .where((k) => k.startsWith(_sessionPrefix) || k == _lastSubmissionKey);
+      final keys = prefs.getKeys().where(
+        (k) => k.startsWith(_sessionPrefix) || k == _lastSubmissionKey,
+      );
       for (final key in keys) {
         await prefs.remove(key);
         CookieHelper.removeCookie(key);

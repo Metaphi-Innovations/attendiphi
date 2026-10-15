@@ -1,5 +1,7 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../../../core/supabase/resilient_poll_stream.dart';
 import '../../domain/entities/admin_user.dart';
 import 'admin_auth_provider.dart';
 
@@ -51,33 +53,34 @@ class AdminFilterNotifier extends Notifier<AdminFilterState> {
 
 final adminFilterProvider =
     NotifierProvider<AdminFilterNotifier, AdminFilterState>(() {
-  return AdminFilterNotifier();
-});
+      return AdminFilterNotifier();
+    });
 
 /// Streams Admin accounts the current user is allowed to list.
 final allAdminsStreamProvider = StreamProvider<List<AdminUser>>((ref) {
   final auth = ref.watch(adminAuthProvider);
+  if (!auth.sessionResolved) {
+    return pendingStreamController<List<AdminUser>>(onDispose: ref.onDispose)
+        .stream;
+  }
   if (!auth.isAuthenticated || auth.currentAdmin == null) {
-    return const Stream.empty();
+    return Stream.value(const <AdminUser>[]);
   }
   final repo = ref.watch(adminRepositoryProvider);
   if (auth.currentAdmin!.isSuperAdmin) {
     return repo.watchAdmins();
   }
-  String currentUid = '';
-  try {
-    currentUid = (FirebaseAuth.instance.currentUser?.uid ?? '').trim();
-  } catch (_) {}
-  final creatorId = currentUid.isNotEmpty
-      ? currentUid
-      : (auth.currentAdmin!.uid.isNotEmpty
-          ? auth.currentAdmin!.uid
-          : auth.currentAdmin!.id);
+  final admin = auth.currentAdmin!;
+  final creatorId = admin.id.trim().isNotEmpty
+      ? admin.id.trim()
+      : (admin.uid.trim().isNotEmpty
+            ? admin.uid.trim()
+            : (Supabase.instance.client.auth.currentUser?.id ?? '').trim());
   return repo.watchAdmins(createdBy: creatorId);
 });
 
 /// Provider for admins visible to the current authenticated administrator.
-/// - Super Admin accounts are never listed (only managed via Firebase Console).
+/// - Super Admin accounts are never listed (only managed via Supabase Dashboard).
 /// - Super Admin can see all regular administrators.
 /// - Regular Admin can ONLY see administrators created by himself.
 final visibleAdminsProvider = Provider<AsyncValue<List<AdminUser>>>((ref) {
@@ -87,8 +90,9 @@ final visibleAdminsProvider = Provider<AsyncValue<List<AdminUser>>>((ref) {
 
   return asyncAdmins.whenData((admins) {
     // Never expose Super Admin profiles in Admin Management.
-    final withoutSuperAdmins =
-        admins.where((admin) => !admin.isSuperAdmin).toList();
+    final withoutSuperAdmins = admins
+        .where((admin) => !admin.isSuperAdmin)
+        .toList();
 
     if (isSuperAdmin) {
       return withoutSuperAdmins;
@@ -98,8 +102,9 @@ final visibleAdminsProvider = Provider<AsyncValue<List<AdminUser>>>((ref) {
     final currentUid = (currentAdmin?.uid ?? '').trim().toLowerCase();
     String currentAuthUid = '';
     try {
-      currentAuthUid =
-          (FirebaseAuth.instance.currentUser?.uid ?? '').trim().toLowerCase();
+      currentAuthUid = (Supabase.instance.client.auth.currentUser?.id ?? '')
+          .trim()
+          .toLowerCase();
     } catch (_) {}
     final currentEmail = (currentAdmin?.email ?? '').trim().toLowerCase();
     final currentName = (currentAdmin?.name ?? '').trim().toLowerCase();

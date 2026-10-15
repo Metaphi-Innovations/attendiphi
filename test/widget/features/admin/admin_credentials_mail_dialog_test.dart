@@ -30,8 +30,11 @@ class _FakeAdminRepository implements AdminRepository {
   }
 
   @override
-  Future<void> deleteAdmin(String adminId, {String? email}) =>
-      throw UnimplementedError();
+  Future<void> deleteAdmin(
+    String adminId, {
+    String? email,
+    String? authUserId,
+  }) => throw UnimplementedError();
 
   @override
   Future<AdminUser?> getAdminByEmail(String email) =>
@@ -155,8 +158,9 @@ void main() {
     expect(copyDx, lessThan(sendDx));
   });
 
-  testWidgets('copy credentials shows in-modal feedback and stays open',
-      (tester) async {
+  testWidgets('copy credentials shows in-modal feedback and stays open', (
+    tester,
+  ) async {
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
       SystemChannels.platform,
       (call) async {
@@ -181,8 +185,9 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
   });
 
-  testWidgets('send mail shows loading then dismisses the popup',
-      (tester) async {
+  testWidgets('send mail shows loading then dismisses the popup', (
+    tester,
+  ) async {
     final repo = _FakeAdminRepository(
       result: const SendCredentialsResult(success: true),
       delay: const Duration(milliseconds: 80),
@@ -224,8 +229,9 @@ void main() {
     expect(find.text('Admin Created Successfully!'), findsNothing);
   });
 
-  testWidgets('cannot start a second send while the first is in flight',
-      (tester) async {
+  testWidgets('cannot start a second send while the first is in flight', (
+    tester,
+  ) async {
     final repo = _FakeAdminRepository(
       result: const SendCredentialsResult(success: true),
       delay: const Duration(milliseconds: 200),

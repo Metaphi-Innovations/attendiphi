@@ -68,12 +68,11 @@ class _PhotoCaptureScreenState extends ConsumerState<PhotoCaptureScreen> {
     } catch (e) {
       setState(() {
         _isProcessing = false;
-        _errorMessage = 'Could not access camera. Please allow camera permissions.';
+        _errorMessage =
+            'Could not access camera. Please allow camera permissions.';
       });
     }
   }
-
-
 
   void _confirmPhoto() {
     if (_capturedBytes == null) return;
@@ -154,44 +153,44 @@ class _PhotoCaptureScreenState extends ConsumerState<PhotoCaptureScreen> {
                             ),
                           )
                         : _capturedBytes != null
-                            ? Image.memory(
-                                _capturedBytes!,
-                                fit: BoxFit.cover,
-                                width: double.infinity,
-                                height: double.infinity,
-                              )
-                            : Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(18),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.primary.withAlpha(20),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: const Icon(
-                                      Icons.face_retouching_natural_rounded,
-                                      size: 56,
-                                      color: AppColors.primary,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'Face Photo Required',
-                                    style: theme.textTheme.titleMedium?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    'Please capture a clear photo of your face',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ],
+                        ? Image.memory(
+                            _capturedBytes!,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: double.infinity,
+                          )
+                        : Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(18),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary.withAlpha(20),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.face_retouching_natural_rounded,
+                                  size: 56,
+                                  color: AppColors.primary,
+                                ),
                               ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Face Photo Required',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Please capture a clear photo of your face',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
                   ),
                 ),
 
@@ -206,8 +205,11 @@ class _PhotoCaptureScreenState extends ConsumerState<PhotoCaptureScreen> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.error_outline_rounded,
-                            color: AppColors.error, size: 18),
+                        const Icon(
+                          Icons.error_outline_rounded,
+                          color: AppColors.error,
+                          size: 18,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(

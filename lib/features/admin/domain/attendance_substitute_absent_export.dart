@@ -51,24 +51,25 @@ String? absentMemberName(CheckInSubmission record) {
 String buildSubstituteAbsentAttendanceTxt({
   required List<CheckInSubmission> records,
 }) {
-  final substitutes = records
-      .map(substitutePresentName)
-      .whereType<String>()
-      .where((name) => name.isNotEmpty)
-      .toSet()
-      .toList()
-    ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+  final substitutes =
+      records
+          .map(substitutePresentName)
+          .whereType<String>()
+          .where((name) => name.isNotEmpty)
+          .toSet()
+          .toList()
+        ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
-  final absents = records
-      .map(absentMemberName)
-      .whereType<String>()
-      .where((name) => name.isNotEmpty)
-      .toSet()
-      .toList()
-    ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+  final absents =
+      records
+          .map(absentMemberName)
+          .whereType<String>()
+          .where((name) => name.isNotEmpty)
+          .toSet()
+          .toList()
+        ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
-  final buffer = StringBuffer()
-    ..writeln('Substitute');
+  final buffer = StringBuffer()..writeln('Substitute');
   if (substitutes.isEmpty) {
     buffer.writeln('(none)');
   } else {

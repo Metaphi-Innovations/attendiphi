@@ -1,6 +1,7 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
 import 'dart:convert';
 import 'dart:html' as html;
+
 import 'package:crypto/crypto.dart';
 
 /// Web implementation collecting immutable hardware and browser characteristics
@@ -42,8 +43,8 @@ Future<String> getPlatformDeviceFingerprint() async {
   try {
     // 4. WebGL GPU Hardware Unmasked Renderer
     final canvas = html.CanvasElement(width: 16, height: 16);
-    final dynamic gl = canvas.getContext('webgl') ??
-        canvas.getContext('experimental-webgl');
+    final dynamic gl =
+        canvas.getContext('webgl') ?? canvas.getContext('experimental-webgl');
 
     if (gl != null) {
       // Extension 0x9245 (UNMASKED_VENDOR_WEBGL), 0x9246 (UNMASKED_RENDERER_WEBGL)

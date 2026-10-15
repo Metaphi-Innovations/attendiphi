@@ -24,13 +24,19 @@ Future<bool> initializeFaceRecognitionWeb() async {
       return false;
     }
     final completer = Completer<bool>();
-    final dynamic promise = js.context.callMethod('initializeFaceRecognition', []);
+    final dynamic promise = js.context.callMethod(
+      'initializeFaceRecognition',
+      [],
+    );
     if (promise == null) return false;
     final thenCallback = js.JsFunction.withThis((_, dynamic result) {
       if (!completer.isCompleted) completer.complete(result == true);
     });
     final catchCallback = js.JsFunction.withThis((_, dynamic error) {
-      AppLogger.warning('Face engine init error: $error', tag: 'WebFaceEmbedder');
+      AppLogger.warning(
+        'Face engine init error: $error',
+        tag: 'WebFaceEmbedder',
+      );
       if (!completer.isCompleted) completer.complete(false);
     });
     promise.callMethod('then', [thenCallback, catchCallback]);
@@ -40,7 +46,10 @@ Future<bool> initializeFaceRecognitionWeb() async {
     );
     return _engineReady;
   } catch (e) {
-    AppLogger.error('Failed to initialize web face engine: $e', tag: 'WebFaceEmbedder');
+    AppLogger.error(
+      'Failed to initialize web face engine: $e',
+      tag: 'WebFaceEmbedder',
+    );
     return false;
   } finally {
     _engineInitializing = false;
@@ -89,7 +98,10 @@ Future<List<double>?> extractFaceEmbeddingWeb(String photoBase64) async {
     });
 
     final catchCallback = js.JsFunction.withThis((_, dynamic error) {
-      AppLogger.warning('Web face embedding error: $error', tag: 'WebFaceEmbedder');
+      AppLogger.warning(
+        'Web face embedding error: $error',
+        tag: 'WebFaceEmbedder',
+      );
       if (!completer.isCompleted) completer.complete(null);
     });
 
@@ -100,7 +112,10 @@ Future<List<double>?> extractFaceEmbeddingWeb(String photoBase64) async {
       onTimeout: () => null,
     );
   } catch (e) {
-    AppLogger.error('Error invoking web neural face embedding: $e', tag: 'WebFaceEmbedder');
+    AppLogger.error(
+      'Error invoking web neural face embedding: $e',
+      tag: 'WebFaceEmbedder',
+    );
     return null;
   }
 }
@@ -117,7 +132,7 @@ ValidatedFaceFrame _applyQualityGate(
     faceSizeRatio: frame.faceSizeRatio,
   );
   if (reason == null) return frame;
-    return ValidatedFaceFrame(
+  return ValidatedFaceFrame(
     isValid: false,
     errorMessage: reason,
     embedding: frame.embedding,
@@ -196,8 +211,12 @@ Future<ValidatedFaceFrame> validateAndExtractFaceFrameWeb(
 
         List<double>? embedding;
         if (result['embedding'] != null) {
-          final List<dynamic> rawList = (result['embedding'] as js.JsArray).toList();
-          embedding = rawList.whereType<num>().map((e) => e.toDouble()).toList();
+          final List<dynamic> rawList = (result['embedding'] as js.JsArray)
+              .toList();
+          embedding = rawList
+              .whereType<num>()
+              .map((e) => e.toDouble())
+              .toList();
         }
 
         double sharpness = 0.0;
@@ -205,8 +224,10 @@ Future<ValidatedFaceFrame> validateAndExtractFaceFrameWeb(
         double faceSizeRatio = 0.0;
         final int faceCount = (result['faceCount'] as num?)?.toInt() ?? 0;
         if (result['quality'] != null) {
-          sharpness = (result['quality']['sharpness'] as num?)?.toDouble() ?? 0.0;
-          brightness = (result['quality']['brightness'] as num?)?.toDouble() ?? 0.0;
+          sharpness =
+              (result['quality']['sharpness'] as num?)?.toDouble() ?? 0.0;
+          brightness =
+              (result['quality']['brightness'] as num?)?.toDouble() ?? 0.0;
           faceSizeRatio =
               (result['quality']['faceSizeRatio'] as num?)?.toDouble() ?? 0.0;
         }
@@ -224,7 +245,9 @@ Future<ValidatedFaceFrame> validateAndExtractFaceFrameWeb(
               ValidatedFaceFrame(
                 isValid: valid && embedding != null && embedding.length == 128,
                 errorMessage: error,
-                embedding: embedding == null ? null : List<double>.from(embedding),
+                embedding: embedding == null
+                    ? null
+                    : List<double>.from(embedding),
                 sharpness: sharpness,
                 brightness: brightness,
                 faceSizeRatio: faceSizeRatio,
@@ -249,7 +272,10 @@ Future<ValidatedFaceFrame> validateAndExtractFaceFrameWeb(
     });
 
     final catchCallback = js.JsFunction.withThis((_, dynamic error) {
-      AppLogger.warning('Web frame validation error: $error', tag: 'WebFaceEmbedder');
+      AppLogger.warning(
+        'Web frame validation error: $error',
+        tag: 'WebFaceEmbedder',
+      );
       if (!completer.isCompleted) {
         completer.complete(
           ValidatedFaceFrame(
@@ -262,17 +288,18 @@ Future<ValidatedFaceFrame> validateAndExtractFaceFrameWeb(
 
     promise.callMethod('then', [thenCallback, catchCallback]);
 
-    return await completer.future.timeout(
-      const Duration(seconds: 6),
-      onTimeout: () => const ValidatedFaceFrame(
-        isValid: false,
-        errorMessage: 'Face verification timeout.',
-      ),
-    ).then((frame) => _applyQualityGate(frame, forEnrollment: forEnrollment));
+    return await completer.future
+        .timeout(
+          const Duration(seconds: 6),
+          onTimeout: () => const ValidatedFaceFrame(
+            isValid: false,
+            errorMessage: 'Face verification timeout.',
+          ),
+        )
+        .then(
+          (frame) => _applyQualityGate(frame, forEnrollment: forEnrollment),
+        );
   } catch (e) {
-    return ValidatedFaceFrame(
-      isValid: false,
-      errorMessage: 'Error: $e',
-    );
+    return ValidatedFaceFrame(isValid: false, errorMessage: 'Error: $e');
   }
 }

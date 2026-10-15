@@ -52,61 +52,60 @@ void main() {
     });
 
     test(
-        'Super Admin starts with null scope and can explicitly inspect an admin',
-        () async {
-      final container = ProviderContainer(
-        overrides: [
-          currentAdminUserProvider.overrideWithValue(superAdmin),
-          isSuperAdminProvider.overrideWithValue(true),
-          allAdminsStreamProvider.overrideWith(
-            (ref) => Stream.value([regularAdmin, anotherAdmin]),
-          ),
-        ],
-      );
+      'Super Admin starts with null scope and can explicitly inspect an admin',
+      () async {
+        final container = ProviderContainer(
+          overrides: [
+            currentAdminUserProvider.overrideWithValue(superAdmin),
+            isSuperAdminProvider.overrideWithValue(true),
+            allAdminsStreamProvider.overrideWith(
+              (ref) => Stream.value([regularAdmin, anotherAdmin]),
+            ),
+          ],
+        );
 
-      // Listen to keep provider alive and await stream emission
-      container.listen(activeAdminScopeProvider, (_, _) {});
-      await Future<void>.delayed(Duration.zero);
+        // Listen to keep provider alive and await stream emission
+        container.listen(activeAdminScopeProvider, (_, _) {});
+        await Future<void>.delayed(Duration.zero);
 
-      // SA starts with NO workspace selected
-      expect(container.read(activeAdminScopeProvider), isNull);
-      expect(container.read(isInspectingAdminWorkspaceProvider), isFalse);
+        // SA starts with NO workspace selected
+        expect(container.read(activeAdminScopeProvider), isNull);
+        expect(container.read(isInspectingAdminWorkspaceProvider), isFalse);
 
-      // SA explicitly opens a workspace
-      container
-          .read(activeAdminScopeProvider.notifier)
-          .inspectAdmin(regularAdmin);
-      expect(container.read(activeAdminScopeProvider)?.id, equals('adm-123'));
-      expect(container.read(isInspectingAdminWorkspaceProvider), isTrue);
+        // SA explicitly opens a workspace
+        container
+            .read(activeAdminScopeProvider.notifier)
+            .inspectAdmin(regularAdmin);
+        expect(container.read(activeAdminScopeProvider)?.id, equals('adm-123'));
+        expect(container.read(isInspectingAdminWorkspaceProvider), isTrue);
 
-      // SA can switch to another admin workspace
-      container
-          .read(activeAdminScopeProvider.notifier)
-          .inspectAdmin(anotherAdmin);
-      expect(container.read(activeAdminScopeProvider)?.id, equals('adm-456'));
-      expect(container.read(isInspectingAdminWorkspaceProvider), isTrue);
+        // SA can switch to another admin workspace
+        container
+            .read(activeAdminScopeProvider.notifier)
+            .inspectAdmin(anotherAdmin);
+        expect(container.read(activeAdminScopeProvider)?.id, equals('adm-456'));
+        expect(container.read(isInspectingAdminWorkspaceProvider), isTrue);
 
-      // SA exits back to Admins Directory view (null scope)
-      container.read(activeAdminScopeProvider.notifier).exitInspection();
-      expect(container.read(activeAdminScopeProvider), isNull);
-      expect(container.read(isInspectingAdminWorkspaceProvider), isFalse);
+        // SA exits back to Admins Directory view (null scope)
+        container.read(activeAdminScopeProvider.notifier).exitInspection();
+        expect(container.read(activeAdminScopeProvider), isNull);
+        expect(container.read(isInspectingAdminWorkspaceProvider), isFalse);
 
-      // clearScope() is an alias for exitInspection()
-      container
-          .read(activeAdminScopeProvider.notifier)
-          .inspectAdmin(regularAdmin);
-      container.read(activeAdminScopeProvider.notifier).clearScope();
-      expect(container.read(activeAdminScopeProvider), isNull);
-    });
+        // clearScope() is an alias for exitInspection()
+        container
+            .read(activeAdminScopeProvider.notifier)
+            .inspectAdmin(regularAdmin);
+        container.read(activeAdminScopeProvider.notifier).clearScope();
+        expect(container.read(activeAdminScopeProvider), isNull);
+      },
+    );
 
     test('Super Admin with empty admin list starts with null scope', () async {
       final container = ProviderContainer(
         overrides: [
           currentAdminUserProvider.overrideWithValue(superAdmin),
           isSuperAdminProvider.overrideWithValue(true),
-          allAdminsStreamProvider.overrideWith(
-            (ref) => Stream.value([]),
-          ),
+          allAdminsStreamProvider.overrideWith((ref) => Stream.value([])),
         ],
       );
 
@@ -118,6 +117,3 @@ void main() {
     });
   });
 }
-
-
-

@@ -89,4 +89,3 @@ class AppColors {
   // ── Overlay ────────────────────────────────────────────────────────────
   static const scrim = Color(0x80000000);
 }
-

@@ -64,8 +64,12 @@ class _AdminForgotPasswordResetScreenState
     final oobCode = (widget.oobCode ?? '').trim();
     final token = (widget.token ?? '').trim();
     final code = oobCode.isNotEmpty ? oobCode : token;
+    // Supabase recovery links carry the session in the URL (hash or PKCE code),
+    // so no explicit token is needed in `recovery` mode.
+    final isRecovery = mode == 'recovery';
     final isPasswordReset =
-        code.isNotEmpty && (mode.isEmpty || mode == 'resetPassword');
+        isRecovery ||
+        (code.isNotEmpty && (mode.isEmpty || mode == 'resetPassword'));
     if (!isPasswordReset) {
       setState(() {
         _checkingToken = false;
@@ -74,9 +78,14 @@ class _AdminForgotPasswordResetScreenState
       return;
     }
 
-    final status = await ref
-        .read(adminPasswordResetServiceProvider)
-        .verifyToken(code);
+    final service = ref.read(adminPasswordResetServiceProvider);
+    var status = await service.verifyToken(code);
+    if (!status.valid && isRecovery) {
+      // The recovery session may still be finishing its exchange.
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      if (!mounted) return;
+      status = await service.verifyToken(code);
+    }
     if (!mounted) return;
     setState(() {
       _checkingToken = false;
@@ -88,7 +97,8 @@ class _AdminForgotPasswordResetScreenState
   }
 
   bool get _hasMinLength =>
-      _newPasswordController.text.trim().length >= AdminPasswordHasher.minLength;
+      _newPasswordController.text.trim().length >=
+      AdminPasswordHasher.minLength;
   bool get _passwordsMatch =>
       _newPasswordController.text.isNotEmpty &&
       _newPasswordController.text.trim() ==
@@ -109,7 +119,9 @@ class _AdminForgotPasswordResetScreenState
     final oobCode = (widget.oobCode ?? '').trim();
     final token = (widget.token ?? '').trim();
     final resetCode = oobCode.isNotEmpty ? oobCode : token;
-    result = await ref.read(adminPasswordResetServiceProvider).completeReset(
+    result = await ref
+        .read(adminPasswordResetServiceProvider)
+        .completeReset(
           token: resetCode,
           newPassword: _newPasswordController.text.trim(),
         );
@@ -179,10 +191,10 @@ class _AdminForgotPasswordResetScreenState
                     ),
                   )
                 : _success
-                    ? _buildSuccess(theme, isDark, logoHeight, logoToCard)
-                    : !_tokenValid
-                        ? _buildExpired(theme, isDark, logoHeight, logoToCard)
-                        : _buildForm(theme, isDark, logoHeight, logoToCard),
+                ? _buildSuccess(theme, isDark, logoHeight, logoToCard)
+                : !_tokenValid
+                ? _buildExpired(theme, isDark, logoHeight, logoToCard)
+                : _buildForm(theme, isDark, logoHeight, logoToCard),
           ),
         ),
       ),

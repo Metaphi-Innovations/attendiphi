@@ -1,4 +1,4 @@
-import { jwtVerify, createRemoteJWKSet, SignJWT, importPKCS8, type JWTPayload } from "jose";
+import type { JWTPayload } from "jose";
 import {
   ATTENDIPHI_LOGO_CID,
   sendSmtpMail,
@@ -6,32 +6,26 @@ import {
   smtpUserMessage,
   SmtpConfigError,
 } from "./smtp.ts";
+import {
+  attendiphiAdminRoleByAuthUserId,
+  dataServiceRoleKey,
+  dataSupabaseUrl,
+  deleteSupabaseAuthUser,
+  generateRecoveryActionLink,
+  provisionAdminAuthUser,
+  verifyAttendiphiAccessToken,
+} from "./supabase_admin_auth.ts";
 
-const FIREBASE_PROJECT_ID = "qr-checkin-dev";
-const FIREBASE_ISSUER = `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`;
-const IDENTITY_TOOLKIT_OOB_URL =
-  `https://identitytoolkit.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/accounts:sendOobCode`;
-const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
-const RESET_CONTINUE_URL =
-  "https://attendiphi-by-metaphi.web.app/admin-reset-password";
 /** Inline CID logo embedded by smtp.ts (reliable in Gmail; no remote image fetch). */
 const LOGO_SRC = `cid:${ATTENDIPHI_LOGO_CID}`;
 const GENERIC_RESET_MESSAGE =
   "If an account exists for this email, a password reset link has been sent.";
 
-const JWKS = createRemoteJWKSet(
-  new URL(
-    "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com",
-  ),
-);
-
 const PRODUCTION_ORIGINS = new Set([
-  "https://attendiphi-by-metaphi.web.app",
   "https://attendiphi.metaphi.in",
+  "http://localhost",
+  "http://127.0.0.1",
 ]);
-
-const FIRESTORE_DOC_BASE =
-  `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const RATE_WINDOW_MS = 15 * 60 * 1000;
@@ -54,12 +48,7 @@ interface WelcomeBody {
   portalUrl?: string;
   targetUid?: string;
   uid?: string;
-}
-
-interface ServiceAccount {
-  client_email: string;
-  private_key: string;
-  token_uri?: string;
+  adminId?: string;
 }
 
 interface RateBucket {
@@ -69,7 +58,6 @@ interface RateBucket {
 
 const resetEmailBuckets = new Map<string, RateBucket>();
 const resetIpBuckets = new Map<string, RateBucket>();
-let cachedGoogleToken: { value: string; exp: number } | null = null;
 
 Deno.serve(async (req) => {
   const origin = req.headers.get("origin") ?? "";
@@ -100,6 +88,9 @@ Deno.serve(async (req) => {
     if (action === "delete_admin" || action === "delete_user") {
       return await handleDeleteAdmin(req, body, cors);
     }
+    if (action === "provision_admin" || action === "create_auth_user") {
+      return await handleProvisionAdmin(req, body, cors);
+    }
 
     const emailType = ((body.emailType ?? body.type ?? "").trim()) as EmailType;
     if (emailType === "password_reset") {
@@ -118,34 +109,34 @@ async function handleDeleteAdmin(
   body: WelcomeBody,
   cors: HeadersInit,
 ): Promise<Response> {
-  const firebaseToken = bearerToken(req.headers.get("authorization"));
-  if (!firebaseToken) {
+  const accessToken = bearerToken(req.headers.get("authorization"));
+  if (!accessToken) {
     console.log("delete_admin_denied reason=missing_bearer status=401");
-    return json(401, { ok: false, error: "Missing Firebase ID token" }, cors);
+    return json(401, { ok: false, error: "Missing Supabase access token" }, cors);
   }
 
   let claims: JWTPayload;
   try {
-    claims = await verifyFirebaseIdToken(firebaseToken);
+    claims = await verifyAttendiphiAccessToken(accessToken);
   } catch (error) {
     console.log(
-      `delete_admin_denied reason=invalid_firebase_token status=401 detail=${errorName(error)}`,
+      `delete_admin_denied reason=invalid_supabase_token status=401 detail=${errorName(error)}`,
     );
-    return json(401, { ok: false, error: "Invalid or expired Firebase ID token" }, cors);
+    return json(401, { ok: false, error: "Invalid or expired Supabase session" }, cors);
   }
 
-  const actorUid = String(claims.sub ?? claims.user_id ?? "").trim();
+  const actorUid = String(claims.sub ?? "").trim();
   if (!actorUid) {
-    return json(401, { ok: false, error: "Firebase token is missing user identity" }, cors);
+    return json(401, { ok: false, error: "Token is missing user identity" }, cors);
   }
 
-  const isSuperAdmin = await assertAttendiphiSuperAdmin(firebaseToken, actorUid);
-  if (!isSuperAdmin) {
+  const role = await attendiphiAdminRoleByAuthUserId(actorUid);
+  if (role !== "superadmin") {
     console.log(`delete_admin_denied reason=not_super_admin status=403 uid=${actorUid}`);
-    return json(403, { ok: false, error: "Only Super Admin can delete Firebase Auth accounts" }, cors);
+    return json(403, { ok: false, error: "Only Super Admin can delete Auth accounts" }, cors);
   }
 
-  let targetUid = String(body.targetUid ?? body.uid ?? "").trim();
+  const targetUid = String(body.targetUid ?? body.uid ?? "").trim();
   const targetEmail = String(body.email ?? body.recipientEmail ?? "").trim().toLowerCase();
 
   if (!targetUid && !targetEmail) {
@@ -156,102 +147,98 @@ async function handleDeleteAdmin(
     return json(400, { ok: false, error: "You cannot delete your own admin account" }, cors);
   }
 
-  let accessToken: string;
   try {
-    accessToken = await googleAccessToken();
-  } catch (error) {
-    console.log(`delete_admin_failed reason=google_token detail=${errorName(error)}`);
-    return json(500, {
-      ok: false,
-      error: "Authentication service configuration error (missing service account credentials).",
-    }, cors);
-  }
-
-  // If targetUid is missing or if we need to resolve it by email:
-  if (!targetUid && targetEmail) {
-    try {
-      const lookupRes = await fetch(
-        `https://identitytoolkit.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/accounts:lookup`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ email: [targetEmail] }),
-        },
-      );
-      if (lookupRes.ok) {
-        const lookupData = await lookupRes.json();
-        const users = lookupData?.users;
-        if (Array.isArray(users) && users.length > 0 && users[0].localId) {
-          targetUid = users[0].localId;
-        }
-      }
-    } catch (e) {
-      console.log(`delete_admin_lookup_failed detail=${errorName(e)}`);
+    const result = await deleteSupabaseAuthUser({
+      targetUid,
+      targetEmail,
+    });
+    if (result.targetUid && result.targetUid === actorUid) {
+      return json(400, { ok: false, error: "You cannot delete your own admin account" }, cors);
     }
-  }
-
-  if (!targetUid) {
-    // If not found in Auth by email, it is already deleted or never existed.
-    console.log(`delete_admin_success reason=not_found_by_email email=${targetEmail}`);
+    console.log(
+      `delete_admin_success targetUid=${result.targetUid ?? ""} actorUid=${actorUid}`,
+    );
     return json(200, {
       ok: true,
       deleted: true,
-      note: "Account was not found in Firebase Authentication",
-    }, cors);
-  }
-
-  if (targetUid === actorUid) {
-    return json(400, { ok: false, error: "You cannot delete your own admin account" }, cors);
-  }
-
-  try {
-    const deleteRes = await fetch(
-      `https://identitytoolkit.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/accounts:delete`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ localId: targetUid }),
-      },
-    );
-
-    if (deleteRes.ok) {
-      console.log(`delete_admin_success targetUid=${targetUid} actorUid=${actorUid}`);
-      return json(200, {
-        ok: true,
-        deleted: true,
-        targetUid,
-        message: "Admin deleted from Firebase Authentication successfully.",
-      }, cors);
-    }
-
-    const errData = await deleteRes.json().catch(() => ({}));
-    const errCode = (errData?.error?.message as string) || "";
-    if (errCode === "USER_NOT_FOUND") {
-      console.log(`delete_admin_success reason=user_not_found targetUid=${targetUid}`);
-      return json(200, {
-        ok: true,
-        deleted: true,
-        targetUid,
-        note: "User was already not in Firebase Authentication.",
-      }, cors);
-    }
-
-    console.log(`delete_admin_failed status=${deleteRes.status} detail=${errCode}`);
-    return json(deleteRes.status, {
-      ok: false,
-      error: `Firebase Auth error: ${errCode || deleteRes.statusText}`,
+      targetUid: result.targetUid,
+      message: "Admin deleted from Supabase Authentication successfully.",
+      note: result.note,
     }, cors);
   } catch (error) {
     console.log(`delete_admin_failed reason=unhandled detail=${errorName(error)}`);
     return json(500, {
       ok: false,
-      error: "Could not delete user from Firebase Authentication.",
+      error: "Could not delete user from Supabase Authentication.",
+    }, cors);
+  }
+}
+
+async function handleProvisionAdmin(
+  req: Request,
+  body: WelcomeBody,
+  cors: HeadersInit,
+): Promise<Response> {
+  const accessToken = bearerToken(req.headers.get("authorization"));
+  if (!accessToken) {
+    return json(401, { ok: false, error: "Missing Supabase access token" }, cors);
+  }
+
+  let claims: JWTPayload;
+  try {
+    claims = await verifyAttendiphiAccessToken(accessToken);
+  } catch (error) {
+    console.log(
+      `provision_admin_denied reason=invalid_supabase_token status=401 detail=${errorName(error)}`,
+    );
+    return json(401, { ok: false, error: "Invalid or expired Supabase session" }, cors);
+  }
+
+  const actorUid = String(claims.sub ?? "").trim();
+  if (!actorUid) {
+    return json(401, { ok: false, error: "Token is missing user identity" }, cors);
+  }
+
+  const role = await attendiphiAdminRoleByAuthUserId(actorUid);
+  if (role !== "superadmin") {
+    console.log(`provision_admin_denied reason=not_super_admin status=403 uid=${actorUid}`);
+    return json(403, { ok: false, error: "Only Super Admin can provision Auth accounts" }, cors);
+  }
+
+  const email = String(body.email ?? body.recipientEmail ?? "").trim().toLowerCase();
+  const password = String(body.password ?? "").trim();
+  const adminId = String(body.adminId ?? body.targetUid ?? body.uid ?? "").trim();
+
+  if (!EMAIL_RE.test(email)) {
+    return json(400, { ok: false, error: "email is invalid" }, cors);
+  }
+  if (password.length < 6) {
+    return json(400, { ok: false, error: "password must be at least 6 characters" }, cors);
+  }
+
+  try {
+    const result = await provisionAdminAuthUser({
+      email,
+      password,
+      adminId: adminId || undefined,
+    });
+    console.log(
+      `provision_admin_success email=${email} authUserId=${result.authUserId} created=${result.created} actorUid=${actorUid}`,
+    );
+    return json(200, {
+      ok: true,
+      provisioned: true,
+      created: result.created,
+      authUserId: result.authUserId,
+      message: result.created
+        ? "Supabase Auth user created and linked."
+        : "Supabase Auth user updated and linked.",
+    }, cors);
+  } catch (error) {
+    console.log(`provision_admin_failed detail=${errorName(error)}`);
+    return json(500, {
+      ok: false,
+      error: "Could not create Supabase Auth user for this admin.",
     }, cors);
   }
 }
@@ -267,8 +254,10 @@ async function handlePasswordReset(
   }
 
   const ip = clientIp(req);
-  if (isRateLimited(resetEmailBuckets, `email:${email}`, MAX_RESET_PER_EMAIL) ||
-    isRateLimited(resetIpBuckets, `ip:${ip}`, MAX_RESET_PER_IP)) {
+  // Persist limits across Edge isolates; fall back to in-memory on RPC failure.
+  const emailLimited = await isResetRateLimited(`email:${email}`, MAX_RESET_PER_EMAIL);
+  const ipLimited = await isResetRateLimited(`ip:${ip}`, MAX_RESET_PER_IP);
+  if (emailLimited || ipLimited) {
     console.log("password_reset_denied reason=rate_limited status=429");
     return json(429, {
       ok: false,
@@ -276,37 +265,28 @@ async function handlePasswordReset(
     }, cors);
   }
 
+  // Always return the same message whether or not the account exists.
   const generic = json(200, {
     ok: true,
     emailType: "password_reset",
     message: GENERIC_RESET_MESSAGE,
   }, cors);
 
-  let oobLink = "";
+  const redirectTo = sanitizeResetRedirect(body.portalUrl);
+  let actionLink = "";
   try {
-    oobLink = await generateFirebasePasswordResetLink(email);
-  } catch (error) {
-    const code = identityErrorCode(error);
-    if (code === "EMAIL_NOT_FOUND" || code === "USER_NOT_FOUND") {
+    const generated = await generateRecoveryActionLink({
+      email,
+      redirectTo,
+    });
+    if ("notFound" in generated) {
       console.log("password_reset_accepted reason=unknown_account");
       return generic;
     }
-    if (
-      code === "missing_service_account" ||
-      code === "invalid_service_account" ||
-      code === "google_token_failed"
-    ) {
-      console.log(
-        `password_reset_failed reason=link_generation detail=${code}`,
-      );
-      return json(500, {
-        ok: false,
-        error:
-          "Password reset is not configured. Set a valid FIREBASE_SERVICE_ACCOUNT_JSON secret for project qr-checkin-dev, then redeploy is not required.",
-      }, cors);
-    }
+    actionLink = generated.actionLink;
+  } catch (error) {
     console.log(
-      `password_reset_failed reason=link_generation detail=${code || errorName(error)}`,
+      `password_reset_failed reason=link_generation detail=${errorName(error)}`,
     );
     return json(500, {
       ok: false,
@@ -314,31 +294,22 @@ async function handlePasswordReset(
     }, cors);
   }
 
-  let resetUrl = "";
-  try {
-    resetUrl = flutterResetUrlFromFirebaseOobLink(oobLink);
-  } catch {
-    console.log("password_reset_failed reason=malformed_oob_link");
-    return json(500, { ok: false, error: "Could not send a reset email. Please try again." }, cors);
-  }
-
   try {
     const sent = await sendSmtpMail({
       to: email,
       subject: "Reset your Attendiphi password",
-      html: resetHtml(resetUrl),
+      html: resetHtml(actionLink),
       text: resetText(),
+      attachLogo: true,
     });
     console.log(
-      `password_reset_success transport=smtp messageId=${sent.messageId}`,
+      `password_reset_success transport=smtp messageId=${sent.messageId} redirectTo=${redirectTo}`,
     );
     return generic;
   } catch (error) {
     console.log(
       `password_reset_failed reason=smtp detail=${smtpErrorDetail(error)}`,
     );
-    // Do not reveal whether the account exists; still surface a soft failure
-    // so locked-out users know to retry if SMTP is down.
     if (error instanceof SmtpConfigError) {
       return json(500, {
         ok: false,
@@ -352,36 +323,47 @@ async function handlePasswordReset(
   }
 }
 
+/** Portal reset landing — must be allow-listed in Auth URL Configuration. */
+function sanitizeResetRedirect(raw: unknown): string {
+  const fallback = "https://attendiphi.metaphi.in/admin-reset-password";
+  try {
+    const portal = sanitizePortalUrl(raw);
+    return `${new URL(portal).origin}/admin-reset-password`;
+  } catch {
+    return fallback;
+  }
+}
+
 async function handleAdminWelcome(
   req: Request,
   body: WelcomeBody,
   cors: HeadersInit,
 ): Promise<Response> {
-  const firebaseToken = bearerToken(req.headers.get("authorization"));
-  if (!firebaseToken) {
+  const accessToken = bearerToken(req.headers.get("authorization"));
+  if (!accessToken) {
     console.log("email_denied reason=missing_bearer status=401");
-    return json(401, { ok: false, error: "Missing Firebase ID token" }, cors);
+    return json(401, { ok: false, error: "Missing Supabase access token" }, cors);
   }
 
   let claims: JWTPayload;
   try {
-    claims = await verifyFirebaseIdToken(firebaseToken);
+    claims = await verifyAttendiphiAccessToken(accessToken);
   } catch (error) {
     console.log(
-      `email_denied reason=invalid_firebase_token status=401 detail=${errorName(error)}`,
+      `email_denied reason=invalid_supabase_token status=401 detail=${errorName(error)}`,
     );
-    return json(401, { ok: false, error: "Invalid or expired Firebase ID token" }, cors);
+    return json(401, { ok: false, error: "Invalid or expired Supabase session" }, cors);
   }
 
   const actorEmail = String(claims.email ?? "").trim().toLowerCase();
-  const actorUid = String(claims.sub ?? claims.user_id ?? "").trim();
-  if (!actorEmail || !actorUid) {
+  const actorUid = String(claims.sub ?? "").trim();
+  if (!actorUid) {
     console.log("email_denied reason=token_missing_identity status=401");
-    return json(401, { ok: false, error: "Firebase token is missing user identity" }, cors);
+    return json(401, { ok: false, error: "Token is missing user identity" }, cors);
   }
 
-  const isAdmin = await assertAttendiphiAdmin(firebaseToken, actorUid);
-  if (!isAdmin) {
+  const role = await attendiphiAdminRoleByAuthUserId(actorUid);
+  if (role !== "admin" && role !== "superadmin") {
     console.log(`email_denied reason=not_admin status=403 uid=${actorUid}`);
     return json(403, { ok: false, error: "Only Attendiphi administrators can send mail" }, cors);
   }
@@ -393,30 +375,81 @@ async function handleAdminWelcome(
 
   const recipientEmail = (body.recipientEmail ?? "").trim().toLowerCase();
   const recipientName = (body.recipientName ?? "").trim() || "Admin";
-  const password = (body.password ?? "").trim();
+  // Optional client password for Auth provision only — never emailed (P2).
+  const password = (body.password ?? "").trim() || randomTempPassword();
   const roleLabel = (body.roleLabel ?? "Admin").trim() || "Admin";
   const portalUrl = sanitizePortalUrl(body.portalUrl);
   const subject = (body.subject ?? "").trim() ||
-    "Attendiphi - Your QR Check-in Admin Login Credentials";
+    "Attendiphi - Set up your admin login";
 
   if (!EMAIL_RE.test(recipientEmail)) {
     return json(400, { ok: false, error: "recipientEmail is invalid" }, cors);
   }
-  if (!password) {
-    return json(400, { ok: false, error: "password is required for admin_welcome" }, cors);
+
+  // Ensure Auth login exists; password is not included in the email body.
+  try {
+    const provisioned = await provisionAdminAuthUser({
+      email: recipientEmail,
+      password,
+      adminId: String(body.adminId ?? "").trim() || undefined,
+    });
+    console.log(
+      `admin_welcome_provisioned authUserId=${provisioned.authUserId} created=${provisioned.created}`,
+    );
+  } catch (error) {
+    console.log(
+      `email_failed type=admin_welcome reason=auth_provision detail=${errorName(error)} actorUid=${actorUid}`,
+    );
+    return json(500, {
+      ok: false,
+      error: "Could not create the Auth login for this admin. Email was not sent.",
+      adminCreated: true,
+      emailSent: false,
+    }, cors);
+  }
+
+  const redirectTo = sanitizeResetRedirect(portalUrl);
+  let actionLink = "";
+  try {
+    const generated = await generateRecoveryActionLink({
+      email: recipientEmail,
+      redirectTo,
+    });
+    if ("notFound" in generated) {
+      console.log(
+        `email_failed type=admin_welcome reason=invite_link_user_missing`,
+      );
+      return json(500, {
+        ok: false,
+        error: "Could not create an invite link for this admin.",
+        adminCreated: true,
+        emailSent: false,
+      }, cors);
+    }
+    actionLink = generated.actionLink;
+  } catch (error) {
+    console.log(
+      `email_failed type=admin_welcome reason=invite_link detail=${errorName(error)}`,
+    );
+    return json(500, {
+      ok: false,
+      error: "Could not create an invite link. Email was not sent.",
+      adminCreated: true,
+      emailSent: false,
+    }, cors);
   }
 
   const html = welcomeHtml({
     name: recipientName,
     email: recipientEmail,
-    password,
+    actionLink,
     roleLabel,
     portalUrl,
   });
   const text = welcomeText({
     name: recipientName,
     email: recipientEmail,
-    password,
+    actionLink,
     roleLabel,
     portalUrl,
   });
@@ -512,64 +545,51 @@ function isRateLimited(
   return current.count > max;
 }
 
-async function verifyFirebaseIdToken(token: string): Promise<JWTPayload> {
-  const { payload } = await jwtVerify(token, JWKS, {
-    issuer: FIREBASE_ISSUER,
-    audience: FIREBASE_PROJECT_ID,
-    clockTolerance: 5,
-  });
-  if (!payload.sub) {
-    throw new Error("missing_sub");
+/** Persisted rate limit via SECURITY DEFINER RPC (service role). */
+async function isResetRateLimited(key: string, max: number): Promise<boolean> {
+  const memoryBuckets = key.startsWith("ip:")
+    ? resetIpBuckets
+    : resetEmailBuckets;
+  try {
+    const res = await fetch(
+      `${dataSupabaseUrl()}/rest/v1/rpc/bump_email_rate_limit`,
+      {
+        method: "POST",
+        headers: {
+          apikey: dataServiceRoleKey(),
+          Authorization: `Bearer ${dataServiceRoleKey()}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          p_bucket_key: key,
+          p_max_hits: max,
+          p_window_seconds: Math.floor(RATE_WINDOW_MS / 1000),
+        }),
+      },
+    );
+    if (!res.ok) {
+      console.log(
+        `rate_limit_rpc_fallback status=${res.status} key_prefix=${key.split(":")[0]}`,
+      );
+      return isRateLimited(memoryBuckets, key, max);
+    }
+    const limited = await res.json();
+    return limited === true;
+  } catch (error) {
+    console.log(
+      `rate_limit_rpc_error detail=${errorName(error)} key_prefix=${key.split(":")[0]}`,
+    );
+    return isRateLimited(memoryBuckets, key, max);
   }
-  return payload;
-}
-
-async function assertAttendiphiAdmin(
-  firebaseIdToken: string,
-  uid: string,
-): Promise<boolean> {
-  const role = await attendiphiAdminRole(firebaseIdToken, uid);
-  return role === "admin" || role === "superadmin";
-}
-
-/** Firebase Auth delete is Super Admin only (H5). Welcome email still allows regular admin. */
-async function assertAttendiphiSuperAdmin(
-  firebaseIdToken: string,
-  uid: string,
-): Promise<boolean> {
-  const role = await attendiphiAdminRole(firebaseIdToken, uid);
-  return role === "superadmin";
-}
-
-async function attendiphiAdminRole(
-  firebaseIdToken: string,
-  uid: string,
-): Promise<string | null> {
-  const response = await fetch(
-    `${FIRESTORE_DOC_BASE}/admins/${encodeURIComponent(uid)}`,
-    {
-      headers: { Authorization: `Bearer ${firebaseIdToken}` },
-    },
-  );
-  if (!response.ok) {
-    console.log(`email_denied reason=firestore_lookup status=${response.status}`);
-    return null;
-  }
-  const doc = await response.json() as {
-    fields?: { isActive?: { booleanValue?: boolean }; role?: { stringValue?: string } };
-  };
-  if (doc.fields?.isActive?.booleanValue === false) return null;
-  return (doc.fields?.role?.stringValue ?? "").trim().toLowerCase() || null;
 }
 
 function sanitizePortalUrl(raw: unknown): string {
-  const fallback = "https://attendiphi-by-metaphi.web.app/";
+  const fallback = "https://attendiphi.metaphi.in/";
   if (typeof raw !== "string") return fallback;
   try {
     const url = new URL(raw.trim());
     if (url.protocol !== "https:" && url.protocol !== "http:") return fallback;
     const allowedHosts = new Set([
-      "attendiphi-by-metaphi.web.app",
       "attendiphi.metaphi.in",
       "localhost",
       "127.0.0.1",
@@ -579,114 +599,6 @@ function sanitizePortalUrl(raw: unknown): string {
   } catch {
     return fallback;
   }
-}
-
-function readServiceAccount(): ServiceAccount {
-  const raw = Deno.env.get("FIREBASE_SERVICE_ACCOUNT_JSON")?.trim() ?? "";
-  const encoded = Deno.env.get("FIREBASE_SERVICE_ACCOUNT_JSON_BASE64")?.trim() ?? "";
-  const jsonText = raw || (encoded ? atob(encoded) : "");
-  // Empty string / placeholder secrets fail Forgot Password before SMTP runs.
-  if (!jsonText || jsonText.length < 32) {
-    throw new Error("missing_service_account");
-  }
-  let parsed: ServiceAccount;
-  try {
-    parsed = JSON.parse(jsonText) as ServiceAccount;
-  } catch {
-    throw new Error("invalid_service_account");
-  }
-  if (!parsed.client_email || !parsed.private_key) {
-    throw new Error("invalid_service_account");
-  }
-  return parsed;
-}
-
-async function googleAccessToken(): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-  if (cachedGoogleToken && cachedGoogleToken.exp - 60 > now) {
-    return cachedGoogleToken.value;
-  }
-  const account = readServiceAccount();
-  const pem = account.private_key.replaceAll("\\n", "\n");
-  const key = await importPKCS8(pem, "RS256");
-  const jwt = await new SignJWT({
-    scope: "https://www.googleapis.com/auth/identitytoolkit",
-  })
-    .setProtectedHeader({ alg: "RS256", typ: "JWT" })
-    .setIssuer(account.client_email)
-    .setSubject(account.client_email)
-    .setAudience(account.token_uri || GOOGLE_TOKEN_URL)
-    .setIssuedAt(now)
-    .setExpirationTime(now + 3600)
-    .sign(key);
-
-  const tokenResponse = await fetch(GOOGLE_TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: jwt,
-    }),
-  });
-  const payload = await tokenResponse.json().catch(() => ({}));
-  const accessToken = typeof payload.access_token === "string" ? payload.access_token : "";
-  if (!tokenResponse.ok || !accessToken) {
-    throw new Error("google_token_failed");
-  }
-  cachedGoogleToken = { value: accessToken, exp: now + 3300 };
-  return accessToken;
-}
-
-async function generateFirebasePasswordResetLink(email: string): Promise<string> {
-  const accessToken = await googleAccessToken();
-  const response = await fetch(IDENTITY_TOOLKIT_OOB_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      requestType: "PASSWORD_RESET",
-      email,
-      returnOobLink: true,
-      continueUrl: RESET_CONTINUE_URL,
-      canHandleCodeInApp: false,
-    }),
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = new Error("identity_toolkit_failed");
-    (error as Error & { identityCode?: string }).identityCode =
-      String(payload?.error?.message ?? "").split(":")[0]?.trim();
-    throw error;
-  }
-  const oobLink = typeof payload.oobLink === "string" ? payload.oobLink : "";
-  if (!oobLink) {
-    throw new Error("missing_oob_link");
-  }
-  return oobLink;
-}
-
-function identityErrorCode(error: unknown): string {
-  if (error && typeof error === "object" && "identityCode" in error) {
-    return String((error as { identityCode?: string }).identityCode ?? "");
-  }
-  if (error instanceof Error) return error.message;
-  return "";
-}
-
-function flutterResetUrlFromFirebaseOobLink(oobLink: string): string {
-  const uri = new URL(oobLink);
-  const oobCode = uri.searchParams.get("oobCode")?.trim() ?? "";
-  const apiKey = uri.searchParams.get("apiKey")?.trim() ?? "";
-  if (!oobCode) {
-    throw new Error("missing_oob_code");
-  }
-  const landing = new URL(RESET_CONTINUE_URL);
-  landing.searchParams.set("mode", "resetPassword");
-  landing.searchParams.set("oobCode", oobCode);
-  if (apiKey) landing.searchParams.set("apiKey", apiKey);
-  return landing.toString();
 }
 
 function escapeHtml(value: string): string {
@@ -718,79 +630,84 @@ Attendiphi by Metaphi
 
 function resetHtml(resetUrl: string): string {
   const safeUrl = escapeHtml(resetUrl);
+  // Branded layout matching Attendiphi credentials / reset mail (purple header).
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
 </head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f8fafc;margin:0;padding:24px;color:#1e293b;">
-  <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0;">
-    <div style="background:#ffffff;padding:28px 24px;text-align:center;border-bottom:1px solid #e2e8f0;">
-      <img src="${LOGO_SRC}" alt="Attendiphi" width="160" style="max-width:160px;height:auto;margin:0 auto 12px;display:block;border:0;" />
-      <p style="margin:0;font-size:13px;color:#64748b;">Attendiphi by Metaphi</p>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#eef2ff;margin:0;padding:24px;color:#1e293b;">
+  <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 8px 24px rgba(15,23,42,0.06);">
+    <div style="background:#4f46e5;padding:36px 24px;text-align:center;">
+      <img src="${LOGO_SRC}" alt="Attendiphi by Metaphi" width="180" style="max-width:180px;height:auto;margin:0 auto;display:block;border:0;" />
     </div>
-    <div style="padding:28px 24px;">
-      <h1 style="margin:0 0 16px;font-size:22px;color:#0f172a;">Reset your password</h1>
-      <p style="font-size:15px;color:#334155;line-height:1.6;">Hello,</p>
-      <p style="font-size:15px;color:#334155;line-height:1.6;">
+    <div style="padding:32px 28px 28px;">
+      <h1 style="margin:0 0 20px;font-size:24px;font-weight:700;color:#0f172a;line-height:1.3;">Reset your password</h1>
+      <p style="margin:0 0 12px;font-size:15px;color:#334155;line-height:1.6;">Hello,</p>
+      <p style="margin:0 0 12px;font-size:15px;color:#334155;line-height:1.6;">
         We received a request to reset the password for your Attendiphi account.
       </p>
-      <p style="font-size:15px;color:#334155;line-height:1.6;">
+      <p style="margin:0 0 8px;font-size:15px;color:#334155;line-height:1.6;">
         Click the button below to create a new password.
       </p>
-      <p style="text-align:center;margin:28px 0;">
-        <a href="${safeUrl}" style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:10px;font-weight:600;font-size:15px;">Reset Password</a>
+      <p style="text-align:center;margin:28px 0 24px;">
+        <a href="${safeUrl}" style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:15px;">Reset Password</a>
       </p>
-      <p style="font-size:13px;color:#64748b;line-height:1.6;">
+      <p style="margin:0 0 10px;font-size:13px;color:#64748b;line-height:1.6;">
         If you did not request a password reset, you can safely ignore this email.
       </p>
-      <p style="font-size:13px;color:#64748b;line-height:1.6;">
+      <p style="margin:0 0 24px;font-size:13px;color:#64748b;line-height:1.6;">
         For your security, never share your password or this reset link with anyone.
       </p>
-      <p style="font-size:13px;color:#334155;margin-top:24px;">
+      <p style="margin:0;font-size:14px;color:#334155;line-height:1.6;">
         Thanks,<br>The Attendiphi Team
       </p>
-      <p style="font-size:12px;color:#94a3b8;">Attendiphi by Metaphi</p>
+      <p style="margin:20px 0 0;font-size:12px;color:#94a3b8;">Attendiphi by Metaphi</p>
     </div>
   </div>
 </body>
 </html>`;
 }
 
+function randomTempPassword(): string {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 function welcomeText(input: {
   name: string;
   email: string;
-  password: string;
+  actionLink: string;
   roleLabel: string;
   portalUrl: string;
 }): string {
   return `Hello ${input.name},
 
-You have been granted Administrator access to the QR Check-in & Attendance Portal.
+You have been granted ${input.roleLabel} access to the Attendiphi QR Check-in portal.
 
-Your Login Credentials:
-────────────────────────────────────
-• Portal URL: ${input.portalUrl}
-• Login Email id: ${input.email}
-• Password: ${input.password}
-• Access Role: ${input.roleLabel}
-────────────────────────────────────
+Open this secure link to set your password (it expires after a short time):
+${input.actionLink}
 
-Please sign in using the Portal URL above and keep your login credentials secure.
+Portal: ${input.portalUrl}
+Login email: ${input.email}
+
+If you did not expect this email, you can ignore it.
 
 Best regards,
-Super Admin
+Attendiphi Super Admin
 `;
 }
 
 function welcomeHtml(input: {
   name: string;
   email: string;
-  password: string;
+  actionLink: string;
   roleLabel: string;
   portalUrl: string;
 }): string {
+  const safeLink = escapeHtml(input.actionLink);
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
@@ -803,17 +720,21 @@ function welcomeHtml(input: {
     <div style="padding:28px 24px;">
       <p style="font-size:16px;font-weight:600;">Hello ${escapeHtml(input.name)},</p>
       <p style="font-size:14px;color:#475569;line-height:1.6;">
-        You have been granted Administrator access to the QR Check-in &amp; Attendance Portal.
+        You have been granted <strong>${escapeHtml(input.roleLabel)}</strong> access to Attendiphi.
       </p>
-      <p style="font-size:14px;font-weight:600;margin-bottom:8px;">Your Login Credentials:</p>
+      <p style="font-size:14px;color:#475569;line-height:1.6;">
+        Click the button below to set your own password. We never email passwords in plaintext.
+      </p>
+      <p style="text-align:center;margin:28px 0 24px;">
+        <a href="${safeLink}" style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:15px;">Set your password</a>
+      </p>
       <div style="background:#f1f5f9;border-radius:12px;padding:18px;border:1px solid #cbd5e1;margin-bottom:24px;font-size:13.5px;">
         <p><strong>Portal URL:</strong> <a href="${escapeHtml(input.portalUrl)}">${escapeHtml(input.portalUrl)}</a></p>
-        <p><strong>Login Email id:</strong> ${escapeHtml(input.email)}</p>
-        <p><strong>Password:</strong> ${escapeHtml(input.password)}</p>
+        <p><strong>Login Email:</strong> ${escapeHtml(input.email)}</p>
         <p><strong>Access Role:</strong> ${escapeHtml(input.roleLabel)}</p>
       </div>
-      <p style="font-size:13px;color:#64748b;">Please sign in using the Portal URL above and keep your login credentials secure.</p>
-      <p style="font-size:13px;">Best regards,<br/>Super Admin</p>
+      <p style="font-size:13px;color:#64748b;">If you did not expect this email, you can ignore it.</p>
+      <p style="font-size:13px;">Best regards,<br/>Attendiphi Super Admin</p>
     </div>
   </div>
 </body>

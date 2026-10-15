@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Production web release build for Attendiphi.
-# Injects CHECKIN_SESSION_TOKEN_SECRET so QR session tokens are signed with a
-# stable Hosting key (not only the public bootstrap fallback).
+# Production web release for Attendiphi (Supabase-only client).
+# Injects CHECKIN_SESSION_TOKEN_SECRET + SUPABASE_URL/ANON_KEY into Dart and
+# rewrites web/index.html meta tags from the same values (no drift).
+# Output: build/web + build/web.zip for devops → https://attendiphi.metaphi.in
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -15,8 +16,14 @@ resolve_secret() {
     printf '%s' "$CHECKIN_SESSION_TOKEN_SECRET"
     return
   fi
+  # CI / release trains must supply the secret via env — never invent or
+  # silently reuse a local .secrets file in automated pipelines.
+  if [[ "${CI:-}" == "true" || "${ATTENDIPHI_REQUIRE_SECRET:-}" == "1" ]]; then
+    echo "error: CHECKIN_SESSION_TOKEN_SECRET missing (CI/require mode)." >&2
+    echo "Export CHECKIN_SESSION_TOKEN_SECRET (≥16 chars) in the pipeline." >&2
+    exit 1
+  fi
   if [[ -f "$SECRET_FILE" ]]; then
-    # Trim whitespace/newlines from file contents
     tr -d '\r\n' <"$SECRET_FILE"
     return
   fi
@@ -42,10 +49,58 @@ if [[ "${#CHECKIN_SESSION_TOKEN_SECRET}" -lt 16 ]]; then
   exit 1
 fi
 
-echo "Building Flutter web release with CHECKIN_SESSION_TOKEN_SECRET (${#CHECKIN_SESSION_TOKEN_SECRET} chars)…"
-flutter build web --release --base-href / \
-  --dart-define="CHECKIN_SESSION_TOKEN_SECRET=${CHECKIN_SESSION_TOKEN_SECRET}"
+# Single source for Supabase client config (Dart dart-define + index.html meta).
+SUPABASE_URL="${SUPABASE_URL:-https://fzghxzybyygslfjyfewu.supabase.co}"
+SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY:-sb_publishable_sxoF5zOkdBhDJOm3EH6PjA_uSswNowX}"
+export SUPABASE_URL SUPABASE_ANON_KEY
 
+if [[ -z "$SUPABASE_URL" || -z "$SUPABASE_ANON_KEY" ]]; then
+  echo "error: SUPABASE_URL and SUPABASE_ANON_KEY are required." >&2
+  exit 1
+fi
+
+INDEX_HTML="$ROOT/web/index.html"
+if [[ -f "$INDEX_HTML" ]]; then
+  # Rewrite meta tags in-place from the same env used for dart-define.
+  python3 - <<PY
+from pathlib import Path
+path = Path("$INDEX_HTML")
+text = path.read_text()
+url = """$SUPABASE_URL"""
+key = """$SUPABASE_ANON_KEY"""
+import re
+text = re.sub(
+    r'(<meta name="supabase-url" content=")[^"]*(">)',
+    r'\g<1>' + url + r'\g<2>',
+    text,
+    count=1,
+)
+text = re.sub(
+    r'(<meta name="supabase-anon-key" content=")[^"]*(">)',
+    r'\g<1>' + key + r'\g<2>',
+    text,
+    count=1,
+)
+path.write_text(text)
+print(f"Synced web/index.html supabase meta → {url}")
+PY
+fi
+
+echo "Building Flutter web release…"
+echo "  CHECKIN_SESSION_TOKEN_SECRET (${#CHECKIN_SESSION_TOKEN_SECRET} chars)"
+echo "  SUPABASE_URL=$SUPABASE_URL"
+flutter build web --release --base-href / \
+  --dart-define="CHECKIN_SESSION_TOKEN_SECRET=${CHECKIN_SESSION_TOKEN_SECRET}" \
+  --dart-define="SUPABASE_URL=${SUPABASE_URL}" \
+  --dart-define="SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}"
+
+ZIP_PATH="$ROOT/build/web.zip"
+rm -f "$ZIP_PATH"
+(
+  cd "$ROOT/build"
+  zip -qr web.zip web
+)
 echo "Build complete: build/web"
-echo "Deploy with: firebase deploy --only hosting:attendiphi"
+echo "Devops package: $ZIP_PATH"
 echo "Keep .secrets/checkin_session_token_secret stable across deploys; rotating it invalidates printed standees."
+echo "See docs/DEVOPS_WEB_DEPLOY.md for nginx SPA notes."

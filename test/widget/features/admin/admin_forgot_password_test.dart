@@ -11,10 +11,27 @@ import 'package:qr_checkin/features/admin/presentation/providers/admin_auth_prov
 import 'package:qr_checkin/features/admin/presentation/screens/admin_forgot_password_reset_screen.dart';
 import 'package:qr_checkin/features/admin/presentation/screens/admin_forgot_password_screen.dart';
 import 'package:qr_checkin/features/admin/presentation/screens/admin_login_screen.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+Session _recoverySession({String email = 'admin@example.com'}) {
+  return Session(
+    accessToken: 'access-token',
+    tokenType: 'bearer',
+    user: User(
+      id: 'user-1',
+      appMetadata: const {},
+      userMetadata: const {},
+      aud: 'authenticated',
+      createdAt: DateTime.utc(2026, 1, 1).toIso8601String(),
+      email: email,
+    ),
+  );
+}
 
 void main() {
-  testWidgets('login shows Forgot Password below the password field',
-      (tester) async {
+  testWidgets('login shows Forgot Password below the password field', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1200, 1000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -44,8 +61,9 @@ void main() {
     expect(find.text('Sign In to Portal'), findsOneWidget);
   });
 
-  testWidgets('forgot password request shows generic success copy',
-      (tester) async {
+  testWidgets('forgot password request shows generic success copy', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1200, 1000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -96,8 +114,9 @@ void main() {
     expect(sentTo, 'unknown@example.com');
   });
 
-  testWidgets('reset page shows expired state for an empty token',
-      (tester) async {
+  testWidgets('reset page shows expired state for an empty token', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1200, 1000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -128,8 +147,9 @@ void main() {
     expect(find.text('Request New Link'), findsOneWidget);
   });
 
-  testWidgets('resetPassword mode without oobCode shows expired state',
-      (tester) async {
+  testWidgets('resetPassword mode without oobCode shows expired state', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1200, 1000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -146,9 +166,8 @@ void main() {
               ),
               GoRoute(
                 path: RouteNames.adminResetPassword,
-                builder: (_, _) => const AdminForgotPasswordResetScreen(
-                  mode: 'resetPassword',
-                ),
+                builder: (_, _) =>
+                    const AdminForgotPasswordResetScreen(mode: 'resetPassword'),
               ),
             ],
           ),
@@ -168,11 +187,7 @@ void main() {
       ProviderScope(
         overrides: [
           adminPasswordResetServiceProvider.overrideWith(
-            (ref) => AdminPasswordResetService(
-              verifyPasswordResetCodeFn: (code) async {
-                throw Exception('invalid-action-code');
-              },
-            ),
+            (ref) => AdminPasswordResetService(currentSessionFn: () => null),
           ),
         ],
         child: MaterialApp.router(
@@ -209,9 +224,9 @@ void main() {
         overrides: [
           adminPasswordResetServiceProvider.overrideWith(
             (ref) => AdminPasswordResetService(
-              verifyPasswordResetCodeFn: (code) async => 'admin@example.com',
-              confirmPasswordResetFn: ({required code, required newPassword}) async {
-                fail('confirm must not run when passwords mismatch');
+              currentSessionFn: _recoverySession,
+              updatePasswordFn: (newPassword) async {
+                fail('update must not run when passwords mismatch');
               },
             ),
           ),
@@ -248,8 +263,9 @@ void main() {
     expect(find.textContaining('Password Reset Successfully'), findsNothing);
   });
 
-  testWidgets('successful confirmPasswordReset shows success and login',
-      (tester) async {
+  testWidgets('successful confirmPasswordReset shows success and login', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1200, 1000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -260,10 +276,9 @@ void main() {
         overrides: [
           adminPasswordResetServiceProvider.overrideWith(
             (ref) => AdminPasswordResetService(
-              verifyPasswordResetCodeFn: (code) async => 'admin@example.com',
-              confirmPasswordResetFn: ({required code, required newPassword}) async {
+              currentSessionFn: _recoverySession,
+              updatePasswordFn: (newPassword) async {
                 confirmed = true;
-                expect(code, 'good-oob');
                 expect(newPassword, 'NewPass@12');
               },
             ),

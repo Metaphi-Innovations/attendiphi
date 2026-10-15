@@ -12,13 +12,6 @@ dependencies:
   flutter_web_plugins:
     sdk: flutter
 
-  # Firebase
-  firebase_core: ^4.13.0
-  cloud_firestore: ^6.8.0
-  firebase_auth: ^6.5.7
-  firebase_app_check: ^0.4.6
-  firebase_crashlytics: ^5.2.7
-
   # State Management
   flutter_riverpod: ^3.4.2
 
@@ -45,13 +38,13 @@ dependencies:
 
   # Google Fonts
   google_fonts: ^8.2.1
-  firebase_messaging: ^16.6.0
   flutter_local_notifications: ^22.3.0
   shared_preferences: ^2.5.5
   google_mlkit_face_detection: ^0.15.1
   tflite_flutter: ^0.12.1
   image: ^4.10.1
   two_dimensional_scrollables: ^0.5.5
+  supabase_flutter: ^2.18.3
 
 dev_dependencies:
   flutter_test:

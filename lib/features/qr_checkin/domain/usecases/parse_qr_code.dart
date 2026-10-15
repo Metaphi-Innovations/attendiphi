@@ -61,10 +61,7 @@ class ParseQrCode {
           'Failed to decode JSON QR payload: $e',
           tag: 'ParseQrCode',
         );
-        throw MalformedQrPayloadException(
-          originalError: e,
-          stackTrace: st,
-        );
+        throw MalformedQrPayloadException(originalError: e, stackTrace: st);
       }
     }
 
@@ -73,8 +70,9 @@ class ParseQrCode {
     //    Legacy: https://…/checkin-permission?date=…&locationId=…
     final uri = Uri.tryParse(trimmed);
     if (uri != null) {
-      final Map<String, String> params =
-          Map<String, String>.from(uri.queryParameters);
+      final Map<String, String> params = Map<String, String>.from(
+        uri.queryParameters,
+      );
 
       var path = uri.path;
       // Path query parameters plus legacy fragment query parameters.
@@ -91,8 +89,10 @@ class ParseQrCode {
         }
       }
 
-      final segments =
-          path.split('/').where((s) => s.trim().isNotEmpty).toList();
+      final segments = path
+          .split('/')
+          .where((s) => s.trim().isNotEmpty)
+          .toList();
       if (segments.length >= 2 && segments[segments.length - 2] == 'checkin') {
         final tokenSegment = segments.last;
         final claims = CheckInSessionToken.tryParse(tokenSegment);
@@ -134,13 +134,9 @@ class ParseQrCode {
     // Valid locationId: 2-64 characters, letters, digits, underscores, dashes
     final validIdRegex = RegExp(r'^[a-zA-Z0-9_\-]{2,64}$');
     if (validIdRegex.hasMatch(trimmed)) {
-      return QrPayload(
-        locationId: trimmed,
-        rawPayload: trimmed,
-      );
+      return QrPayload(locationId: trimmed, rawPayload: trimmed);
     }
 
     throw const InvalidQrCodeException();
   }
 }
-

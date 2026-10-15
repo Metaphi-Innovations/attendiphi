@@ -39,10 +39,13 @@ class SubmitCheckIn {
     String? photoBase64,
     String? adminId,
     String? sessionDateStr,
+    String? sessionToken,
     String? deviceId,
     String? recognizedMemberId,
+
     /// Member id being substituted for (locks that member for the session day).
     String? substituteForMemberId,
+
     /// When false, skips Thursday / QR-date / one-device / GPS enforcement.
     /// Phone uniqueness and required fields still apply.
     bool restrictionsEnabled = true,
@@ -73,7 +76,9 @@ class SubmitCheckIn {
 
     // 3. Validate visitor requirements
     if (type.isVisitor) {
-      if (email == null || email.trim().isEmpty || Validators.validateEmail(email) != null) {
+      if (email == null ||
+          email.trim().isEmpty ||
+          Validators.validateEmail(email) != null) {
         throw const CheckInSubmissionFailedException(
           userMessage: 'Please enter a valid email address.',
           technicalMessage: 'Validation failed: email is invalid for visitor',
@@ -82,19 +87,22 @@ class SubmitCheckIn {
       if (companyName == null || companyName.trim().isEmpty) {
         throw const CheckInSubmissionFailedException(
           userMessage: 'Please enter your company name.',
-          technicalMessage: 'Validation failed: companyName is required for visitor',
+          technicalMessage:
+              'Validation failed: companyName is required for visitor',
         );
       }
       if (category == null || category.trim().isEmpty) {
         throw const CheckInSubmissionFailedException(
           userMessage: 'Please enter your business category.',
-          technicalMessage: 'Validation failed: category is required for visitor',
+          technicalMessage:
+              'Validation failed: category is required for visitor',
         );
       }
       if (invitedByMember == null || invitedByMember.trim().isEmpty) {
         throw const CheckInSubmissionFailedException(
           userMessage: 'Please select which Member invited you.',
-          technicalMessage: 'Validation failed: invitedByMember is required for visitor',
+          technicalMessage:
+              'Validation failed: invitedByMember is required for visitor',
         );
       }
     }
@@ -117,7 +125,8 @@ class SubmitCheckIn {
       }
 
       if (parsedSessionDate != null) {
-        final isSameDate = parsedSessionDate.year == now.year &&
+        final isSameDate =
+            parsedSessionDate.year == now.year &&
             parsedSessionDate.month == now.month &&
             parsedSessionDate.day == now.day;
         if (!isSameDate) {
@@ -151,8 +160,8 @@ class SubmitCheckIn {
     final trimmedSubstituteFor = substituteForMember?.trim();
     final coveredMemberId = type.isSubstitute
         ? (substituteForMemberId?.trim().isNotEmpty == true
-            ? substituteForMemberId!.trim()
-            : null)
+              ? substituteForMemberId!.trim()
+              : null)
         : recognizedMemberId;
 
     final submission = CheckInSubmission(
@@ -194,31 +203,19 @@ class SubmitCheckIn {
     // Public QR cannot read checkIns — uniqueness is enforced via session locks
     // claimed atomically with the check-in write below.
     final formattedPhone = Validators.formatPhoneWithCountryCode(phone);
-    final hasDevice = deviceId != null && deviceId.trim().isNotEmpty;
 
+    // Phone uniqueness only — devices/tablets are shared across members.
+    // Member uniqueness is enforced via member_session_locks on write.
     try {
-      final results = await Future.wait([
-        _repository.getIdentitySubmission(formattedPhone, submissionTimestamp),
-        if (restrictionsEnabled && hasDevice)
-          _repository.getDeviceSubmission(deviceId.trim(), submissionTimestamp)
-        else
-          Future<CheckInSubmission?>.value(null),
-      ]);
-
-      final existingPhoneSubmission = results[0];
-      final existingDeviceSubmission = results.length > 1 ? results[1] : null;
-
+      final existingPhoneSubmission = await _repository.getIdentitySubmission(
+        formattedPhone,
+        submissionTimestamp,
+      );
       if (existingPhoneSubmission != null) {
         throw DuplicateCheckInException(
-          userMessage: 'This phone number has already submitted attendance for today.',
+          userMessage:
+              'This phone number has already submitted attendance for today.',
           existingSubmissionData: existingPhoneSubmission.toMap(),
-        );
-      }
-
-      if (restrictionsEnabled && existingDeviceSubmission != null) {
-        throw DuplicateCheckInException(
-          userMessage: 'This device has already recorded attendance for today.',
-          existingSubmissionData: existingDeviceSubmission.toMap(),
         );
       }
     } on DuplicateCheckInException {
@@ -244,8 +241,8 @@ class SubmitCheckIn {
       return null;
     }();
 
-    // 6. Atomic write: phone (+ member / device) locks + checkIns in one
-    // transaction so a failed/timeout write cannot orphan a device lock.
+    // 6. Atomic write: phone (+ member) locks + checkIns.
+    // Device locks are not used — venue phones are shared across members.
     final stored = type.isMember
         ? submission.copyWith(photoBase64: '')
         : submission;
@@ -253,14 +250,18 @@ class SubmitCheckIn {
       stored,
       enforceThursday: restrictionsEnabled,
       sessionDateYmd: sessionDateYmd,
-      claimDeviceId:
-          restrictionsEnabled && hasDevice ? deviceId.trim() : null,
+      claimDeviceId: null,
       claimMemberId: claimMemberId,
+      sessionToken: sessionToken,
     );
 
     // 6. Trigger Admin Push Notification dispatch (non-blocking)
     if (notificationDispatchService != null) {
-      unawaited(notificationDispatchService!.dispatchAdminCheckInNotification(submission));
+      unawaited(
+        notificationDispatchService!.dispatchAdminCheckInNotification(
+          submission,
+        ),
+      );
     }
 
     return submission;

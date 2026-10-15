@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qr_checkin/app/router/app_url.dart';
-import 'package:qr_checkin/features/admin/data/datasources/admin_auth_email.dart';
 import 'package:qr_checkin/features/admin/data/datasources/admin_password_reset_service.dart';
 import 'package:qr_checkin/features/admin/data/datasources/admin_remote_data_source.dart';
 import 'package:qr_checkin/features/admin/data/datasources/email_credentials_service.dart';
@@ -58,64 +57,50 @@ class _FakeRemoteDataSource implements AdminRemoteDataSource {
 }
 
 void main() {
-  test('createAdmin provisions Auth and never sends a password-reset email',
-      () async {
-    var provisionCalls = 0;
-    final remote = _FakeRemoteDataSource();
-    final repo = AdminRepositoryImpl(
-      remoteDataSource: remote,
-      emailService: EmailCredentialsService(
-        sendFn: ({
-          required admin,
-          required password,
-          required portalUrl,
-        }) async {
-          fail('createAdmin must not send credentials mail');
-        },
-      ),
-      provisionAuthUserFn: (email, {password}) async {
-        provisionCalls += 1;
-        expect(email, 'newadmin@example.com');
-        expect(password, 'TempPass1!');
-        return 'uid-new';
-      },
-    );
+  test(
+    'createAdmin persists Postgres row and never sends password-reset email',
+    () async {
+      final remote = _FakeRemoteDataSource();
+      final repo = AdminRepositoryImpl(
+        remoteDataSource: remote,
+        emailService: EmailCredentialsService(
+          sendFn:
+              ({required admin, required password, required portalUrl}) async {
+                fail('createAdmin must not send credentials mail');
+              },
+        ),
+      );
 
-    final admin = await repo.createAdmin(
-      name: 'New Admin',
-      email: 'newadmin@example.com',
-      phone: '9876543210',
-      password: 'TempPass1!',
-    );
+      final admin = await repo.createAdmin(
+        name: 'New Admin',
+        email: 'newadmin@example.com',
+        phone: '9876543210',
+        password: 'TempPass1!',
+      );
 
-    expect(admin.email, 'newadmin@example.com');
-    expect(admin.id, 'uid-new');
-    expect(admin.role, AdminRole.admin);
-    expect(provisionCalls, 1);
-  });
+      expect(admin.email, 'newadmin@example.com');
+      expect(admin.id, isNotEmpty);
+      expect(admin.id, remote.created?.id);
+      expect(admin.role, AdminRole.admin);
+    },
+  );
 
   test('sendCredentials sends via Attendiphi email service', () async {
     var sent = false;
     final repo = AdminRepositoryImpl(
       remoteDataSource: _FakeRemoteDataSource(),
       emailService: EmailCredentialsService(
-        sendFn: ({
-          required admin,
-          required password,
-          required portalUrl,
-        }) async {
-          sent = true;
-          expect(admin.email, 'newadmin@example.com');
-          expect(password, 'TempPass1!');
-          return const AttendiphiEmailResult(
-            success: true,
-            messageId: 'msg-22',
-          );
-        },
+        sendFn:
+            ({required admin, required password, required portalUrl}) async {
+              sent = true;
+              expect(admin.email, 'newadmin@example.com');
+              expect(password, 'TempPass1!');
+              return const AttendiphiEmailResult(
+                success: true,
+                messageId: 'msg-22',
+              );
+            },
       ),
-      provisionAuthUserFn: (email, {password}) async {
-        fail('sendCredentials must not provision Auth');
-      },
     );
 
     final result = await repo.sendCredentials(
@@ -150,20 +135,17 @@ void main() {
     expect(resetEmails, ['existing@example.com']);
   });
 
-  test('Attendiphi reset landing URL is the branded admin-reset-password page',
-      () {
-    const firebaseLink =
-        'https://qr-checkin-dev.firebaseapp.com/__/auth/action?mode=resetPassword&oobCode=abc&apiKey=public';
-    final body = AppUrl.flutterResetUrlFromFirebaseOobLink(firebaseLink);
-    expect(body.contains('/admin-reset-password'), isTrue);
-    expect(body.contains('oobCode=abc'), isTrue);
-    expect(body.contains('/__/auth/action'), isFalse);
-  });
-
-  test('new admin Auth provision uses a secondary app name', () {
-    expect(
-      AdminAuthEmailClient.secondaryAppName,
-      'attendiphiAdminProvision',
-    );
-  });
+  test(
+    'Attendiphi reset landing URL is the branded admin-reset-password page',
+    () {
+      final body = AppUrl.passwordResetLanding(
+        oobCode: 'abc',
+        apiKey: 'public',
+      );
+      expect(body.contains('/admin-reset-password'), isTrue);
+      expect(body.contains('oobCode=abc'), isTrue);
+      expect(body.contains('/__/auth/action'), isFalse);
+      expect(body.startsWith('https://attendiphi.metaphi.in'), isTrue);
+    },
+  );
 }

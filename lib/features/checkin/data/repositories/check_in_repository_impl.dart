@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 import '../../../../core/constants/app_constants.dart';
 import '../../domain/entities/check_in_submission.dart';
 import '../../domain/entities/paginated_check_ins_result.dart';
@@ -19,6 +17,7 @@ class CheckInRepositoryImpl implements CheckInRepository {
     String? sessionDateYmd,
     String? claimDeviceId,
     String? claimMemberId,
+    String? sessionToken,
   }) {
     return _remoteDataSource.createCheckIn(
       submission,
@@ -26,6 +25,7 @@ class CheckInRepositoryImpl implements CheckInRepository {
       sessionDateYmd: sessionDateYmd,
       claimDeviceId: claimDeviceId,
       claimMemberId: claimMemberId,
+      sessionToken: sessionToken,
     );
   }
 
@@ -50,12 +50,18 @@ class CheckInRepositoryImpl implements CheckInRepository {
   }
 
   @override
-  Future<CheckInSubmission?> getIdentitySubmission(String phone, DateTime sessionDate) {
+  Future<CheckInSubmission?> getIdentitySubmission(
+    String phone,
+    DateTime sessionDate,
+  ) {
     return _remoteDataSource.getIdentitySubmission(phone, sessionDate);
   }
 
   @override
-  Future<CheckInSubmission?> getDeviceSubmission(String deviceId, DateTime sessionDate) {
+  Future<CheckInSubmission?> getDeviceSubmission(
+    String deviceId,
+    DateTime sessionDate,
+  ) {
     return _remoteDataSource.getDeviceSubmission(deviceId, sessionDate);
   }
 
@@ -82,8 +88,23 @@ class CheckInRepositoryImpl implements CheckInRepository {
   }
 
   @override
-  Stream<List<CheckInSubmission>> streamCheckIns({String? locationId}) {
-    return _remoteDataSource.streamCheckIns(locationId: locationId);
+  Stream<List<CheckInSubmission>> streamCheckIns({
+    String? locationId,
+    String? sessionDateYmd,
+    String? sessionDateFrom,
+    String? sessionDateTo,
+  }) {
+    return _remoteDataSource.streamCheckIns(
+      locationId: locationId,
+      sessionDateYmd: sessionDateYmd,
+      sessionDateFrom: sessionDateFrom,
+      sessionDateTo: sessionDateTo,
+    );
+  }
+
+  @override
+  Future<String?> resolveCheckInPhotoUrl(CheckInSubmission submission) {
+    return _remoteDataSource.resolveCheckInPhotoUrl(submission);
   }
 
   @override
@@ -94,7 +115,7 @@ class CheckInRepositoryImpl implements CheckInRepository {
   @override
   Future<PaginatedCheckInsResult> getPaginatedCheckIns({
     int limit = AppConstants.dashboardPageSize,
-    DocumentSnapshot<Map<String, dynamic>>? startAfter,
+    Object? startAfter,
     String? locationId,
   }) {
     return _remoteDataSource.getPaginatedCheckIns(

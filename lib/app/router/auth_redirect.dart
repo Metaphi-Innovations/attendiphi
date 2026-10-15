@@ -1,6 +1,6 @@
 import 'route_names.dart';
 
-/// Pure redirect helper. Router UX only — Firestore rules are authorization.
+/// Pure redirect helper. Router UX only — Supabase RLS is authorization.
 class AuthRedirect {
   AuthRedirect._();
 
@@ -9,6 +9,7 @@ class AuthRedirect {
     RouteNames.adminAttendanceOverview,
     RouteNames.adminVisitors,
     RouteNames.adminMembers,
+    RouteNames.adminSubstitutes,
     RouteNames.venueQr,
     RouteNames.adminAdmins,
     RouteNames.attendiphiNamespace,
@@ -16,24 +17,22 @@ class AuthRedirect {
     RouteNames.legacyAttendiphiAttendanceOverview,
     RouteNames.legacyAttendiphiVisitors,
     RouteNames.legacyAttendiphiMembers,
+    RouteNames.legacyAttendiphiSubstitutes,
     RouteNames.legacyAttendiphiVenueQr,
     RouteNames.legacyAttendiphiAdmins,
     RouteNames.legacyAdminDashboard,
     RouteNames.legacyAdminAttendanceOverview,
     RouteNames.legacyAdminVisitors,
     RouteNames.legacyAdminMembers,
+    RouteNames.legacyAdminSubstitutes,
     RouteNames.legacyVenueQr,
     RouteNames.legacyAdminAdmins,
   };
 
-  static bool isPublicPath(
-    String path, {
-    required bool hasPasswordResetCode,
-  }) {
+  static bool isPublicPath(String path, {required bool hasPasswordResetCode}) {
     if (path == RouteNames.adminLogin) return true;
     if (path == RouteNames.adminForgotPassword) return true;
     if (path == RouteNames.adminForgotPasswordReset) return true;
-    if (path == '/__/auth/action') return true;
     if (path == RouteNames.qrScanner) return true;
     if (path == RouteNames.locationPermission) return true;
     if (path == RouteNames.checkinResult) return true;
@@ -48,6 +47,7 @@ class AuthRedirect {
   static bool isAdminShellPath(String path) {
     if (adminShellPaths.contains(path)) return true;
     if (path.startsWith('${RouteNames.adminDashboard}/')) return true;
+    if (path.startsWith('${RouteNames.adminSubstitutes}/')) return true;
     return false;
   }
 

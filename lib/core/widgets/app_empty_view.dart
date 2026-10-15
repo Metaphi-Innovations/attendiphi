@@ -32,8 +32,7 @@ class AppEmptyView extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(AppSpacing.lg),
               decoration: BoxDecoration(
-                color:
-                    theme.colorScheme.surfaceContainerHighest.withAlpha(80),
+                color: theme.colorScheme.surfaceContainerHighest.withAlpha(80),
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -52,10 +51,7 @@ class AppEmptyView extends StatelessWidget {
             ),
             if (action != null && actionLabel != null) ...[
               const SizedBox(height: AppSpacing.lg),
-              TextButton(
-                onPressed: action,
-                child: Text(actionLabel!),
-              ),
+              TextButton(onPressed: action, child: Text(actionLabel!)),
             ],
           ],
         ),

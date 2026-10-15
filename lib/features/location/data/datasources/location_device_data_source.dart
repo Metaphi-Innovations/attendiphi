@@ -49,7 +49,8 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
     }
 
     var permission = await Geolocator.checkPermission();
-    final alreadyGranted = permission == LocationPermission.always ||
+    final alreadyGranted =
+        permission == LocationPermission.always ||
         permission == LocationPermission.whileInUse;
     // Always re-invoke the platform prompt path when not granted so an
     // accidental Deny + later Allow (or site Ask) can recover on re-scan.
@@ -76,7 +77,8 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
       } catch (_) {
         // Fallback: check last known position or try medium accuracy with short timeout
         final lastKnown = await Geolocator.getLastKnownPosition();
-        if (lastKnown != null && lastKnown.accuracy <= AppConstants.maxGpsAccuracyMeters) {
+        if (lastKnown != null &&
+            lastKnown.accuracy <= AppConstants.maxGpsAccuracyMeters) {
           pos = lastKnown;
         } else {
           pos = await Geolocator.getCurrentPosition(
@@ -111,11 +113,7 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
         stackTrace: st,
         tag: 'LocationDeviceDataSource',
       );
-      throw LocationUnavailableException(
-        originalError: e,
-        stackTrace: st,
-      );
+      throw LocationUnavailableException(originalError: e, stackTrace: st);
     }
   }
 }
-

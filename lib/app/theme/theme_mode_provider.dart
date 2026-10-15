@@ -20,7 +20,6 @@ class ThemeModeNotifier extends Notifier<ThemeMode> {
 }
 
 /// Global provider for application ThemeMode.
-final themeModeProvider =
-    NotifierProvider<ThemeModeNotifier, ThemeMode>(() {
+final themeModeProvider = NotifierProvider<ThemeModeNotifier, ThemeMode>(() {
   return ThemeModeNotifier();
 });

@@ -34,8 +34,7 @@ class VenueQrDisplayScreen extends ConsumerStatefulWidget {
       latitude: 18.9888622,
       longitude: 72.8152475,
       radiusMeters: 500.0,
-      address:
-          'Jade Luxury Banquets, Nehru Centre, Dr Annie Besant Rd, Worli, Mumbai, Maharashtra 400018',
+      address: 'Jade Luxury Banquets, Nehru Centre, Dr Annie Besant Rd, Worli, Mumbai, Maharashtra 400018',
     ),
     this.initialDate,
   });
@@ -128,7 +127,7 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
         locationId: widget.location.id,
         sessionDate: dateStr,
       );
-      return AppUrl.public(path: RouteNames.checkinFormPath(token));
+      return AppUrl.checkInPublic(path: RouteNames.checkinFormPath(token));
     } on Object {
       return null;
     }
@@ -185,11 +184,16 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
   }
 
   /// Downloads the Thursday QR Standee as a high-resolution PNG image.
-  Future<void> _downloadThursdayPng(DateTime thursdayDate, {bool fullStandee = true}) async {
+  Future<void> _downloadThursdayPng(
+    DateTime thursdayDate, {
+    bool fullStandee = true,
+  }) async {
     if (!_isMonthActive(thursdayDate)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('QR Standee for ${DateFormat('MMMM yyyy').format(thursdayDate)} will auto-unlock on 01 ${DateFormat('MMM yyyy').format(thursdayDate)}.'),
+          content: Text(
+            'QR Standee for ${DateFormat('MMMM yyyy').format(thursdayDate)} will auto-unlock on 01 ${DateFormat('MMM yyyy').format(thursdayDate)}.',
+          ),
           backgroundColor: AppColors.error,
           behavior: SnackBarBehavior.floating,
         ),
@@ -224,10 +228,16 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
             SnackBar(
               content: Row(
                 children: [
-                  const Icon(Icons.image_rounded, color: Colors.white, size: 20),
+                  const Icon(
+                    Icons.image_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text('Downloaded Standee PNG for $displayDateStr ($filename)'),
+                    child: Text(
+                      'Downloaded Standee PNG for $displayDateStr ($filename)',
+                    ),
                   ),
                 ],
               ),
@@ -256,7 +266,10 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
   }
 
   /// Downloads a single Thursday QR Standee (delegates to [_downloadThursdayPng]).
-  Future<void> _downloadThursdayQr(DateTime thursdayDate, {bool fullStandee = true}) async {
+  Future<void> _downloadThursdayQr(
+    DateTime thursdayDate, {
+    bool fullStandee = true,
+  }) async {
     await _downloadThursdayPng(thursdayDate, fullStandee: fullStandee);
   }
 
@@ -288,7 +301,11 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
           SnackBar(
             content: Row(
               children: [
-                const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                const Icon(
+                  Icons.check_circle_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -323,7 +340,8 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
   /// Captures a [RepaintBoundary] as high-resolution PNG bytes.
   Future<Uint8List?> _captureWidgetAsPng(GlobalKey key) async {
     try {
-      final boundary = key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      final boundary =
+          key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
       if (boundary == null) return null;
       final image = await boundary.toImage(pixelRatio: 3.0);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
@@ -348,7 +366,10 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
           color: Color(0xFF0F172A),
         ),
       );
-      final byteData = await painter.toImageData(800, format: ui.ImageByteFormat.png);
+      final byteData = await painter.toImageData(
+        800,
+        format: ui.ImageByteFormat.png,
+      );
       return byteData?.buffer.asUint8List();
     } catch (_) {
       return null;
@@ -394,19 +415,13 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
     return Container(
       height: height,
       padding: isDark
-          ? EdgeInsets.symmetric(
-              horizontal: isCompact ? 6 : 8,
-              vertical: 2,
-            )
+          ? EdgeInsets.symmetric(horizontal: isCompact ? 6 : 8, vertical: 2)
           : EdgeInsets.zero,
       decoration: isDark
           ? BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: const Color(0xFF334155),
-                width: 1.0,
-              ),
+              border: Border.all(color: const Color(0xFF334155), width: 1.0),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withAlpha(30),
@@ -644,7 +659,9 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                       Icon(
                         Icons.qr_code_scanner_rounded,
                         size: 14,
-                        color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569),
+                        color: isDark
+                            ? const Color(0xFF94A3B8)
+                            : const Color(0xFF475569),
                       ),
                       const SizedBox(width: 6),
                       Flexible(
@@ -653,7 +670,9 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                           style: TextStyle(
                             fontSize: isMobile ? 11 : 11.5,
                             fontWeight: FontWeight.w600,
-                            color: isDark ? Colors.white70 : const Color(0xFF334155),
+                            color: isDark
+                                ? Colors.white70
+                                : const Color(0xFF334155),
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -665,7 +684,10 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                 // Locked State Container
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 26),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 26,
+                  ),
                   decoration: BoxDecoration(
                     color: isDark
                         ? const Color(0xFF0F172A).withAlpha(120)
@@ -708,7 +730,9 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w800,
-                          color: isDark ? Colors.white : const Color(0xFF0F172A),
+                          color: isDark
+                              ? Colors.white
+                              : const Color(0xFF0F172A),
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -765,7 +789,11 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
     final sessionNum = selectedIndex >= 0 ? selectedIndex + 1 : 1;
     final now = _now;
     final today = DateTime(now.year, now.month, now.day);
-    final selectedDay = DateTime(thursdayDate.year, thursdayDate.month, thursdayDate.day);
+    final selectedDay = DateTime(
+      thursdayDate.year,
+      thursdayDate.month,
+      thursdayDate.day,
+    );
     final isSelectedToday = selectedDay.isAtSameMomentAs(today);
     final isSelectedPast = !isSelectedToday && selectedDay.isBefore(today);
     final isCurrentMonthActive = _isMonthActive(thursdayDate);
@@ -870,7 +898,9 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                           Clipboard.setData(ClipboardData(text: payload));
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text('QR Check-in URL copied to clipboard!'),
+                              content: Text(
+                                'QR Check-in URL copied to clipboard!',
+                              ),
                               behavior: SnackBarBehavior.floating,
                             ),
                           );
@@ -984,8 +1014,9 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
     // Match other admin shell pages: Scaffold fills the branch navigator so
     // Column + Expanded always receive bounded height (avoids a blank body).
     return Scaffold(
-      backgroundColor:
-          isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
+      backgroundColor: isDark
+          ? AppColors.backgroundDark
+          : AppColors.backgroundLight,
       body: LayoutBuilder(
         builder: (context, constraints) {
           // Use the shell content pane width — not the full window — so the
@@ -1006,330 +1037,361 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-              // 1. Sticky Top Header Bar & Month Toolbar (Anchored at Top Middle)
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Title and Subtitle (Desktop/Tablet only; on mobile Shell AppBar shows screen title)
-                  if (!isMobile) ...[
+                    // 1. Sticky Top Header Bar & Month Toolbar (Anchored at Top Middle)
                     Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text(
-                          'Thursday QR Standees',
-                          style: (isMobile
-                                  ? theme.textTheme.titleLarge
-                                  : theme.textTheme.headlineMedium)
-                              ?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.6,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Select a month (Sep 2026 – Sep 2027) to view & download unique Thursday QR standees.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                            fontSize: isMobile ? 12 : 13.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // Month Selector & Bulk Actions Toolbar (Sticky at Top Middle)
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: isMobile ? 12 : 16,
-                      vertical: isMobile ? 10 : 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? theme.colorScheme.surfaceContainerHigh
-                          : Colors.white,
-                      borderRadius: AppRadius.lgAll,
-                      border: Border.all(
-                        color: isDark
-                            ? theme.colorScheme.outlineVariant.withAlpha(80)
-                            : const Color(0xFFE2E8F0),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withAlpha(isDark ? 30 : 6),
-                          blurRadius: 12,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    child: isMobile
-                        ? Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                        // Title and Subtitle (Desktop/Tablet only; on mobile Shell AppBar shows screen title)
+                        if (!isMobile) ...[
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  _buildMonthNavButton(
-                                    icon: Icons.chevron_left_rounded,
-                                    onPressed: hasPrevMonth ? _selectPreviousMonth : null,
-                                    tooltip: 'Previous Month',
-                                    isDark: isDark,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: _buildMonthDropdown(theme),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  _buildMonthNavButton(
-                                    icon: Icons.chevron_right_rounded,
-                                    onPressed: hasNextMonth ? _selectNextMonth : null,
-                                    tooltip: 'Next Month',
-                                    isDark: isDark,
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              ElevatedButton.icon(
-                                icon: _isDownloading
-                                    ? const SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white,
+                              Text(
+                                'Thursday QR Standees',
+                                style:
+                                    (isMobile
+                                            ? theme.textTheme.titleLarge
+                                            : theme.textTheme.headlineMedium)
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: -0.6,
                                         ),
-                                      )
-                                    : Icon(
-                                        isCurrentMonthActive
-                                            ? Icons.download_for_offline_rounded
-                                            : Icons.lock_outline_rounded,
-                                        size: 18,
-                                      ),
-                                label: Text(
-                                  isCurrentMonthActive
-                                      ? 'Download All (${thursdays.length} QRs)'
-                                      : 'QR Available in ${DateFormat('MMM').format(_selectedMonth)}',
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Select a month (Sep 2026 – Sep 2027) to view & download unique Thursday QR standees.',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                  fontSize: isMobile ? 12 : 13.5,
                                 ),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: isCurrentMonthActive
-                                      ? AppColors.primary
-                                      : (isDark ? const Color(0xFF334155) : const Color(0xFF94A3B8)),
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
-                                  elevation: isCurrentMonthActive ? 2 : 0,
-                                  shape: const RoundedRectangleBorder(
-                                    borderRadius: AppRadius.mdAll,
-                                  ),
-                                ),
-                                onPressed: (isCurrentMonthActive &&
-                                        payloadReady &&
-                                        !_isDownloading)
-                                    ? _downloadAllForCurrentMonth
-                                    : null,
                               ),
                             ],
-                          )
-                        : Row(
-                            children: [
-                              // Previous Month Arrow (Fixed width)
-                              _buildMonthNavButton(
-                                icon: Icons.chevron_left_rounded,
-                                onPressed: hasPrevMonth ? _selectPreviousMonth : null,
-                                tooltip: 'Previous Month',
-                                isDark: isDark,
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+
+                        // Month Selector & Bulk Actions Toolbar (Sticky at Top Middle)
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isMobile ? 12 : 16,
+                            vertical: isMobile ? 10 : 12,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? theme.colorScheme.surfaceContainerHigh
+                                : Colors.white,
+                            borderRadius: AppRadius.lgAll,
+                            border: Border.all(
+                              color: isDark
+                                  ? theme.colorScheme.outlineVariant.withAlpha(
+                                      80,
+                                    )
+                                  : const Color(0xFFE2E8F0),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withAlpha(isDark ? 30 : 6),
+                                blurRadius: 12,
+                                offset: const Offset(0, 3),
                               ),
-                              const SizedBox(width: 6),
-
-                              // Month Dropdown (Generous fixed width: 250px)
-                              SizedBox(
-                                width: 250,
-                                child: _buildMonthDropdown(theme),
-                              ),
-
-                              const SizedBox(width: 6),
-
-                              // Next Month Arrow (Fixed width)
-                              _buildMonthNavButton(
-                                icon: Icons.chevron_right_rounded,
-                                onPressed: hasNextMonth ? _selectNextMonth : null,
-                                tooltip: 'Next Month',
-                                isDark: isDark,
-                              ),
-
-                              const SizedBox(width: 12),
-
-                              // Thursdays Count Badge
-                              Flexible(
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 7,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: isDark
-                                        ? theme.colorScheme.surfaceContainerHighest
-                                            .withAlpha(80)
-                                        : const Color(0xFFF8FAFC),
-                                    borderRadius: AppRadius.fullAll,
-                                    border: Border.all(
-                                      color: isDark
-                                          ? theme.colorScheme.outlineVariant
-                                              .withAlpha(60)
-                                          : const Color(0xFFE2E8F0),
+                            ],
+                          ),
+                          child: isMobile
+                              ? Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        _buildMonthNavButton(
+                                          icon: Icons.chevron_left_rounded,
+                                          onPressed: hasPrevMonth
+                                              ? _selectPreviousMonth
+                                              : null,
+                                          tooltip: 'Previous Month',
+                                          isDark: isDark,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: _buildMonthDropdown(theme),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        _buildMonthNavButton(
+                                          icon: Icons.chevron_right_rounded,
+                                          onPressed: hasNextMonth
+                                              ? _selectNextMonth
+                                              : null,
+                                          tooltip: 'Next Month',
+                                          isDark: isDark,
+                                        ),
+                                      ],
                                     ),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.calendar_today_rounded,
-                                        size: 13,
-                                        color: isDark
-                                            ? const Color(0xFF94A3B8)
-                                            : const Color(0xFF64748B),
+                                    const SizedBox(height: 10),
+                                    ElevatedButton.icon(
+                                      icon: _isDownloading
+                                          ? const SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.white,
+                                              ),
+                                            )
+                                          : Icon(
+                                              isCurrentMonthActive
+                                                  ? Icons
+                                                        .download_for_offline_rounded
+                                                  : Icons.lock_outline_rounded,
+                                              size: 18,
+                                            ),
+                                      label: Text(
+                                        isCurrentMonthActive
+                                            ? 'Download All (${thursdays.length} QRs)'
+                                            : 'QR Available in ${DateFormat('MMM').format(_selectedMonth)}',
                                       ),
-                                      const SizedBox(width: 6),
-                                      Flexible(
-                                        child: Text(
-                                          '${thursdays.length} Thursdays in ${monthFormat.format(_selectedMonth)}',
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 12,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: isCurrentMonthActive
+                                            ? AppColors.primary
+                                            : (isDark
+                                                  ? const Color(0xFF334155)
+                                                  : const Color(0xFF94A3B8)),
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 12,
+                                        ),
+                                        elevation: isCurrentMonthActive ? 2 : 0,
+                                        shape: const RoundedRectangleBorder(
+                                          borderRadius: AppRadius.mdAll,
+                                        ),
+                                      ),
+                                      onPressed:
+                                          (isCurrentMonthActive &&
+                                              payloadReady &&
+                                              !_isDownloading)
+                                          ? _downloadAllForCurrentMonth
+                                          : null,
+                                    ),
+                                  ],
+                                )
+                              : Row(
+                                  children: [
+                                    // Previous Month Arrow (Fixed width)
+                                    _buildMonthNavButton(
+                                      icon: Icons.chevron_left_rounded,
+                                      onPressed: hasPrevMonth
+                                          ? _selectPreviousMonth
+                                          : null,
+                                      tooltip: 'Previous Month',
+                                      isDark: isDark,
+                                    ),
+                                    const SizedBox(width: 6),
+
+                                    // Month Dropdown (Generous fixed width: 250px)
+                                    SizedBox(
+                                      width: 250,
+                                      child: _buildMonthDropdown(theme),
+                                    ),
+
+                                    const SizedBox(width: 6),
+
+                                    // Next Month Arrow (Fixed width)
+                                    _buildMonthNavButton(
+                                      icon: Icons.chevron_right_rounded,
+                                      onPressed: hasNextMonth
+                                          ? _selectNextMonth
+                                          : null,
+                                      tooltip: 'Next Month',
+                                      isDark: isDark,
+                                    ),
+
+                                    const SizedBox(width: 12),
+
+                                    // Thursdays Count Badge
+                                    Flexible(
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 7,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: isDark
+                                              ? theme
+                                                    .colorScheme
+                                                    .surfaceContainerHighest
+                                                    .withAlpha(80)
+                                              : const Color(0xFFF8FAFC),
+                                          borderRadius: AppRadius.fullAll,
+                                          border: Border.all(
                                             color: isDark
-                                                ? Colors.white
-                                                : const Color(0xFF334155),
+                                                ? theme
+                                                      .colorScheme
+                                                      .outlineVariant
+                                                      .withAlpha(60)
+                                                : const Color(0xFFE2E8F0),
                                           ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-
-                              const SizedBox(width: 12),
-
-                              // Bulk Download Month QRs Button (Anchored to right)
-                              ElevatedButton.icon(
-                                icon: _isDownloading
-                                    ? const SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white,
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.calendar_today_rounded,
+                                              size: 13,
+                                              color: isDark
+                                                  ? const Color(0xFF94A3B8)
+                                                  : const Color(0xFF64748B),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Flexible(
+                                              child: Text(
+                                                '${thursdays.length} Thursdays in ${monthFormat.format(_selectedMonth)}',
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 12,
+                                                  color: isDark
+                                                      ? Colors.white
+                                                      : const Color(0xFF334155),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                      )
-                                    : Icon(
-                                        isCurrentMonthActive
-                                            ? Icons.download_for_offline_rounded
-                                            : Icons.lock_outline_rounded,
-                                        size: 18,
-                                      ),
-                                label: Text(
-                                  isCurrentMonthActive
-                                      ? 'Download All (${thursdays.length} QRs)'
-                                      : 'QR Available in ${DateFormat('MMM').format(_selectedMonth)}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 0.2,
-                                  ),
-                                ),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: isCurrentMonthActive
-                                      ? AppColors.primary
-                                      : (isDark ? const Color(0xFF334155) : const Color(0xFF94A3B8)),
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 11,
-                                  ),
-                                  elevation: isCurrentMonthActive ? 2 : 0,
-                                  shadowColor: isCurrentMonthActive
-                                      ? AppColors.primary.withAlpha(80)
-                                      : Colors.transparent,
-                                  shape: const RoundedRectangleBorder(
-                                    borderRadius: AppRadius.mdAll,
-                                  ),
-                                ),
-                                onPressed: (isCurrentMonthActive &&
-                                        payloadReady &&
-                                        !_isDownloading)
-                                    ? _downloadAllForCurrentMonth
-                                    : null,
-                              ),
-                            ],
-                          ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 18),
-
-              // 2. Scrollable Content Area
-              Expanded(
-                child: !payloadReady
-                    ? SingleChildScrollView(
-                        padding: const EdgeInsets.only(bottom: 24),
-                        child: _buildPayloadConfigError(theme, isDark),
-                      )
-                    : SingleChildScrollView(
-                        padding: const EdgeInsets.only(bottom: 24),
-                        child: useSplitLayout
-                            ? Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  // Left Column: Thursdays List for Selected Month (50%)
-                                  Expanded(
-                                    flex: 1,
-                                    child:
-                                        _buildThursdaysList(theme, thursdays),
-                                  ),
-                                  const SizedBox(width: 24),
-
-                                  // Right Column: Standee Preview for Selected Thursday (50%)
-                                  Expanded(
-                                    flex: 1,
-                                    child: Align(
-                                      alignment: Alignment.topCenter,
-                                      child: _buildStandeePreviewCard(
-                                        theme,
-                                        isDark,
-                                        isMobile,
-                                        isCompact,
-                                        thursdays,
-                                        payload: selectedPayload,
                                       ),
                                     ),
-                                  ),
-                                ],
-                              )
-                            : Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  // Mobile: compact Thursday date selector (no list cards)
-                                  if (isMobile)
-                                    _buildMobileDateSelector(
-                                      theme,
-                                      isDark,
-                                      thursdays,
+
+                                    const SizedBox(width: 12),
+
+                                    // Bulk Download Month QRs Button (Anchored to right)
+                                    ElevatedButton.icon(
+                                      icon: _isDownloading
+                                          ? const SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.white,
+                                              ),
+                                            )
+                                          : Icon(
+                                              isCurrentMonthActive
+                                                  ? Icons
+                                                        .download_for_offline_rounded
+                                                  : Icons.lock_outline_rounded,
+                                              size: 18,
+                                            ),
+                                      label: Text(
+                                        isCurrentMonthActive
+                                            ? 'Download All (${thursdays.length} QRs)'
+                                            : 'QR Available in ${DateFormat('MMM').format(_selectedMonth)}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 0.2,
+                                        ),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: isCurrentMonthActive
+                                            ? AppColors.primary
+                                            : (isDark
+                                                  ? const Color(0xFF334155)
+                                                  : const Color(0xFF94A3B8)),
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                          vertical: 11,
+                                        ),
+                                        elevation: isCurrentMonthActive ? 2 : 0,
+                                        shadowColor: isCurrentMonthActive
+                                            ? AppColors.primary.withAlpha(80)
+                                            : Colors.transparent,
+                                        shape: const RoundedRectangleBorder(
+                                          borderRadius: AppRadius.mdAll,
+                                        ),
+                                      ),
+                                      onPressed:
+                                          (isCurrentMonthActive &&
+                                              payloadReady &&
+                                              !_isDownloading)
+                                          ? _downloadAllForCurrentMonth
+                                          : null,
+                                    ),
+                                  ],
+                                ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    // 2. Scrollable Content Area
+                    Expanded(
+                      child: !payloadReady
+                          ? SingleChildScrollView(
+                              padding: const EdgeInsets.only(bottom: 24),
+                              child: _buildPayloadConfigError(theme, isDark),
+                            )
+                          : SingleChildScrollView(
+                              padding: const EdgeInsets.only(bottom: 24),
+                              child: useSplitLayout
+                                  ? Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        // Left Column: Thursdays List for Selected Month (50%)
+                                        Expanded(
+                                          flex: 1,
+                                          child: _buildThursdaysList(
+                                            theme,
+                                            thursdays,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 24),
+
+                                        // Right Column: Standee Preview for Selected Thursday (50%)
+                                        Expanded(
+                                          flex: 1,
+                                          child: Align(
+                                            alignment: Alignment.topCenter,
+                                            child: _buildStandeePreviewCard(
+                                              theme,
+                                              isDark,
+                                              isMobile,
+                                              isCompact,
+                                              thursdays,
+                                              payload: selectedPayload,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     )
-                                  else
-                                    _buildThursdaysList(theme, thursdays),
-                                  const SizedBox(height: 16),
-                                  _buildStandeePreviewCard(
-                                    theme,
-                                    isDark,
-                                    isMobile,
-                                    isCompact,
-                                    thursdays,
-                                    payload: selectedPayload,
-                                  ),
-                                ],
-                              ),
-                      ),
-              ),
-            ],
+                                  : Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        // Mobile: compact Thursday date selector (no list cards)
+                                        if (isMobile)
+                                          _buildMobileDateSelector(
+                                            theme,
+                                            isDark,
+                                            thursdays,
+                                          )
+                                        else
+                                          _buildThursdaysList(theme, thursdays),
+                                        const SizedBox(height: 16),
+                                        _buildStandeePreviewCard(
+                                          theme,
+                                          isDark,
+                                          isMobile,
+                                          isCompact,
+                                          thursdays,
+                                          payload: selectedPayload,
+                                        ),
+                                      ],
+                                    ),
+                            ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1397,18 +1459,12 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
               decoration: BoxDecoration(
                 color: AppColors.success.withAlpha(isDark ? 40 : 25),
                 borderRadius: AppRadius.fullAll,
-                border: Border.all(
-                  color: AppColors.success.withAlpha(60),
-                ),
+                border: Border.all(color: AppColors.success.withAlpha(60)),
               ),
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    Icons.circle,
-                    size: 5,
-                    color: AppColors.success,
-                  ),
+                  Icon(Icons.circle, size: 5, color: AppColors.success),
                   SizedBox(width: 3),
                   Text(
                     'ACTIVE',
@@ -1487,9 +1543,7 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: isDark
-            ? theme.colorScheme.surfaceContainerHigh
-            : Colors.white,
+        color: isDark ? theme.colorScheme.surfaceContainerHigh : Colors.white,
         borderRadius: AppRadius.lgAll,
         border: Border.all(
           color: isDark
@@ -1595,7 +1649,9 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                   ),
                   decoration: BoxDecoration(
                     color: isDark
-                        ? theme.colorScheme.surfaceContainerHighest.withAlpha(80)
+                        ? theme.colorScheme.surfaceContainerHighest.withAlpha(
+                            80,
+                          )
                         : const Color(0xFFF1F5F9),
                     borderRadius: AppRadius.fullAll,
                     border: Border.all(
@@ -1609,7 +1665,9 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569),
+                      color: isDark
+                          ? const Color(0xFF94A3B8)
+                          : const Color(0xFF475569),
                     ),
                   ),
                 ),
@@ -1623,14 +1681,18 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
               separatorBuilder: (context, index) => const SizedBox(height: 10),
               itemBuilder: (context, index) {
                 final thursday = thursdays[index];
-                final isSelected = thursday.year == _selectedThursday.year &&
+                final isSelected =
+                    thursday.year == _selectedThursday.year &&
                     thursday.month == _selectedThursday.month &&
                     thursday.day == _selectedThursday.day;
 
                 final now = _now;
                 final today = DateTime(now.year, now.month, now.day);
-                final thursdayDay =
-                    DateTime(thursday.year, thursday.month, thursday.day);
+                final thursdayDay = DateTime(
+                  thursday.year,
+                  thursday.month,
+                  thursday.day,
+                );
 
                 final isSessionActive = thursdayDay.isAtSameMomentAs(today);
                 final isToday = isSessionActive;
@@ -1663,22 +1725,30 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                   borderRadius: AppRadius.mdAll,
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 11,
+                    ),
                     decoration: BoxDecoration(
                       color: isSelected
                           ? (isDark
-                              ? const Color(0xFF1E293B)
-                              : const Color(0xFFF8FAFC))
+                                ? const Color(0xFF1E293B)
+                                : const Color(0xFFF8FAFC))
                           : (isDark
-                              ? theme.colorScheme.surfaceContainerHighest.withAlpha(40)
-                              : Colors.white),
+                                ? theme.colorScheme.surfaceContainerHighest
+                                      .withAlpha(40)
+                                : Colors.white),
                       borderRadius: AppRadius.mdAll,
                       border: Border.all(
                         color: isSelected
-                            ? (isDark ? const Color(0xFF64748B) : const Color(0xFF334155))
+                            ? (isDark
+                                  ? const Color(0xFF64748B)
+                                  : const Color(0xFF334155))
                             : (isDark
-                                ? theme.colorScheme.outlineVariant.withAlpha(60)
-                                : const Color(0xFFE2E8F0)),
+                                  ? theme.colorScheme.outlineVariant.withAlpha(
+                                      60,
+                                    )
+                                  : const Color(0xFFE2E8F0)),
                         width: isSelected ? 1.5 : 1,
                       ),
                       boxShadow: isSelected
@@ -1712,7 +1782,9 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                           decoration: BoxDecoration(
                             color: isSelected
                                 ? const Color(0xFF0F172A)
-                                : (isDark ? const Color(0xFF1E293B) : const Color(0xFF334155)),
+                                : (isDark
+                                      ? const Color(0xFF1E293B)
+                                      : const Color(0xFF334155)),
                             borderRadius: AppRadius.smAll,
                           ),
                           child: Column(
@@ -1753,7 +1825,9 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                                     style: TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.w700,
-                                      color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                                      color: isDark
+                                          ? const Color(0xFF94A3B8)
+                                          : const Color(0xFF64748B),
                                       letterSpacing: 0.4,
                                     ),
                                   ),
@@ -1805,30 +1879,45 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                         // Action Buttons: View & Download
                         if (isCurrentMonthActive) ...[
                           IconButton(
-                            icon: const Icon(Icons.visibility_outlined, size: 19),
+                            icon: const Icon(
+                              Icons.visibility_outlined,
+                              size: 19,
+                            ),
                             tooltip: 'View QR Modal',
-                            color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                            color: isDark
+                                ? const Color(0xFF94A3B8)
+                                : const Color(0xFF64748B),
                             splashRadius: 18,
                             visualDensity: VisualDensity.compact,
                             onPressed: () => _showQrViewModal(thursday),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.file_download_outlined, size: 19),
+                            icon: const Icon(
+                              Icons.file_download_outlined,
+                              size: 19,
+                            ),
                             tooltip: 'Download QR PNG',
-                            color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                            color: isDark
+                                ? const Color(0xFF94A3B8)
+                                : const Color(0xFF64748B),
                             splashRadius: 18,
                             visualDensity: VisualDensity.compact,
                             onPressed: () => _downloadThursdayQr(thursday),
                           ),
                         ] else ...[
                           Tooltip(
-                            message: 'QR unlocks in ${DateFormat('MMMM yyyy').format(_selectedMonth)}',
+                            message:
+                                'QR unlocks in ${DateFormat('MMMM yyyy').format(_selectedMonth)}',
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                              ),
                               child: Icon(
                                 Icons.lock_outline_rounded,
                                 size: 18,
-                                color: isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
+                                color: isDark
+                                    ? const Color(0xFF64748B)
+                                    : const Color(0xFF94A3B8),
                               ),
                             ),
                           ),
@@ -1898,11 +1987,14 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
           const SizedBox(height: 12),
           // Raw Payload String with Copy Button
           Container(
-            padding: const EdgeInsets.only(left: 10, right: 3, top: 2, bottom: 2),
+            padding: const EdgeInsets.only(
+              left: 10,
+              right: 3,
+              top: 2,
+              bottom: 2,
+            ),
             decoration: BoxDecoration(
-              color: isDark
-                  ? const Color(0xFF0F172A)
-                  : const Color(0xFFF8FAFC),
+              color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
                 color: isDark
@@ -1938,7 +2030,10 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                 IconButton(
                   icon: const Icon(Icons.copy_rounded, size: 14),
                   padding: const EdgeInsets.all(5),
-                  constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                  constraints: const BoxConstraints(
+                    minWidth: 26,
+                    minHeight: 26,
+                  ),
                   splashRadius: 14,
                   tooltip: 'Copy secure check-in URL',
                   color: isDark
@@ -1950,7 +2045,11 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                       SnackBar(
                         content: Row(
                           children: [
-                            const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+                            const Icon(
+                              Icons.check_circle_rounded,
+                              color: Colors.white,
+                              size: 18,
+                            ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
@@ -1988,7 +2087,9 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                       borderRadius: AppRadius.mdAll,
                     ),
                     side: BorderSide(
-                      color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                      color: isDark
+                          ? const Color(0xFF334155)
+                          : const Color(0xFFCBD5E1),
                     ),
                   ),
                   onPressed: () => _showQrViewModal(_selectedThursday),
@@ -2035,7 +2136,9 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                       borderRadius: AppRadius.mdAll,
                     ),
                     side: BorderSide(
-                      color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                      color: isDark
+                          ? const Color(0xFF334155)
+                          : const Color(0xFFE2E8F0),
                     ),
                   ),
                   onPressed: null,
@@ -2047,11 +2150,18 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
                   icon: const Icon(Icons.lock_outline_rounded, size: 17),
                   label: Text(
                     'Available in ${DateFormat('MMM').format(_selectedMonth)}',
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
-                    foregroundColor: isDark ? Colors.white38 : const Color(0xFF94A3B8),
+                    backgroundColor: isDark
+                        ? const Color(0xFF334155)
+                        : const Color(0xFFCBD5E1),
+                    foregroundColor: isDark
+                        ? Colors.white38
+                        : const Color(0xFF94A3B8),
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     elevation: 0,
                     shape: const RoundedRectangleBorder(

@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 import '../../../../core/constants/app_constants.dart';
 import '../entities/check_in_submission.dart';
 import '../entities/paginated_check_ins_result.dart';
@@ -18,6 +16,7 @@ abstract class CheckInRepository {
     String? sessionDateYmd,
     String? claimDeviceId,
     String? claimMemberId,
+    String? sessionToken,
   });
 
   /// Updates an existing check-in record in Firestore.
@@ -33,10 +32,16 @@ abstract class CheckInRepository {
   Future<bool> hasIdentityCheckedIn(String phone, DateTime sessionDate);
 
   /// Retrieves the existing submission for a specific identity (phone) on a given date if present.
-  Future<CheckInSubmission?> getIdentitySubmission(String phone, DateTime sessionDate);
+  Future<CheckInSubmission?> getIdentitySubmission(
+    String phone,
+    DateTime sessionDate,
+  );
 
   /// Retrieves the existing submission for a specific deviceId on a given date if present.
-  Future<CheckInSubmission?> getDeviceSubmission(String deviceId, DateTime sessionDate);
+  Future<CheckInSubmission?> getDeviceSubmission(
+    String deviceId,
+    DateTime sessionDate,
+  );
 
   /// Atomically claims one-device-one-check-in for [deviceId] on [sessionDateYmd].
   /// Throws [DuplicateCheckInException] if the lock already exists.
@@ -51,17 +56,25 @@ abstract class CheckInRepository {
     required String sessionDateYmd,
   });
 
-  /// Streams check-ins for the admin dashboard.
-  Stream<List<CheckInSubmission>> streamCheckIns({String? locationId});
+  /// Streams check-ins for the admin dashboard (prefer date/location filters).
+  Stream<List<CheckInSubmission>> streamCheckIns({
+    String? locationId,
+    String? sessionDateYmd,
+    String? sessionDateFrom,
+    String? sessionDateTo,
+  });
 
   /// Public projection of member IDs already checked in for [sessionDateYmd].
   /// Used by QR typeahead (does not require reading `checkIns`).
   Stream<Set<String>> streamSessionCheckedInMemberIds(String sessionDateYmd);
 
-  /// Fetches a paginated cursor page of check-ins from Firestore.
+  /// Fetches a paginated cursor page of check-ins.
   Future<PaginatedCheckInsResult> getPaginatedCheckIns({
     int limit = AppConstants.dashboardPageSize,
-    DocumentSnapshot<Map<String, dynamic>>? startAfter,
+    Object? startAfter,
     String? locationId,
   });
+
+  /// On-demand selfie URL for admin UI (Storage signed URL or legacy data URI).
+  Future<String?> resolveCheckInPhotoUrl(CheckInSubmission submission);
 }

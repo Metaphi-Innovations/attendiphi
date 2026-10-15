@@ -6,10 +6,7 @@ void main() {
   Widget buildTestable(Widget child) {
     return MaterialApp(
       home: Scaffold(
-        body: Padding(
-          padding: const EdgeInsets.all(16),
-          child: child,
-        ),
+        body: Padding(padding: const EdgeInsets.all(16), child: child),
       ),
     );
   }
@@ -35,10 +32,7 @@ void main() {
 
       await tester.pumpWidget(
         buildTestable(
-          AppTextField(
-            label: 'Name',
-            onChanged: (val) => entered = val,
-          ),
+          AppTextField(label: 'Name', onChanged: (val) => entered = val),
         ),
       );
 
@@ -46,7 +40,9 @@ void main() {
       expect(entered, 'Jane Doe');
     });
 
-    testWidgets('displays validation error message when invalid', (tester) async {
+    testWidgets('displays validation error message when invalid', (
+      tester,
+    ) async {
       final formKey = GlobalKey<FormState>();
 
       await tester.pumpWidget(

@@ -13,10 +13,8 @@ import '../../../../core/errors/app_exception.dart';
 import '../../../../core/errors/error_handler.dart';
 import '../../../../core/l10n/app_strings.dart';
 import '../../../../core/responsive/responsive_breakpoints.dart';
-import '../../../../core/utils/image_utils.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/app_button.dart';
-import '../../../../core/widgets/app_card.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/app_text_field.dart';
 import '../../../../core/widgets/metaphi_loading_indicator.dart';
@@ -33,6 +31,8 @@ import '../../domain/entities/check_in_type.dart';
 import '../providers/checkin_form_provider.dart';
 import '../providers/checkin_form_state.dart';
 import '../providers/checkin_providers.dart';
+import '../widgets/check_in_type_selector.dart';
+import '../widgets/substitute_photo_card.dart';
 import 'checkin_result_screen.dart';
 
 /// Clean, light-themed attendance check-in form supporting Member, Substitute, and Visitor workflows.
@@ -45,6 +45,7 @@ class CheckInFormScreen extends ConsumerStatefulWidget {
     this.proximityResult,
     this.adminId,
     this.sessionDateStr,
+    this.sessionToken,
     this.nowProvider,
   });
 
@@ -53,6 +54,7 @@ class CheckInFormScreen extends ConsumerStatefulWidget {
   final ProximityResult? proximityResult;
   final String? adminId;
   final String? sessionDateStr;
+  final String? sessionToken;
   final DateTime Function()? nowProvider;
 
   @override
@@ -64,7 +66,8 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
 
   /// Robust extraction of session date query parameter across Native and Web.
   String? get _effectiveSessionDateStr {
-    if (widget.sessionDateStr != null && widget.sessionDateStr!.trim().isNotEmpty) {
+    if (widget.sessionDateStr != null &&
+        widget.sessionDateStr!.trim().isNotEmpty) {
       return widget.sessionDateStr!.trim();
     }
     if (kIsWeb) {
@@ -124,8 +127,11 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     final sessionDate = _parsedSessionDate;
     if (sessionDate == null) return false;
     final today = DateTime(_now.year, _now.month, _now.day);
-    final sessionDay =
-        DateTime(sessionDate.year, sessionDate.month, sessionDate.day);
+    final sessionDay = DateTime(
+      sessionDate.year,
+      sessionDate.month,
+      sessionDate.day,
+    );
     return sessionDay.isBefore(today);
   }
 
@@ -133,8 +139,11 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     final sessionDate = _parsedSessionDate;
     if (sessionDate == null) return false;
     final today = DateTime(_now.year, _now.month, _now.day);
-    final sessionDay =
-        DateTime(sessionDate.year, sessionDate.month, sessionDate.day);
+    final sessionDay = DateTime(
+      sessionDate.year,
+      sessionDate.month,
+      sessionDate.day,
+    );
     return sessionDay.isAfter(today);
   }
 
@@ -194,25 +203,25 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   }
 
   void _onMemberNameFocusChanged() => _onTypeaheadFocusChanged(
-        focusNode: _memberNameFocusNode,
-        fieldKey: _memberNameFieldKey,
-        isPointerActive: () => _memberSuggestionsPointerActive,
-        setShowSuggestions: (v) => _showMemberSuggestions = v,
-      );
+    focusNode: _memberNameFocusNode,
+    fieldKey: _memberNameFieldKey,
+    isPointerActive: () => _memberSuggestionsPointerActive,
+    setShowSuggestions: (v) => _showMemberSuggestions = v,
+  );
 
   void _onSubstituteForFocusChanged() => _onTypeaheadFocusChanged(
-        focusNode: _substituteForFocusNode,
-        fieldKey: _substituteForFieldKey,
-        isPointerActive: () => _substituteForPointerActive,
-        setShowSuggestions: (v) => _showSubstituteForSuggestions = v,
-      );
+    focusNode: _substituteForFocusNode,
+    fieldKey: _substituteForFieldKey,
+    isPointerActive: () => _substituteForPointerActive,
+    setShowSuggestions: (v) => _showSubstituteForSuggestions = v,
+  );
 
   void _onInvitedByFocusChanged() => _onTypeaheadFocusChanged(
-        focusNode: _invitedByFocusNode,
-        fieldKey: _invitedByFieldKey,
-        isPointerActive: () => _invitedByPointerActive,
-        setShowSuggestions: (v) => _showInvitedBySuggestions = v,
-      );
+    focusNode: _invitedByFocusNode,
+    fieldKey: _invitedByFieldKey,
+    isPointerActive: () => _invitedByPointerActive,
+    setShowSuggestions: (v) => _showInvitedBySuggestions = v,
+  );
 
   void _onTypeaheadFocusChanged({
     required FocusNode focusNode,
@@ -252,8 +261,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     final box = ctx.findRenderObject() as RenderBox?;
     if (box == null || !box.hasSize) return false;
     final fieldTop = box.localToGlobal(Offset.zero).dy;
-    final visibleHeight =
-        MediaQuery.sizeOf(context).height - keyboardInset;
+    final visibleHeight = MediaQuery.sizeOf(context).height - keyboardInset;
     return fieldTop > visibleHeight * 0.38;
   }
 
@@ -277,25 +285,25 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   }
 
   void _closeMemberSuggestions() => _closeTypeahead(
-        focusNode: _memberNameFocusNode,
-        setShowSuggestions: (v) => _showMemberSuggestions = v,
-        setPointerActive: (v) => _memberSuggestionsPointerActive = v,
-        showSuggestions: _showMemberSuggestions,
-      );
+    focusNode: _memberNameFocusNode,
+    setShowSuggestions: (v) => _showMemberSuggestions = v,
+    setPointerActive: (v) => _memberSuggestionsPointerActive = v,
+    showSuggestions: _showMemberSuggestions,
+  );
 
   void _closeSubstituteForSuggestions() => _closeTypeahead(
-        focusNode: _substituteForFocusNode,
-        setShowSuggestions: (v) => _showSubstituteForSuggestions = v,
-        setPointerActive: (v) => _substituteForPointerActive = v,
-        showSuggestions: _showSubstituteForSuggestions,
-      );
+    focusNode: _substituteForFocusNode,
+    setShowSuggestions: (v) => _showSubstituteForSuggestions = v,
+    setPointerActive: (v) => _substituteForPointerActive = v,
+    showSuggestions: _showSubstituteForSuggestions,
+  );
 
   void _closeInvitedBySuggestions() => _closeTypeahead(
-        focusNode: _invitedByFocusNode,
-        setShowSuggestions: (v) => _showInvitedBySuggestions = v,
-        setPointerActive: (v) => _invitedByPointerActive = v,
-        showSuggestions: _showInvitedBySuggestions,
-      );
+    focusNode: _invitedByFocusNode,
+    setShowSuggestions: (v) => _showInvitedBySuggestions = v,
+    setPointerActive: (v) => _invitedByPointerActive = v,
+    showSuggestions: _showInvitedBySuggestions,
+  );
 
   void _scrollTypeaheadIntoView(GlobalKey fieldKey) {
     void ensure({required double alignment}) {
@@ -394,34 +402,10 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   }
 
   Future<void> _applyDeviceGate({required bool restrictionsEnabled}) async {
-    if (!restrictionsEnabled) {
-      if (!mounted) return;
-      setState(() {
-        _hasCheckedIn = false;
-        _existingSubmission = null;
-        _isCheckingDevice = false;
-      });
-      return;
-    }
-
-    final deviceService = ref.read(deviceCheckInServiceProvider);
-    final existingSubmission = await deviceService.getSubmissionForSession(
-      sessionDateStr: _effectiveSessionDateStr,
-      locationId: widget.locationId,
-    );
-
+    // Venue phones/tablets are shared: do not block the form because another
+    // member already checked in on this browser. Per-member / per-phone
+    // uniqueness is enforced on submit.
     if (!mounted) return;
-
-    if (existingSubmission != null) {
-      setState(() {
-        _hasCheckedIn = true;
-        _existingSubmission = existingSubmission;
-        _isCheckingDevice = false;
-      });
-      _goToCheckInResult(existingSubmission);
-      return;
-    }
-
     setState(() {
       _hasCheckedIn = false;
       _existingSubmission = null;
@@ -505,7 +489,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   Future<Employee> _authoritativeMember(Employee selected) async {
     final employees =
         ref.read(publicMembersStreamProvider).asData?.value ??
-            const <Employee>[];
+        const <Employee>[];
     return EmployeeLookup.byId(employees, selected.id) ?? selected;
   }
 
@@ -513,25 +497,16 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     context.push(RouteNames.photoCapturePath());
   }
 
-  Future<void> _onSubmit(LocationConfig location, ProximityResult proximity) async {
+  Future<void> _onSubmit(
+    LocationConfig location,
+    ProximityResult proximity,
+  ) async {
     final formState = ref.read(checkInFormProvider);
     // Ignore second taps while submitting / before async device probes (H4).
     if (formState.isSubmitting) return;
 
-    final restrictionsEnabled = ref.read(restrictionsEnabledProvider);
-    if (restrictionsEnabled) {
-      final deviceService = ref.read(deviceCheckInServiceProvider);
-      final existingSubmission = await deviceService.getSubmissionForSession(
-        sessionDateStr: _effectiveSessionDateStr,
-        locationId: widget.locationId,
-        probeServer: true,
-      );
-      if (!mounted) return;
-      if (existingSubmission != null) {
-        _goToCheckInResult(existingSubmission);
-        return;
-      }
-    }
+    // Do not short-circuit on device-local / shared-tablet history. Venue
+    // devices are shared; phone + member locks on the server decide duplicates.
 
     final currentType = formState.type;
     if (currentType == null) {
@@ -559,10 +534,13 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     }
 
     if (currentType == CheckInType.substitute) {
-      if (_selectedSubstituteForMember == null || _selectedSubstituteForMember!.trim().isEmpty) {
+      if (_selectedSubstituteForMember == null ||
+          _selectedSubstituteForMember!.trim().isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Please select which Member you are substituting for.'),
+            content: Text(
+              'Please select which Member you are substituting for.',
+            ),
             backgroundColor: AppColors.error,
           ),
         );
@@ -582,7 +560,8 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     }
 
     if (currentType == CheckInType.visitor) {
-      if (_selectedInvitedByMember == null || _selectedInvitedByMember!.trim().isEmpty) {
+      if (_selectedInvitedByMember == null ||
+          _selectedInvitedByMember!.trim().isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Please select which Member invited you.'),
@@ -599,8 +578,9 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     // user typed (never from the covered member roster).
     final notifier = ref.read(checkInFormProvider.notifier);
     notifier.setType(currentType);
-    final selectedMember =
-        currentType == CheckInType.member ? _manuallySelectedMember : null;
+    final selectedMember = currentType == CheckInType.member
+        ? _manuallySelectedMember
+        : null;
     if (currentType == CheckInType.substitute ||
         currentType == CheckInType.visitor) {
       notifier.setName(_nameController.text.trim());
@@ -635,6 +615,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       location: location,
       proximityResult: proximity,
       sessionDateStr: _effectiveSessionDateStr,
+      sessionToken: widget.sessionToken,
     );
 
     if (success && mounted) {
@@ -653,10 +634,12 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
         if (error is DuplicateCheckInException) {
           final existing = formState.submissionResult;
           if (existing != null) {
-            ref.read(deviceCheckInServiceProvider).recordSubmission(
-              sessionDateStr: _effectiveSessionDateStr,
-              submission: existing,
-            );
+            ref
+                .read(deviceCheckInServiceProvider)
+                .recordSubmission(
+                  sessionDateStr: _effectiveSessionDateStr,
+                  submission: existing,
+                );
           }
           showDialog(
             context: context,
@@ -667,7 +650,11 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
               ),
               title: const Row(
                 children: [
-                  Icon(Icons.info_outline_rounded, color: AppColors.primary, size: 24),
+                  Icon(
+                    Icons.info_outline_rounded,
+                    color: AppColors.primary,
+                    size: 24,
+                  ),
                   SizedBox(width: 10),
                   Text(
                     'Already Responded',
@@ -676,7 +663,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                 ],
               ),
               content: const Text(
-                'You have already submitted your attendance for this date.\n\nOnly one submission is allowed per device and attendee.',
+                'You have already submitted your attendance for this date.\n\nOnly one check-in is allowed per member (or phone) each Thursday.',
                 style: TextStyle(fontSize: 14, height: 1.4),
               ),
               actions: [
@@ -718,9 +705,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     });
 
     if (configAsync.isLoading && !configAsync.hasValue) {
-      return const Scaffold(
-        body: Center(child: MetaPhiLoadingIndicator()),
-      );
+      return const Scaffold(body: Center(child: MetaPhiLoadingIndicator()));
     }
 
     final restrictionsEnabled = configAsync.maybeWhen(
@@ -744,11 +729,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     }
 
     if (_isCheckingDevice) {
-      return const Scaffold(
-        body: Center(
-          child: MetaPhiLoadingIndicator(),
-        ),
-      );
+      return const Scaffold(body: Center(child: MetaPhiLoadingIndicator()));
     }
 
     if (restrictionsEnabled && !_isTodayThursday) {
@@ -788,10 +769,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                   const Text(
                     'Member and substitute check-in is permitted only on Thursdays. Attendance submissions are closed today.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Color(0xFF64748B),
-                      height: 1.4,
-                    ),
+                    style: TextStyle(color: Color(0xFF64748B), height: 1.4),
                   ),
                 ],
               ),
@@ -803,8 +781,8 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
 
     // When restrictions OFF: past / future QR dates are accepted.
     if (restrictionsEnabled && _isSessionExpired) {
-      final formattedSessionDate =
-          DateFormat('EEEE, dd MMMM yyyy').format(_parsedSessionDate!);
+      final formattedSessionDate = DateFormat('EEEE, dd MMMM yyyy')
+          .format(_parsedSessionDate!);
       return AppScaffold(
         title: AppStrings.checkInFormTitle,
         backgroundColor: const Color(0xFFF8FAFC),
@@ -854,8 +832,8 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     }
 
     if (restrictionsEnabled && _isSessionFuture) {
-      final formattedSessionDate =
-          DateFormat('EEEE, dd MMMM yyyy').format(_parsedSessionDate!);
+      final formattedSessionDate = DateFormat('EEEE, dd MMMM yyyy')
+          .format(_parsedSessionDate!);
       return AppScaffold(
         title: AppStrings.checkInFormTitle,
         backgroundColor: const Color(0xFFF8FAFC),
@@ -906,7 +884,9 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
 
     // Keep employee list stream hot and cached in memory
     final formState = ref.watch(checkInFormProvider);
-    final locationAsync = ref.watch(locationConfigFamilyProvider(widget.locationId));
+    final locationAsync = ref.watch(
+      locationConfigFamilyProvider(widget.locationId),
+    );
     final isCompact = context.isCompactMobile;
     final currentType = formState.type;
 
@@ -926,11 +906,13 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       isActive: true,
       address: 'Jade Luxury Banquets, Nehru Centre, Dr Annie Besant Rd, Worli, Mumbai, Maharashtra 400018',
     );
-    final location = widget.initialLocation ??
+    final location =
+        widget.initialLocation ??
         locationAsync.asData?.value ??
         defaultLocation;
 
-    final proximity = widget.proximityResult ??
+    final proximity =
+        widget.proximityResult ??
         ProximityResult(
           distanceMeters: 10.0,
           isWithinRadius: true,
@@ -960,154 +942,156 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       backgroundColor: const Color(0xFFF8FAFC),
       body: Column(
         children: [
-              // Scrollable Form Content (Top-aligned, identical padding across all 3 states)
-              Expanded(
-                child: SingleChildScrollView(
-                  controller: _formScrollController,
-                  // Keep the keyboard (and suggestions) open while scrolling
-                  // the member list on mobile web.
-                  keyboardDismissBehavior: _anyMemberTypeaheadOpen
-                      ? ScrollViewKeyboardDismissBehavior.manual
-                      : ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: EdgeInsets.fromLTRB(
-                    hPadding,
-                    isCompact ? 16 : 24,
-                    hPadding,
-                    // Extra space so lower typeaheads (Substitute / Visitor)
-                    // can scroll the field + suggestions above the keyboard.
-                    (isCompact ? 16 : 24) +
-                        keyboardInset +
-                        (_anyMemberTypeaheadOpen ? 320 : 0),
+          // Scrollable Form Content (Top-aligned, identical padding across all 3 states)
+          Expanded(
+            child: SingleChildScrollView(
+              controller: _formScrollController,
+              // Keep the keyboard (and suggestions) open while scrolling
+              // the member list on mobile web.
+              keyboardDismissBehavior: _anyMemberTypeaheadOpen
+                  ? ScrollViewKeyboardDismissBehavior.manual
+                  : ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: EdgeInsets.fromLTRB(
+                hPadding,
+                isCompact ? 16 : 24,
+                hPadding,
+                // Extra space so lower typeaheads (Substitute / Visitor)
+                // can scroll the field + suggestions above the keyboard.
+                (isCompact ? 16 : 24) +
+                    keyboardInset +
+                    (_anyMemberTypeaheadOpen ? 320 : 0),
+              ),
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: ResponsiveBreakpoints.maxFormWidth,
                   ),
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(
-                        maxWidth: ResponsiveBreakpoints.maxFormWidth,
-                      ),
-                      child: Form(
-                        key: _formKey,
-                        autovalidateMode: AutovalidateMode.onUserInteraction,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            // 1. Top Check-in Type Selector (Member, Substitute, Visitor)
-                            const Text(
-                              'Check-In Type',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF0F172A),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            _CheckInTypeSelector(
-                              selectedType: currentType,
-                              onChanged: _onTypeChanged,
-                            ),
-                            const SizedBox(height: 20),
-
-                            // 3. Dynamic Form Fields based on Type
-                            if (currentType == CheckInType.member) ...[
-                              _buildMemberFormFields(),
-                            ] else if (currentType == CheckInType.substitute) ...[
-                              _buildSubstituteFormFields(formState),
-                            ] else if (currentType == CheckInType.visitor) ...[
-                              _buildVisitorFormFields(),
-                            ],
-
-                            // Error message if any
-                            if (formState.error != null) ...[
-                              const SizedBox(height: 16),
-                              Container(
-                                padding: const EdgeInsets.all(AppSpacing.md),
-                                decoration: BoxDecoration(
-                                  color: AppColors.errorLight.withAlpha(40),
-                                  borderRadius: AppRadius.mdAll,
-                                  border: Border.all(color: AppColors.error),
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.error_outline_rounded,
-                                      color: AppColors.error,
-                                      size: 20,
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Text(
-                                        ErrorHandler.getUserMessage(formState.error!),
-                                        style: const TextStyle(
-                                          color: AppColors.error,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                            const SizedBox(height: 16),
-                          ],
+                  child: Form(
+                    key: _formKey,
+                    autovalidateMode: AutovalidateMode.onUserInteraction,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // 1. Top Check-in Type Selector (Member, Substitute, Visitor)
+                        const Text(
+                          'Check-In Type',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F172A),
+                          ),
                         ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+                        const SizedBox(height: 10),
+                        CheckInTypeSelector(
+                          selectedType: currentType,
+                          onChanged: _onTypeChanged,
+                        ),
+                        const SizedBox(height: 20),
 
-              // 4. Sticky Submit Button — hide while Member suggestions are open
-              // so the keyboard + list stay usable on mobile web.
-              if (currentType != null && !_anyMemberTypeaheadOpen) ...[
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.symmetric(
-                  horizontal: hPadding,
-                  vertical: 14,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  border: const Border(
-                    top: BorderSide(color: Color(0xFFE2E8F0), width: 1),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(8),
-                      blurRadius: 6,
-                      offset: const Offset(0, -2),
-                    ),
-                  ],
-                ),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(
-                      maxWidth: ResponsiveBreakpoints.maxFormWidth,
-                    ),
-                    child: AppButton.primary(
-                      label: formState.isSubmitting
-                          ? AppStrings.checkInSubmitting
-                          : 'Check-In',
-                      icon: Icons.how_to_reg_rounded,
-                      isLoading: formState.isSubmitting,
-                      enabled: canSubmit,
-                      onPressed: canSubmit
-                          ? () => _onSubmit(location, proximity)
-                          : null,
+                        // 3. Dynamic Form Fields based on Type
+                        if (currentType == CheckInType.member) ...[
+                          _buildMemberFormFields(),
+                        ] else if (currentType == CheckInType.substitute) ...[
+                          _buildSubstituteFormFields(formState),
+                        ] else if (currentType == CheckInType.visitor) ...[
+                          _buildVisitorFormFields(),
+                        ],
+
+                        // Error message if any
+                        if (formState.error != null) ...[
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.all(AppSpacing.md),
+                            decoration: BoxDecoration(
+                              color: AppColors.errorLight.withAlpha(40),
+                              borderRadius: AppRadius.mdAll,
+                              border: Border.all(color: AppColors.error),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.error_outline_rounded,
+                                  color: AppColors.error,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    ErrorHandler.getUserMessage(
+                                      formState.error!,
+                                    ),
+                                    style: const TextStyle(
+                                      color: AppColors.error,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 16),
+                      ],
                     ),
                   ),
                 ),
               ),
-              ],
-            ],
+            ),
           ),
+
+          // 4. Sticky Submit Button — hide while Member suggestions are open
+          // so the keyboard + list stay usable on mobile web.
+          if (currentType != null && !_anyMemberTypeaheadOpen) ...[
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(horizontal: hPadding, vertical: 14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: const Border(
+                  top: BorderSide(color: Color(0xFFE2E8F0), width: 1),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withAlpha(8),
+                    blurRadius: 6,
+                    offset: const Offset(0, -2),
+                  ),
+                ],
+              ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: ResponsiveBreakpoints.maxFormWidth,
+                  ),
+                  child: AppButton.primary(
+                    label: formState.isSubmitting
+                        ? AppStrings.checkInSubmitting
+                        : 'Check-In',
+                    icon: Icons.how_to_reg_rounded,
+                    isLoading: formState.isSubmitting,
+                    enabled: canSubmit,
+                    onPressed: canSubmit
+                        ? () => _onSubmit(location, proximity)
+                        : null,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
-
 
   // ==========================================
   // Persistent Field Label with Red Asterisk
   // ==========================================
-  Widget _buildFieldLabel(String title, {bool isRequired = false, String? suffix}) {
+  Widget _buildFieldLabel(
+    String title, {
+    bool isRequired = false,
+    String? suffix,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Text.rich(
@@ -1163,17 +1147,11 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
             ),
           ),
           const SizedBox(width: 8),
-          Container(
-            height: 16,
-            width: 1,
-            color: const Color(0xFFCBD5E1),
-          ),
+          Container(height: 16, width: 1, color: const Color(0xFFCBD5E1)),
         ],
       ),
     );
   }
-
-
 
   // ==========================================
   // Shared member typeahead (Member / Substitute-for / Invited-by)
@@ -1197,8 +1175,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   }) {
     final query = controller.text.trim();
     final hasQuery = query.isNotEmpty;
-    final showAbove =
-        showSuggestions && _shouldShowSuggestionsAbove(fieldKey);
+    final showAbove = showSuggestions && _shouldShowSuggestionsAbove(fieldKey);
 
     final suggestionsPanel = _buildMemberSuggestionsPanel(
       query: query,
@@ -1378,17 +1355,15 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                     final q = query.toLowerCase();
                     final filtered = q.isEmpty
                         ? availableEmployees
-                        : availableEmployees
-                            .where((emp) {
-                              final name = emp.name.toLowerCase();
-                              final phone = emp.phone.toLowerCase();
-                              return name.contains(q) || phone.contains(q);
-                            })
-                            .toList();
+                        : availableEmployees.where((emp) {
+                            final name = emp.name.toLowerCase();
+                            final phone = emp.phone.toLowerCase();
+                            return name.contains(q) || phone.contains(q);
+                          }).toList();
 
                     if (filtered.isEmpty) {
-                      final emptyMessage = excludeSessionCheckedIn &&
-                              availableEmployees.isEmpty
+                      final emptyMessage =
+                          excludeSessionCheckedIn && availableEmployees.isEmpty
                           ? 'All members have already checked in for this session'
                           : 'No matching members found';
                       return Padding(
@@ -1414,10 +1389,8 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                         physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.symmetric(vertical: 4),
                         itemCount: filtered.length,
-                        separatorBuilder: (context, index) => const Divider(
-                          height: 1,
-                          color: Color(0xFFF1F5F9),
-                        ),
+                        separatorBuilder: (context, index) =>
+                            const Divider(height: 1, color: Color(0xFFF1F5F9)),
                         itemBuilder: (context, index) {
                           final emp = filtered[index];
                           return ListTile(
@@ -1504,7 +1477,8 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
           },
           onQueryChanged: (val) {
             final selected = _manuallySelectedMember;
-            final stillMatches = selected != null &&
+            final stillMatches =
+                selected != null &&
                 selected.name.trim().toLowerCase() == val.trim().toLowerCase();
             if (!stillMatches) {
               _phoneController.clear();
@@ -1652,7 +1626,8 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
           },
           onQueryChanged: (val) {
             final selected = _selectedSubstituteForMember;
-            final stillMatches = selected != null &&
+            final stillMatches =
+                selected != null &&
                 selected.trim().toLowerCase() == val.trim().toLowerCase();
             if (!stillMatches) {
               setState(() {
@@ -1683,7 +1658,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
         const SizedBox(height: 20),
 
         // Face Verification Photo Card
-        _SubstitutePhotoCard(
+        SubstitutePhotoCard(
           photoBase64: formState.photoBase64,
           onTakePhoto: _openCamera,
         ),
@@ -1760,7 +1735,9 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
           showFloatingLabel: false,
           controller: _companyController,
           prefixIcon: const Icon(Icons.business_rounded),
-          validator: (val) => (val == null || val.trim().isEmpty) ? 'Please enter company name' : null,
+          validator: (val) => (val == null || val.trim().isEmpty)
+              ? 'Please enter company name'
+              : null,
           onChanged: (val) {
             setState(() {});
             ref.read(checkInFormProvider.notifier).setCompanyName(val);
@@ -1814,7 +1791,8 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
           },
           onQueryChanged: (val) {
             final selected = _selectedInvitedByMember;
-            final stillMatches = selected != null &&
+            final stillMatches =
+                selected != null &&
                 selected.trim().toLowerCase() == val.trim().toLowerCase();
             if (!stillMatches) {
               setState(() => _selectedInvitedByMember = null);
@@ -1836,212 +1814,6 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
           },
         ),
       ],
-    );
-  }
-}
-
-/// 3-Option Segmented Check-In Type Selector (Member, Substitute, Visitor).
-/// Consistent selected accent color (AppColors.primary) across all three options.
-class _CheckInTypeSelector extends StatelessWidget {
-  const _CheckInTypeSelector({
-    required this.selectedType,
-    required this.onChanged,
-  });
-
-  final CheckInType? selectedType;
-  final ValueChanged<CheckInType> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        // 1. Member Option
-        Expanded(
-          child: _buildTypeCard(
-            type: CheckInType.member,
-            title: 'Member',
-            icon: Icons.person_rounded,
-            isSelected: selectedType == CheckInType.member,
-          ),
-        ),
-
-        const SizedBox(width: 8),
-
-        // 2. Substitute Option
-        Expanded(
-          child: _buildTypeCard(
-            type: CheckInType.substitute,
-            title: 'Substitute',
-            icon: Icons.swap_horiz_rounded,
-            isSelected: selectedType == CheckInType.substitute,
-          ),
-        ),
-
-        const SizedBox(width: 8),
-
-        // 3. Visitor Option
-        Expanded(
-          child: _buildTypeCard(
-            type: CheckInType.visitor,
-            title: 'Visitor',
-            icon: Icons.card_membership_rounded,
-            isSelected: selectedType == CheckInType.visitor,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTypeCard({
-    required CheckInType type,
-    required String title,
-    required IconData icon,
-    required bool isSelected,
-  }) {
-    const activeColor = AppColors.primary;
-    const activeBgColor = Color(0xFFFEF2F2);
-
-    return InkWell(
-      onTap: () => onChanged(type),
-      borderRadius: AppRadius.mdAll,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? activeBgColor : Colors.white,
-          borderRadius: AppRadius.mdAll,
-          border: Border.all(
-            color: isSelected ? activeColor : const Color(0xFFE2E8F0),
-            width: isSelected ? 2 : 1,
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: activeColor.withAlpha(25),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : null,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              isSelected ? Icons.check_circle_rounded : icon,
-              size: 20,
-              color: isSelected ? activeColor : const Color(0xFF64748B),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              title,
-              style: TextStyle(
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                color: isSelected ? activeColor : const Color(0xFF475569),
-                fontSize: 13,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Substitute photo verification card.
-class _SubstitutePhotoCard extends StatelessWidget {
-  const _SubstitutePhotoCard({
-    required this.photoBase64,
-    required this.onTakePhoto,
-  });
-
-  final String? photoBase64;
-  final VoidCallback onTakePhoto;
-
-  @override
-  Widget build(BuildContext context) {
-    final imageBytes = ImageUtils.base64ToBytes(photoBase64);
-
-    return AppCard(
-      color: Colors.white,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Row(
-                children: [
-                  Icon(
-                    Icons.camera_alt_outlined,
-                    color: Color(0xFF64748B),
-                    size: 20,
-                  ),
-                  SizedBox(width: 8),
-                  Text.rich(
-                    TextSpan(
-                      text: 'Face Verification Photo',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13.5,
-                        color: Color(0xFF0F172A),
-                      ),
-                      children: [
-                        TextSpan(
-                          text: ' *',
-                          style: TextStyle(
-                            color: AppColors.error,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              if (imageBytes != null)
-                TextButton.icon(
-                  icon: const Icon(Icons.refresh_rounded, size: 16),
-                  label: const Text('Change'),
-                  onPressed: onTakePhoto,
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (imageBytes != null)
-            Center(
-              child: ClipRRect(
-                borderRadius: AppRadius.mdAll,
-                child: Image.memory(
-                  imageBytes,
-                  width: 140,
-                  height: 140,
-                  fit: BoxFit.cover,
-                ),
-              ),
-            )
-          else
-            Center(
-              child: Column(
-                children: [
-                  const Text(
-                    'Substitutes must provide a live face photo for attendance verification.',
-                    style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 12),
-                  AppButton.primary(
-                    label: 'Take Face Photo',
-                    icon: Icons.camera_alt_rounded,
-                    fullWidth: false,
-                    onPressed: onTakePhoto,
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
     );
   }
 }

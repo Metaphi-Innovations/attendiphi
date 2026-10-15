@@ -8,7 +8,7 @@ class AppConstants {
   static const double maxGpsAccuracyMeters = 100;
 
   /// Default check-in radius in meters.
-  /// Overridden per-location from Firestore configuration.
+  /// Overridden per-location from the location configuration.
   static const double defaultRadiusMeters = 500;
 
   /// GPS position timeout in seconds.
@@ -41,30 +41,38 @@ class AppConstants {
   /// Number of check-in records per page in the dashboard.
   static const int dashboardPageSize = 20;
 
-  // ── Firebase Paths ────────────────────────────────────────────────────
+  // ── Collection / table names ───────────────────────────────────────────
   static const String locationsCollection = 'locations';
   static const String checkInsCollection = 'checkIns';
+
   /// Public create-once locks: one device may check in once per session date.
   static const String deviceSessionLocksCollection = 'deviceSessionLocks';
+
   /// Public create-once locks: one phone may check in once per session date.
   static const String phoneSessionLocksCollection = 'phoneSessionLocks';
+
   /// Public create-once locks: one member (or substitute-for) per session date.
   static const String memberSessionLocksCollection = 'memberSessionLocks';
+
   /// Public projection of checked-in member IDs per session day (QR typeahead).
   static const String sessionAttendanceCollection = 'sessionAttendance';
+
   /// Locked biometrics store (admin / trusted server only — not public employees).
   static const String faceTemplatesCollection = 'faceTemplates';
   static const String adminsCollection = 'admins';
   static const String employeesCollection = 'employees';
+
   /// Minimal public directory for QR typeahead (id, name, phone, isActive only).
   static const String publicMembersCollection = 'publicMembers';
   static const String adminDevicesCollection = 'admin_devices';
   static const String adminNotificationsCollection = 'admin_notifications';
   static const String adminMailDispatchCollection = 'admin_mail_dispatch';
+
   /// Live app settings (e.g. check-in restriction master toggle).
   static const String appConfigCollection = 'appConfig';
   static const String checkInRestrictionsDocId = 'checkInRestrictions';
   static const String substitutePhotosPath = 'substitute_photos';
+
   /// Max base64 photo payload accepted by public checkIns create rules (~150KB).
   static const int maxCheckInPhotoBase64Chars = 150000;
 

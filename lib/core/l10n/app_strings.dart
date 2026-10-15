@@ -78,8 +78,7 @@ class AppStrings {
   static const validationNameTooShort =
       'Name must be at least 2 characters long.';
   static const validationNameTooLong = 'Name must not exceed 100 characters.';
-  static const validationNameInvalid =
-      'Name contains invalid characters.';
+  static const validationNameInvalid = 'Name contains invalid characters.';
   static const validationPhoneRequired = 'Phone number is required.';
   static const validationPhoneInvalid =
       'Please enter a valid 10-digit Indian phone number.';
@@ -96,19 +95,16 @@ class AppStrings {
   static const cameraConfirm = 'Use This Photo';
   static const cameraPermissionDenied =
       'Camera permission is required to take a verification photo.';
-  static const cameraFailed =
-      'Unable to access the camera. Please try again.';
+  static const cameraFailed = 'Unable to access the camera. Please try again.';
   static const photoUploading = 'Uploading photo...';
-  static const photoUploadFailed =
-      'Photo upload failed. Please try again.';
+  static const photoUploadFailed = 'Photo upload failed. Please try again.';
 
   // ── Submission ───────────────────────────────────────────────────────────
   static const submissionInProgress = 'Submitting your check-in...';
   static const submissionSuccess = 'Check-In Successful!';
   static const submissionSuccessMessage =
       'Your attendance has been recorded successfully.';
-  static const submissionFailed =
-      'Check-in failed. Please try again.';
+  static const submissionFailed = 'Check-in failed. Please try again.';
   static const submissionDuplicate =
       'You have already checked in. Duplicate submissions are not allowed.';
   static const submissionDone = 'Done';
@@ -125,8 +121,7 @@ class AppStrings {
   static const adminLoginPassword = 'Password';
   static const adminLoginSubmit = 'Sign In';
   static const adminLoginFailed = 'Invalid email or password.';
-  static const adminUnauthorized =
-      'You do not have administrator access.';
+  static const adminUnauthorized = 'You do not have administrator access.';
   static const adminLogout = 'Sign Out';
 
   // ── Dashboard ────────────────────────────────────────────────────────────
@@ -135,8 +130,7 @@ class AppStrings {
   static const dashboardFilterAll = 'All';
   static const dashboardFilterMember = 'Members';
   static const dashboardFilterSubstitute = 'Substitutes';
-  static const dashboardEmpty =
-      'No check-in records found.';
+  static const dashboardEmpty = 'No check-in records found.';
   static const dashboardLoadMore = 'Load More';
   static const dashboardLoading = 'Loading check-ins...';
 
@@ -154,8 +148,7 @@ class AppStrings {
   static const detailPhoto = 'Verification Photo';
 
   // ── Generic ──────────────────────────────────────────────────────────────
-  static const genericError =
-      'Something went wrong. Please try again.';
+  static const genericError = 'Something went wrong. Please try again.';
   static const genericCancel = 'Cancel';
   static const genericOk = 'OK';
   static const genericRetry = 'Retry';

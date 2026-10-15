@@ -5,9 +5,7 @@ import 'package:qr_checkin/core/widgets/app_button.dart';
 void main() {
   Widget buildTestable(Widget child) {
     return MaterialApp(
-      home: Scaffold(
-        body: Center(child: child),
-      ),
+      home: Scaffold(body: Center(child: child)),
     );
   }
 
@@ -17,10 +15,7 @@ void main() {
 
       await tester.pumpWidget(
         buildTestable(
-          AppButton.primary(
-            label: 'Submit',
-            onPressed: () => tapped = true,
-          ),
+          AppButton.primary(label: 'Submit', onPressed: () => tapped = true),
         ),
       );
 
@@ -29,25 +24,28 @@ void main() {
       expect(tapped, isTrue);
     });
 
-    testWidgets('shows loading indicator and ignores taps when isLoading is true', (tester) async {
-      var tapped = false;
+    testWidgets(
+      'shows loading indicator and ignores taps when isLoading is true',
+      (tester) async {
+        var tapped = false;
 
-      await tester.pumpWidget(
-        buildTestable(
-          AppButton.primary(
-            label: 'Submit',
-            isLoading: true,
-            onPressed: () => tapped = true,
+        await tester.pumpWidget(
+          buildTestable(
+            AppButton.primary(
+              label: 'Submit',
+              isLoading: true,
+              onPressed: () => tapped = true,
+            ),
           ),
-        ),
-      );
+        );
 
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
-      expect(find.text('Submit'), findsNothing);
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+        expect(find.text('Submit'), findsNothing);
 
-      await tester.tap(find.byType(AppButton));
-      expect(tapped, isFalse);
-    });
+        await tester.tap(find.byType(AppButton));
+        expect(tapped, isFalse);
+      },
+    );
 
     testWidgets('renders secondary and text variants properly', (tester) async {
       await tester.pumpWidget(

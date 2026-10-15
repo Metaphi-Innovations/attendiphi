@@ -31,6 +31,7 @@ class ValidateUserProximity {
     required double userLon,
     required double accuracy,
     required LocationConfig location,
+
     /// When false (restrictions OFF), never reject for being outside the radius.
     bool enforceProximity = true,
   }) {
@@ -50,8 +51,10 @@ class ValidateUserProximity {
       );
     }
 
-    final latMatches = userLat.toStringAsFixed(2) == location.latitude.toStringAsFixed(2);
-    final lonMatches = userLon.toStringAsFixed(2) == location.longitude.toStringAsFixed(2);
+    final latMatches =
+        userLat.toStringAsFixed(2) == location.latitude.toStringAsFixed(2);
+    final lonMatches =
+        userLon.toStringAsFixed(2) == location.longitude.toStringAsFixed(2);
 
     // If coordinates match the venue prefix (e.g. 19.08, 72.91) and are within on-site range (<= 150m),
     // the user is at the exact same location as the venue -> 0m (On-site).

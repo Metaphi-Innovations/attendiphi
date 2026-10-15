@@ -42,7 +42,8 @@ class _AdminResetPasswordScreenState
   }
 
   bool get _hasMinLength =>
-      _newPasswordController.text.trim().length >= AdminPasswordHasher.minLength;
+      _newPasswordController.text.trim().length >=
+      AdminPasswordHasher.minLength;
   bool get _hasComplexity =>
       AdminPasswordHasher.hasComplexity(_newPasswordController.text);
   bool get _passwordsMatch =>

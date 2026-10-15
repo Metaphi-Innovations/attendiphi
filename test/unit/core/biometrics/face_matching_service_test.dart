@@ -1,4 +1,5 @@
 import 'dart:math';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qr_checkin/core/biometrics/face_matching_service.dart';
 import 'package:qr_checkin/features/employee/domain/entities/employee.dart';
@@ -96,39 +97,54 @@ void main() {
       expect(result!.isMatch, isFalse);
     });
 
-    test('findBestMatch returns isMatch = false when distance exceeds threshold', () {
-      final probe = createMockEmbedding(10.0);
-      final candidateEmb = createMockEmbedding(20.0);
+    test(
+      'findBestMatch returns isMatch = false when distance exceeds threshold',
+      () {
+        final probe = createMockEmbedding(10.0);
+        final candidateEmb = createMockEmbedding(20.0);
 
-      final candidates = [
-        Employee(
-          id: 'emp_1',
-          name: 'David Miller',
-          phone: '9876543210',
-          faceEmbedding: candidateEmb,
-        ),
-      ];
+        final candidates = [
+          Employee(
+            id: 'emp_1',
+            name: 'David Miller',
+            phone: '9876543210',
+            faceEmbedding: candidateEmb,
+          ),
+        ];
 
-      final result = service.findBestMatch(
-        probeEmbedding: probe,
-        candidates: candidates,
-        threshold: 0.20, // Very strict threshold
-      );
+        final result = service.findBestMatch(
+          probeEmbedding: probe,
+          candidates: candidates,
+          threshold: 0.20, // Very strict threshold
+        );
 
-      expect(result, isNotNull);
-      expect(result!.isMatch, isFalse);
-    });
+        expect(result, isNotNull);
+        expect(result!.isMatch, isFalse);
+      },
+    );
 
-    test('Cosine similarity calculation produces exact mathematical values', () {
-      final vecA = [1.0, 0.0, 0.0];
-      final vecB = [1.0, 0.0, 0.0];
-      final vecOrthogonal = [0.0, 1.0, 0.0];
-      final vecOpposite = [-1.0, 0.0, 0.0];
+    test(
+      'Cosine similarity calculation produces exact mathematical values',
+      () {
+        final vecA = [1.0, 0.0, 0.0];
+        final vecB = [1.0, 0.0, 0.0];
+        final vecOrthogonal = [0.0, 1.0, 0.0];
+        final vecOpposite = [-1.0, 0.0, 0.0];
 
-      expect(service.calculateCosineSimilarity(vecA, vecB), closeTo(1.0, 0.0001));
-      expect(service.calculateCosineSimilarity(vecA, vecOrthogonal), closeTo(0.0, 0.0001));
-      expect(service.calculateCosineSimilarity(vecA, vecOpposite), closeTo(-1.0, 0.0001));
-    });
+        expect(
+          service.calculateCosineSimilarity(vecA, vecB),
+          closeTo(1.0, 0.0001),
+        );
+        expect(
+          service.calculateCosineSimilarity(vecA, vecOrthogonal),
+          closeTo(0.0, 0.0001),
+        );
+        expect(
+          service.calculateCosineSimilarity(vecA, vecOpposite),
+          closeTo(-1.0, 0.0001),
+        );
+      },
+    );
 
     test('cosineToConfidence maps 1.0 to 100% and low similarity to 0%', () {
       expect(service.cosineToConfidence(1.0), equals(100.0));

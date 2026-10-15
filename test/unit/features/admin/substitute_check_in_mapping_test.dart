@@ -40,29 +40,29 @@ void main() {
   );
 
   group('mapSubstituteCheckInForMember', () {
-    test('fresh QR write: userName is substitute, remaps member vs substitute',
-        () {
-      final raw = _raw(
-        userName: 'Amit Patel',
-        phone: '+919876543210',
-        substituteForMember: 'Tejashree Vinayak Sane',
-        photoBase64: 'selfie_bytes',
-      );
-
-      final mapped = mapSubstituteCheckInForMember(raw: raw, member: member);
-
-      expect(mapped.userName, 'Tejashree Vinayak Sane');
-      expect(mapped.substituteName, 'Amit Patel');
-      expect(mapped.userName, isNot(mapped.substituteName));
-      expect(mapped.userPhone, '+919876543210');
-      expect(mapped.memberId, 'emp_member');
-      expect(mapped.photoBase64, 'selfie_bytes');
-      expect(mapped.substituteForMember, 'Tejashree Vinayak Sane');
-    });
-
     test(
-        'after verify write-back: prefers persisted substituteName over userName',
-        () {
+      'fresh QR write: userName is substitute, remaps member vs substitute',
+      () {
+        final raw = _raw(
+          userName: 'Amit Patel',
+          phone: '+919876543210',
+          substituteForMember: 'Tejashree Vinayak Sane',
+          photoBase64: 'selfie_bytes',
+        );
+
+        final mapped = mapSubstituteCheckInForMember(raw: raw, member: member);
+
+        expect(mapped.userName, 'Tejashree Vinayak Sane');
+        expect(mapped.substituteName, 'Amit Patel');
+        expect(mapped.userName, isNot(mapped.substituteName));
+        expect(mapped.userPhone, '+919876543210');
+        expect(mapped.memberId, 'emp_member');
+        expect(mapped.photoBase64, 'selfie_bytes');
+        expect(mapped.substituteForMember, 'Tejashree Vinayak Sane');
+      },
+    );
+
+    test('after verify write-back: prefers persisted substituteName over userName', () {
       // Bug scenario: remapped row was saved — userName is already the member.
       final raw = _raw(
         userName: 'Tejashree Vinayak Sane',
@@ -80,9 +80,7 @@ void main() {
       expect(mapped.userName, isNot(mapped.substituteName));
     });
 
-    test(
-        'remapped write-back without substituteName does not invent attendee',
-        () {
+    test('remapped write-back without substituteName does not invent attendee', () {
       final raw = _raw(
         userName: 'Tejashree Vinayak Sane',
         phone: '9919055132',
@@ -98,9 +96,7 @@ void main() {
       expect(mapped.substituteName, isNull);
     });
 
-    test(
-        'collapsed substituteName equal to member is cleared; phone kept',
-        () {
+    test('collapsed substituteName equal to member is cleared; phone kept', () {
       final raw = _raw(
         userName: 'Tejashree Vinayak Sane',
         phone: '9819055132',
@@ -120,23 +116,25 @@ void main() {
       expect(mapped.photoBase64, 'selfie_of_other_person');
     });
 
-    test('admin flip with empty substituteForMember does not invent member as sub',
-        () {
-      final raw = _raw(
-        userName: 'Tejashree Vinayak Sane',
-        phone: '9919055132',
-        substituteForMember: null,
-        substituteName: null,
-        memberId: 'emp_member',
-      );
+    test(
+      'admin flip with empty substituteForMember does not invent member as sub',
+      () {
+        final raw = _raw(
+          userName: 'Tejashree Vinayak Sane',
+          phone: '9919055132',
+          substituteForMember: null,
+          substituteName: null,
+          memberId: 'emp_member',
+        );
 
-      final mapped = mapSubstituteCheckInForMember(raw: raw, member: member);
+        final mapped = mapSubstituteCheckInForMember(raw: raw, member: member);
 
-      expect(mapped.userName, 'Tejashree Vinayak Sane');
-      // No distinct attendee name available — leave null (UI shows "—").
-      expect(mapped.substituteName, isNull);
-      expect(mapped.substituteForMember, 'Tejashree Vinayak Sane');
-    });
+        expect(mapped.userName, 'Tejashree Vinayak Sane');
+        // No distinct attendee name available — leave null (UI shows "—").
+        expect(mapped.substituteName, isNull);
+        expect(mapped.substituteForMember, 'Tejashree Vinayak Sane');
+      },
+    );
   });
 
   group('substituteCheckInCoversMember', () {
@@ -146,10 +144,7 @@ void main() {
         phone: '+919876543210',
         substituteForMember: 'Tejashree Vinayak Sane',
       );
-      expect(
-        substituteCheckInCoversMember(raw: raw, member: member),
-        isTrue,
-      );
+      expect(substituteCheckInCoversMember(raw: raw, member: member), isTrue);
     });
 
     test('matches by memberId when present', () {
@@ -159,10 +154,7 @@ void main() {
         substituteForMember: 'Wrong Name',
         memberId: 'emp_member',
       );
-      expect(
-        substituteCheckInCoversMember(raw: raw, member: member),
-        isTrue,
-      );
+      expect(substituteCheckInCoversMember(raw: raw, member: member), isTrue);
     });
 
     test('does not match unrelated member', () {
@@ -177,25 +169,21 @@ void main() {
         substituteForMember: 'Tejashree Vinayak Sane',
         memberId: 'emp_member',
       );
-      expect(
-        substituteCheckInCoversMember(raw: raw, member: other),
-        isFalse,
-      );
+      expect(substituteCheckInCoversMember(raw: raw, member: other), isFalse);
     });
 
-    test('matches admin-converted substitute with empty substituteForMember',
-        () {
-      final raw = _raw(
-        userName: 'Tejashree Vinayak Sane',
-        phone: '9919055132',
-        substituteForMember: null,
-        memberId: null,
-      );
-      expect(
-        substituteCheckInCoversMember(raw: raw, member: member),
-        isTrue,
-      );
-    });
+    test(
+      'matches admin-converted substitute with empty substituteForMember',
+      () {
+        final raw = _raw(
+          userName: 'Tejashree Vinayak Sane',
+          phone: '9919055132',
+          substituteForMember: null,
+          memberId: null,
+        );
+        expect(substituteCheckInCoversMember(raw: raw, member: member), isTrue);
+      },
+    );
   });
 
   group('prepareAdminEditedCheckIn', () {
@@ -412,18 +400,20 @@ void main() {
   });
 
   group('resolveSubstituteAttendeeFields', () {
-    test('uses substituteName + userPhone from check-in text fields', () {
+    test('uses dedicated substitutePhone only (not userPhone)', () {
       final raw = _raw(
         userName: 'Amit Patel',
-        phone: '9819055132',
+        phone: '9000000000',
         substituteForMember: 'Tejashree Vinayak Sane',
         substituteName: 'Amit Patel',
         memberId: 'emp_member',
-      );
+      ).copyWith(substitutePhone: '9819055132');
       // Dashboard remapped row: userName already the covered member.
       final displayed = raw.copyWith(
         userName: 'Tejashree Vinayak Sane',
+        userPhone: '9000000000',
         substituteName: 'Amit Patel',
+        substitutePhone: '9819055132',
       );
 
       final fields = resolveSubstituteAttendeeFields(
@@ -444,7 +434,7 @@ void main() {
         substituteForMember: 'Tejashree Vinayak Sane',
         substituteName: null,
         memberId: 'emp_member',
-      );
+      ).copyWith(substitutePhone: '9819055132');
       final displayed = mapSubstituteCheckInForMember(raw: raw, member: member);
 
       final fields = resolveSubstituteAttendeeFields(
@@ -476,41 +466,49 @@ void main() {
         coveredMemberPhone: member.phone,
       );
 
-      // Name collapsed to member → hide duplicate; phone from check-in remains.
+      // Name collapsed to member → hide duplicate; phone stays in PHONE column only.
       expect(fields.name, isNull);
       expect(fields.phone, '9819055132');
-      expect(fields.displayLabel, '9819055132');
+      expect(fields.displayLabel, isNull);
     });
 
-    test('preserves userPhone from Firestore as substitute phone', () {
-      final raw = _raw(
-        userName: 'Vishwatmika Jadhav',
-        phone: '9920734142',
-        substituteForMember: 'Vishwatmika Jadhav',
-        substituteName: 'Alzaba Feroz',
-        memberId: 'emp_member',
-        photoBase64: 'selfie',
-      );
-      const covered = Employee(
-        id: 'emp_member',
-        name: 'Vishwatmika Jadhav',
-        phone: '9920734142',
-        email: 'v@example.com',
-      );
-      final displayed =
-          mapSubstituteCheckInForMember(raw: raw, member: covered);
+    test(
+      'null substitutePhone does not fall back to member/userPhone',
+      () {
+        final raw = _raw(
+          userName: 'Alzaba Feroz',
+          phone: '9920734142',
+          substituteForMember: 'Vishwatmika Jadhav',
+          substituteName: 'Alzaba Feroz',
+          memberId: 'emp_member',
+          photoBase64: 'selfie',
+        );
+        // Remapped dashboard row: userPhone == member roster phone.
+        const covered = Employee(
+          id: 'emp_member',
+          name: 'Vishwatmika Jadhav',
+          phone: '9920734142',
+          email: 'v@example.com',
+        );
+        final displayed = raw.copyWith(
+          userName: covered.name,
+          userPhone: covered.phone,
+          substituteName: 'Alzaba Feroz',
+          clearSubstitutePhone: true,
+        );
 
-      final fields = resolveSubstituteAttendeeFields(
-        displayed: displayed,
-        raw: raw,
-        coveredMemberName: covered.name,
-        coveredMemberPhone: covered.phone,
-      );
+        final fields = resolveSubstituteAttendeeFields(
+          displayed: displayed,
+          raw: raw.copyWith(clearSubstitutePhone: true),
+          coveredMemberName: covered.name,
+          coveredMemberPhone: covered.phone,
+        );
 
-      expect(fields.name, 'Alzaba Feroz');
-      expect(fields.phone, '9920734142');
-      expect(fields.displayLabel, 'Alzaba Feroz');
-    });
+        expect(fields.name, 'Alzaba Feroz');
+        expect(fields.phone, '');
+        expect(fields.displayLabel, 'Alzaba Feroz');
+      },
+    );
 
     test('prefers dedicated substitutePhone over corrupted userPhone', () {
       final raw = CheckInSubmission(
@@ -547,6 +545,39 @@ void main() {
       expect(fields.phone, '9876543210');
       expect(fields.displayLabel, 'Alzaba Feroz');
     });
+
+    test(
+      'substituteName set + null substitutePhone → empty phone (UI —)',
+      () {
+        final raw = CheckInSubmission(
+          id: 'sub-2',
+          locationId: 'loc',
+          locationName: 'Venue',
+          userName: 'Vishwatmika Jadhav',
+          userPhone: '9920734142',
+          type: CheckInType.substitute,
+          userLatitude: 0,
+          userLongitude: 0,
+          gpsAccuracy: 5,
+          distanceMeters: 10,
+          timestamp: DateTime(2026, 10, 8, 10, 0),
+          substituteForMember: 'Vishwatmika Jadhav',
+          substituteName: 'Gaurav',
+          memberId: 'emp_member',
+        );
+
+        final fields = resolveSubstituteAttendeeFields(
+          displayed: raw,
+          raw: raw,
+          coveredMemberName: 'Vishwatmika Jadhav',
+          coveredMemberPhone: '9920734142',
+        );
+
+        expect(fields.name, 'Gaurav');
+        expect(fields.phone, isEmpty);
+        expect(fields.displayLabel, 'Gaurav');
+      },
+    );
   });
 
   group('toFirestoreMap', () {

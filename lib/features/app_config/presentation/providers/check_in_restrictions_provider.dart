@@ -1,14 +1,24 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../app/config/supabase_bootstrap.dart';
+import '../../../../core/errors/app_exception.dart';
+import '../../../../core/logger/app_logger.dart';
 import '../../../admin/presentation/providers/admin_auth_provider.dart';
-import '../../../location/presentation/providers/location_providers.dart';
 import '../../data/datasources/app_config_remote_data_source.dart';
+import '../../data/datasources/supabase_app_config_remote_data_source.dart';
 import '../../data/repositories/app_config_repository_impl.dart';
 import '../../domain/entities/check_in_restrictions_config.dart';
 
-final appConfigRemoteDataSourceProvider =
-    Provider<AppConfigRemoteDataSource>((ref) {
-  return AppConfigRemoteDataSourceImpl(ref.watch(firestoreProvider));
+final appConfigRemoteDataSourceProvider = Provider<AppConfigRemoteDataSource>((
+  ref,
+) {
+  if (!SupabaseBootstrap.isInitialized) {
+    throw const ServerException(
+      technicalMessage: 'Supabase is not initialized (app_config)',
+    );
+  }
+  AppLogger.info('App config data source: Supabase', tag: 'AppConfigProviders');
+  return SupabaseAppConfigRemoteDataSource();
 });
 
 final appConfigRepositoryProvider = Provider<AppConfigRepository>((ref) {
@@ -16,18 +26,15 @@ final appConfigRepositoryProvider = Provider<AppConfigRepository>((ref) {
 });
 
 /// Live stream of check-in restriction config. Missing doc ⇒ defaults (ON).
+///
+/// Polls slowly (60s); keepAlive so QR + admin share one subscription.
 final checkInRestrictionsConfigProvider =
     StreamProvider<CheckInRestrictionsConfig>((ref) {
-  ref.keepAlive();
-  return ref.watch(appConfigRepositoryProvider).watchCheckInRestrictions();
-});
+      ref.keepAlive();
+      return ref.watch(appConfigRepositoryProvider).watchCheckInRestrictions();
+    });
 
 /// Convenience: whether production check-in restrictions are enforced.
-///
-/// Prefer [checkInRestrictionsConfigProvider] on QR screens so UI can wait
-/// until Firestore has answered (missing doc ⇒ ON). Do not treat "loading"
-/// as ON for gate screens — that wrongly blocks past/upcoming QRs while
-/// Super Admin has already turned restrictions OFF.
 final restrictionsEnabledProvider = Provider<bool>((ref) {
   final async = ref.watch(checkInRestrictionsConfigProvider);
   return async.maybeWhen(
@@ -55,7 +62,9 @@ class CheckInRestrictionsNotifier extends AsyncNotifier<void> {
 
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      await ref.read(appConfigRepositoryProvider).setCheckInRestrictions(
+      await ref
+          .read(appConfigRepositoryProvider)
+          .setCheckInRestrictions(
             restrictionsEnabled: enabled,
             updatedBy: admin.id,
             updatedByEmail: admin.email,
@@ -66,5 +75,5 @@ class CheckInRestrictionsNotifier extends AsyncNotifier<void> {
 
 final checkInRestrictionsNotifierProvider =
     AsyncNotifierProvider<CheckInRestrictionsNotifier, void>(
-  CheckInRestrictionsNotifier.new,
-);
+      CheckInRestrictionsNotifier.new,
+    );

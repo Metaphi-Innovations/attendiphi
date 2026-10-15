@@ -29,84 +29,93 @@ void main() {
   }
 
   group('VenueQrDisplayScreen Widget Tests', () {
-    testWidgets('renders screen title and September 2026 month with Thursdays', (tester) async {
-      tester.view.physicalSize = const Size(1200, 900);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() => tester.view.resetPhysicalSize());
+    testWidgets(
+      'renders screen title and September 2026 month with Thursdays',
+      (tester) async {
+        tester.view.physicalSize = const Size(1200, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() => tester.view.resetPhysicalSize());
 
-      await tester.pumpWidget(createWidgetUnderTest());
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(createWidgetUnderTest());
+        await tester.pumpAndSettle();
 
-      // Check header
-      expect(find.text('Thursday QR Standees'), findsOneWidget);
+        // Check header
+        expect(find.text('Thursday QR Standees'), findsOneWidget);
 
-      // Check month display
-      expect(find.text('September 2026'), findsWidgets);
+        // Check month display
+        expect(find.text('September 2026'), findsWidgets);
 
-      // Check September 2026 has 4 Thursdays: Sep 3, Sep 10, Sep 17, Sep 24
-      expect(find.text('4 Thursdays in September 2026'), findsOneWidget);
-      expect(find.text('03'), findsOneWidget);
-      expect(find.text('10'), findsOneWidget);
-      expect(find.text('17'), findsOneWidget);
-      // Tap Session 1 to view Session 1 Standee
-      final session1Finder = find.text('Session 1');
-      expect(session1Finder, findsOneWidget);
-      await tester.tap(session1Finder);
-      await tester.pumpAndSettle();
+        // Check September 2026 has 4 Thursdays: Sep 3, Sep 10, Sep 17, Sep 24
+        expect(find.text('4 Thursdays in September 2026'), findsOneWidget);
+        expect(find.text('03'), findsOneWidget);
+        expect(find.text('10'), findsOneWidget);
+        expect(find.text('17'), findsOneWidget);
+        // Tap Session 1 to view Session 1 Standee
+        final session1Finder = find.text('Session 1');
+        expect(session1Finder, findsOneWidget);
+        await tester.tap(session1Finder);
+        await tester.pumpAndSettle();
 
-      // Check Standee preview card enriched elements
-      expect(find.text('Thursday, 03 Sep 2026'), findsNWidgets(2));
-      expect(find.text('Scan with phone camera to check in'), findsOneWidget);
-      expect(find.text('Secure session link'), findsWidgets);
-      expect(find.text('ACTIVE'), findsWidgets);
-      expect(find.text('OFFICIAL STANDEE'), findsNothing);
-      expect(find.text('OFFICIAL ID PASS'), findsNothing);
-    });
+        // Check Standee preview card enriched elements
+        expect(find.text('Thursday, 03 Sep 2026'), findsNWidgets(2));
+        expect(find.text('Scan with phone camera to check in'), findsOneWidget);
+        expect(find.text('Secure session link'), findsWidgets);
+        expect(find.text('ACTIVE'), findsWidgets);
+        expect(find.text('OFFICIAL STANDEE'), findsNothing);
+        expect(find.text('OFFICIAL ID PASS'), findsNothing);
+      },
+    );
 
-    testWidgets('switches selected Thursday when tapped and updates preview card', (tester) async {
-      tester.view.physicalSize = const Size(1200, 900);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() => tester.view.resetPhysicalSize());
+    testWidgets(
+      'switches selected Thursday when tapped and updates preview card',
+      (tester) async {
+        tester.view.physicalSize = const Size(1200, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() => tester.view.resetPhysicalSize());
 
-      await tester.pumpWidget(createWidgetUnderTest());
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(createWidgetUnderTest());
+        await tester.pumpAndSettle();
 
-      // Tap on Session 2 (Sep 10)
-      final session2Finder = find.text('Session 2');
-      expect(session2Finder, findsOneWidget);
-      await tester.tap(session2Finder);
-      await tester.pumpAndSettle();
+        // Tap on Session 2 (Sep 10)
+        final session2Finder = find.text('Session 2');
+        expect(session2Finder, findsOneWidget);
+        await tester.tap(session2Finder);
+        await tester.pumpAndSettle();
 
-      expect(find.text('Thursday, 10 Sep 2026'), findsNWidgets(2));
-      expect(find.text('Secure session link'), findsWidgets);
-    });
+        expect(find.text('Thursday, 10 Sep 2026'), findsNWidgets(2));
+        expect(find.text('Secure session link'), findsWidgets);
+      },
+    );
 
-    testWidgets('navigates to next month (October 2026 - 5 Thursdays) and shows locked card', (tester) async {
-      tester.view.physicalSize = const Size(1200, 900);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() => tester.view.resetPhysicalSize());
+    testWidgets(
+      'navigates to next month (October 2026 - 5 Thursdays) and shows locked card',
+      (tester) async {
+        tester.view.physicalSize = const Size(1200, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() => tester.view.resetPhysicalSize());
 
-      await tester.pumpWidget(createWidgetUnderTest());
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(createWidgetUnderTest());
+        await tester.pumpAndSettle();
 
-      // Navigate to October
-      final nextMonthBtn = find.byTooltip('Next Month');
-      expect(nextMonthBtn, findsOneWidget);
-      await tester.tap(nextMonthBtn);
-      await tester.pumpAndSettle();
+        // Navigate to October
+        final nextMonthBtn = find.byTooltip('Next Month');
+        expect(nextMonthBtn, findsOneWidget);
+        await tester.tap(nextMonthBtn);
+        await tester.pumpAndSettle();
 
-      // Verify October 2026 has 5 Thursdays (01, 08, 15, 22, 29)
-      expect(find.text('5 Thursdays in October 2026'), findsOneWidget);
-      expect(find.text('01'), findsOneWidget);
-      expect(find.text('08'), findsOneWidget);
-      expect(find.text('15'), findsOneWidget);
-      expect(find.text('22'), findsOneWidget);
-      expect(find.text('29'), findsOneWidget);
+        // Verify October 2026 has 5 Thursdays (01, 08, 15, 22, 29)
+        expect(find.text('5 Thursdays in October 2026'), findsOneWidget);
+        expect(find.text('01'), findsOneWidget);
+        expect(find.text('08'), findsOneWidget);
+        expect(find.text('15'), findsOneWidget);
+        expect(find.text('22'), findsOneWidget);
+        expect(find.text('29'), findsOneWidget);
 
-      // Verify locked preview card
-      expect(find.text('QR Code Not Available Yet'), findsOneWidget);
-      expect(find.text('Thursday, 01 Oct 2026'), findsNWidgets(2));
-    });
+        // Verify locked preview card
+        expect(find.text('QR Code Not Available Yet'), findsOneWidget);
+        expect(find.text('Thursday, 01 Oct 2026'), findsNWidgets(2));
+      },
+    );
 
     testWidgets('opens modal dialog when View icon is tapped', (tester) async {
       tester.view.physicalSize = const Size(1200, 900);
@@ -124,19 +133,29 @@ void main() {
       expect(find.text('Thursday QR Standee'), findsOneWidget);
       expect(
         find.byWidgetPredicate(
-          (w) => w is Image && w.image is AssetImage && (w.image as AssetImage).assetName == 'assets/images/RISE.png',
+          (w) =>
+              w is Image &&
+              w.image is AssetImage &&
+              (w.image as AssetImage).assetName == 'assets/images/RISE.png',
         ),
         findsWidgets,
       );
       expect(
         find.byWidgetPredicate(
-          (w) => w is Image && w.image is AssetImage && (w.image as AssetImage).assetName == 'assets/images/attendiphi_logo.png',
+          (w) =>
+              w is Image &&
+              w.image is AssetImage &&
+              (w.image as AssetImage).assetName ==
+                  'assets/images/attendiphi_logo.png',
         ),
         findsWidgets,
       );
       expect(
         find.byWidgetPredicate(
-          (w) => w is Image && w.image is AssetImage && (w.image as AssetImage).assetName == 'assets/images/BNI.jpg',
+          (w) =>
+              w is Image &&
+              w.image is AssetImage &&
+              (w.image as AssetImage).assetName == 'assets/images/BNI.jpg',
         ),
         findsWidgets,
       );

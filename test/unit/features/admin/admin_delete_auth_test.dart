@@ -21,11 +21,11 @@ class FakeRemoteDataSource implements AdminRemoteDataSource {
     required String password,
     String? createdBy,
     AdminRole role = AdminRole.admin,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 
   @override
-  Future<AdminUser?> getAdminByEmail(String email) => throw UnimplementedError();
+  Future<AdminUser?> getAdminByEmail(String email) =>
+      throw UnimplementedError();
 
   @override
   Future<AdminUser?> getAdminById(String id) => throw UnimplementedError();
@@ -65,52 +65,66 @@ class FakeEmailCredentialsService extends EmailCredentialsService {
 }
 
 void main() {
-  test('deleteAdmin deletes both Auth user and Firestore record when successful',
-      () async {
-    final fakeRemote = FakeRemoteDataSource();
-    final fakeEmailService = FakeEmailCredentialsService(
-      authDeleteResult: (success: true, userMessage: 'Deleted from Auth'),
-    );
+  test(
+    'deleteAdmin deletes both Auth user and Postgres row when successful',
+    () async {
+      final fakeRemote = FakeRemoteDataSource();
+      final fakeEmailService = FakeEmailCredentialsService(
+        authDeleteResult: (success: true, userMessage: 'Deleted from Auth'),
+      );
 
-    final repo = AdminRepositoryImpl(
-      remoteDataSource: fakeRemote,
-      emailService: fakeEmailService,
-    );
+      final repo = AdminRepositoryImpl(
+        remoteDataSource: fakeRemote,
+        emailService: fakeEmailService,
+      );
 
-    await repo.deleteAdmin('test-uid-123', email: 'admin@test.com');
+      await repo.deleteAdmin(
+        'legacy-profile-id',
+        email: 'admin@test.com',
+        authUserId: '11111111-1111-4111-8111-111111111111',
+      );
 
-    expect(fakeEmailService.capturedUid, 'test-uid-123');
-    expect(fakeEmailService.capturedEmail, 'admin@test.com');
-    expect(fakeRemote.deletedId, 'test-uid-123');
-  });
+      expect(
+        fakeEmailService.capturedUid,
+        '11111111-1111-4111-8111-111111111111',
+      );
+      expect(fakeEmailService.capturedEmail, 'admin@test.com');
+      expect(fakeRemote.deletedId, 'legacy-profile-id');
+    },
+  );
 
-  test('deleteAdmin aborts and does not delete Firestore if Auth deletion fails',
-      () async {
-    final fakeRemote = FakeRemoteDataSource();
-    final fakeEmailService = FakeEmailCredentialsService(
-      authDeleteResult: (
-        success: false,
-        userMessage: 'Permission denied in Firebase Auth',
-      ),
-    );
-
-    final repo = AdminRepositoryImpl(
-      remoteDataSource: fakeRemote,
-      emailService: fakeEmailService,
-    );
-
-    expect(
-      () => repo.deleteAdmin('test-uid-123', email: 'admin@test.com'),
-      throwsA(
-        isA<Exception>().having(
-          (e) => e.toString(),
-          'message',
-          contains('Permission denied in Firebase Auth'),
+  test(
+    'deleteAdmin aborts and does not delete Postgres if Auth deletion fails',
+    () async {
+      final fakeRemote = FakeRemoteDataSource();
+      final fakeEmailService = FakeEmailCredentialsService(
+        authDeleteResult: (
+          success: false,
+          userMessage: 'Permission denied in Supabase Auth',
         ),
-      ),
-    );
+      );
 
-    // Firestore record was NOT deleted
-    expect(fakeRemote.deletedId, isNull);
-  });
+      final repo = AdminRepositoryImpl(
+        remoteDataSource: fakeRemote,
+        emailService: fakeEmailService,
+      );
+
+      expect(
+        () => repo.deleteAdmin(
+          'legacy-profile-id',
+          email: 'admin@test.com',
+          authUserId: '11111111-1111-4111-8111-111111111111',
+        ),
+        throwsA(
+          isA<Exception>().having(
+            (e) => e.toString(),
+            'message',
+            contains('Permission denied in Supabase Auth'),
+          ),
+        ),
+      );
+
+      expect(fakeRemote.deletedId, isNull);
+    },
+  );
 }

@@ -51,137 +51,154 @@ void main() {
   );
 
   group('Multi-Platform Viewport & Orientation Tests', () {
-    testWidgets('AdminInspectionBanner renders cleanly on Phone Portrait (375x812) without overflowing', (tester) async {
-      tester.view.physicalSize = const Size(375, 812);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+    testWidgets(
+      'AdminInspectionBanner renders cleanly on Phone Portrait (375x812) without overflowing',
+      (tester) async {
+        tester.view.physicalSize = const Size(375, 812);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
 
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            isSuperAdminProvider.overrideWithValue(true),
-            activeAdminScopeProvider.overrideWith(() => _MockScopeNotifier(testAdmin1)),
-            allAdminsStreamProvider.overrideWith((ref) => Stream.value([testAdmin1, testAdmin2])),
-          ],
-          child: MaterialApp(
-            theme: AppTheme.light,
-            home: const Scaffold(
-              body: AdminInspectionBanner(),
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              isSuperAdminProvider.overrideWithValue(true),
+              activeAdminScopeProvider.overrideWith(
+                () => _MockScopeNotifier(testAdmin1),
+              ),
+              allAdminsStreamProvider.overrideWith(
+                (ref) => Stream.value([testAdmin1, testAdmin2]),
+              ),
+            ],
+            child: MaterialApp(
+              theme: AppTheme.light,
+              home: const Scaffold(body: AdminInspectionBanner()),
             ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      expect(find.byType(AdminInspectionBanner), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
+        expect(find.byType(AdminInspectionBanner), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
 
-    testWidgets('AdminInspectionBanner renders cleanly on Tablet Landscape (1024x768)', (tester) async {
-      tester.view.physicalSize = const Size(1024, 768);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+    testWidgets(
+      'AdminInspectionBanner renders cleanly on Tablet Landscape (1024x768)',
+      (tester) async {
+        tester.view.physicalSize = const Size(1024, 768);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
 
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            isSuperAdminProvider.overrideWithValue(true),
-            activeAdminScopeProvider.overrideWith(() => _MockScopeNotifier(testAdmin1)),
-            allAdminsStreamProvider.overrideWith((ref) => Stream.value([testAdmin1, testAdmin2])),
-          ],
-          child: MaterialApp(
-            theme: AppTheme.light,
-            home: const Scaffold(
-              body: AdminInspectionBanner(),
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              isSuperAdminProvider.overrideWithValue(true),
+              activeAdminScopeProvider.overrideWith(
+                () => _MockScopeNotifier(testAdmin1),
+              ),
+              allAdminsStreamProvider.overrideWith(
+                (ref) => Stream.value([testAdmin1, testAdmin2]),
+              ),
+            ],
+            child: MaterialApp(
+              theme: AppTheme.light,
+              home: const Scaffold(body: AdminInspectionBanner()),
             ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      expect(find.byType(AdminInspectionBanner), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
+        expect(find.byType(AdminInspectionBanner), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
 
-    testWidgets('QrOverlay renders centered viewfinder on Phone Landscape (812x375)', (tester) async {
-      tester.view.physicalSize = const Size(812, 375);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+    testWidgets(
+      'QrOverlay renders centered viewfinder on Phone Landscape (812x375)',
+      (tester) async {
+        tester.view.physicalSize = const Size(812, 375);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
 
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: QrOverlay(scanWindowSize: 220),
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: Scaffold(body: QrOverlay(scanWindowSize: 220)),
           ),
-        ),
-      );
-      await tester.pump();
+        );
+        await tester.pump();
 
-      expect(find.byType(QrOverlay), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
+        expect(find.byType(QrOverlay), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
 
-    testWidgets('LocationPermissionScreen renders responsive layout on Tablet Portrait (768x1024)', (tester) async {
-      tester.view.physicalSize = const Size(768, 1024);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+    testWidgets(
+      'LocationPermissionScreen renders responsive layout on Tablet Portrait (768x1024)',
+      (tester) async {
+        tester.view.physicalSize = const Size(768, 1024);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
 
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            restrictionsEnabledProvider.overrideWithValue(true),
-            checkInRestrictionsConfigProvider.overrideWith(
-              (ref) => Stream.value(
-                const CheckInRestrictionsConfig(restrictionsEnabled: true),
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              restrictionsEnabledProvider.overrideWithValue(true),
+              checkInRestrictionsConfigProvider.overrideWith(
+                (ref) => Stream.value(
+                  const CheckInRestrictionsConfig(restrictionsEnabled: true),
+                ),
+              ),
+            ],
+            child: MaterialApp(
+              theme: AppTheme.light,
+              home: LocationPermissionScreen(
+                location: testLocation,
+                sessionDateStr: '2026-09-03',
+                nowProvider: () => DateTime(2026, 9, 3, 10, 0),
               ),
             ),
-          ],
-          child: MaterialApp(
-            theme: AppTheme.light,
-            home: LocationPermissionScreen(
-              location: testLocation,
-              sessionDateStr: '2026-09-03',
-              nowProvider: () => DateTime(2026, 9, 3, 10, 0),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 200));
+
+        expect(find.text('Jade Luxury Banquets, Mumbai'), findsOneWidget);
+        expect(find.textContaining('Allowed Perimeter:'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'CheckInResultScreen renders celebratory confirmation on Phone Portrait (375x812)',
+      (tester) async {
+        tester.view.physicalSize = const Size(375, 812);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              employeesStreamProvider.overrideWith(
+                (ref) => Stream<List<Employee>>.value(const []),
+              ),
+            ],
+            child: MaterialApp(
+              theme: AppTheme.light,
+              home: const CheckInResultScreen(),
             ),
           ),
-        ),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 200));
+        );
+        await tester.pumpAndSettle();
 
-      expect(find.text('Jade Luxury Banquets, Mumbai'), findsOneWidget);
-      expect(find.textContaining('Allowed Perimeter:'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('CheckInResultScreen renders celebratory confirmation on Phone Portrait (375x812)', (tester) async {
-      tester.view.physicalSize = const Size(375, 812);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            employeesStreamProvider.overrideWith(
-              (ref) => Stream<List<Employee>>.value(const []),
-            ),
-          ],
-          child: MaterialApp(
-            theme: AppTheme.light,
-            home: const CheckInResultScreen(),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text('Attendance Recorded'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
+        expect(find.text('Attendance Recorded'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
   });
 }
 

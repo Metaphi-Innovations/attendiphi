@@ -34,7 +34,8 @@ class PermissionService {
 
     var permission = await Geolocator.checkPermission();
 
-    final alreadyGranted = permission == LocationPermission.always ||
+    final alreadyGranted =
+        permission == LocationPermission.always ||
         permission == LocationPermission.whileInUse;
 
     if (!alreadyGranted) {
@@ -83,8 +84,7 @@ class PermissionService {
   ///
   /// Throws [CameraPermissionDeniedException] if denied.
   Future<void> requestCameraPermission() async {
-    final status =
-        await permission_handler.Permission.camera.request();
+    final status = await permission_handler.Permission.camera.request();
 
     if (status.isDenied || status.isPermanentlyDenied) {
       AppLogger.info(
@@ -94,10 +94,7 @@ class PermissionService {
       throw const CameraPermissionDeniedException();
     }
 
-    AppLogger.debug(
-      'Camera permission granted',
-      tag: 'PermissionService',
-    );
+    AppLogger.debug('Camera permission granted', tag: 'PermissionService');
   }
 
   /// Open the device / browser settings page for manual permission changes.

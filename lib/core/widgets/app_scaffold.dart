@@ -35,11 +35,10 @@ class AppScaffold extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final effectiveActions = <Widget>[
-      ...?actions,
-    ];
+    final effectiveActions = <Widget>[...?actions];
 
-    final effectiveAppBar = appBar ??
+    final effectiveAppBar =
+        appBar ??
         (title != null
             ? AppBar(
                 title: Text(title!),
@@ -55,12 +54,7 @@ class AppScaffold extends ConsumerWidget {
       floatingActionButton: floatingActionButton,
       bottomNavigationBar: bottomNavigationBar,
       body: SafeArea(
-        child: padding != null
-            ? Padding(
-                padding: padding!,
-                child: body,
-              )
-            : body,
+        child: padding != null ? Padding(padding: padding!, child: body) : body,
       ),
     );
   }

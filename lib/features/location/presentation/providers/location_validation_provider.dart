@@ -16,8 +16,7 @@ final permissionServiceProvider = Provider<PermissionService>((ref) {
 });
 
 /// Riverpod Notifier managing the GPS permission and proximity validation workflow.
-class LocationValidationNotifier
-    extends Notifier<LocationValidationState> {
+class LocationValidationNotifier extends Notifier<LocationValidationState> {
   LocationValidationNotifier(this.location);
 
   final LocationConfig location;
@@ -154,7 +153,9 @@ class LocationValidationNotifier
 }
 
 /// Family provider for [LocationValidationNotifier] scoped to a [LocationConfig].
-final locationValidationFamilyProvider = NotifierProvider.family<
-    LocationValidationNotifier, LocationValidationState, LocationConfig>(
-  LocationValidationNotifier.new,
-);
+final locationValidationFamilyProvider =
+    NotifierProvider.family<
+      LocationValidationNotifier,
+      LocationValidationState,
+      LocationConfig
+    >(LocationValidationNotifier.new);

@@ -1,8 +1,7 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/supabase/resilient_poll_stream.dart';
 import '../../../app_config/presentation/providers/check_in_restrictions_provider.dart';
 import '../../../checkin/domain/entities/check_in_submission.dart';
 import '../../../checkin/domain/entities/check_in_type.dart';
@@ -11,6 +10,7 @@ import '../../../checkin/presentation/providers/checkin_providers.dart';
 import '../../../employee/domain/employee_lookup.dart';
 import '../../../employee/presentation/providers/employee_providers.dart';
 import '../../domain/substitute_check_in_mapping.dart';
+import 'admin_auth_provider.dart';
 
 /// Default session day for Daily Attendance.
 ///
@@ -57,11 +57,47 @@ enum AdminDashboardSortMode {
   final String label;
 }
 
-/// Real-time stream provider for check-ins across the unified database.
+String _ymd(DateTime d) {
+  final m = d.month.toString().padLeft(2, '0');
+  final day = d.day.toString().padLeft(2, '0');
+  return '${d.year}-$m-$day';
+}
+
+/// Live check-ins for Daily Attendance — narrowed by session date (+ location).
 final checkInsStreamProvider = StreamProvider<List<CheckInSubmission>>((ref) {
-  ref.keepAlive();
+  final auth = ref.watch(adminAuthProvider);
+  if (!auth.sessionResolved) {
+    return pendingStreamController<List<CheckInSubmission>>(
+      onDispose: ref.onDispose,
+    ).stream;
+  }
+  if (!auth.isAuthenticated) {
+    return Stream.value(const <CheckInSubmission>[]);
+  }
+  final filters = ref.watch(adminDashboardFilterProvider);
+  final restrictionsEnabled = ref.watch(restrictionsEnabledProvider);
+  final target =
+      filters.selectedDate ??
+      defaultAttendanceSessionDate(
+        DateTime.now(),
+        restrictionsEnabled: restrictionsEnabled,
+      );
   final repository = ref.watch(checkInRepositoryProvider);
-  return repository.streamCheckIns();
+  final assigned = auth.currentAdmin?.assignedLocationIds ?? const <String>[];
+  var locationId = filters.selectedLocationId?.trim();
+  if (locationId != null && locationId.isEmpty) locationId = null;
+  // Non-superadmin with assigned locations: clamp stream to that set.
+  if (auth.currentAdmin != null &&
+      !auth.currentAdmin!.isSuperAdmin &&
+      assigned.isNotEmpty) {
+    if (locationId == null || !assigned.contains(locationId)) {
+      locationId = assigned.length == 1 ? assigned.first : locationId;
+    }
+  }
+  return repository.streamCheckIns(
+    locationId: locationId,
+    sessionDateYmd: _ymd(target),
+  );
 });
 
 /// Search and filter query state.
@@ -93,8 +129,9 @@ class AdminDashboardFilterState {
       filterType: filterType ?? this.filterType,
       sortMode: sortMode ?? this.sortMode,
       selectedLocationId: selectedLocationId ?? this.selectedLocationId,
-      selectedDate:
-          clearSelectedDate ? null : (selectedDate ?? this.selectedDate),
+      selectedDate: clearSelectedDate
+          ? null
+          : (selectedDate ?? this.selectedDate),
     );
   }
 }
@@ -123,17 +160,16 @@ class AdminDashboardFilterNotifier extends Notifier<AdminDashboardFilterState> {
   }
 
   void setSelectedDate(DateTime? date) {
-    state = state.copyWith(
-      selectedDate: date,
-      clearSelectedDate: date == null,
-    );
+    state = state.copyWith(selectedDate: date, clearSelectedDate: date == null);
   }
 }
 
-final adminDashboardFilterProvider = NotifierProvider<
-    AdminDashboardFilterNotifier, AdminDashboardFilterState>(() {
-  return AdminDashboardFilterNotifier();
-});
+final adminDashboardFilterProvider =
+    NotifierProvider<AdminDashboardFilterNotifier, AdminDashboardFilterState>(
+      () {
+        return AdminDashboardFilterNotifier();
+      },
+    );
 
 /// Immutable state for paginated check-in records.
 class PaginatedCheckInsState {
@@ -151,7 +187,7 @@ class PaginatedCheckInsState {
   final bool isLoadingMore;
   final bool hasReachedEnd;
   final String? error;
-  final DocumentSnapshot<Map<String, dynamic>>? lastDocument;
+  final Object? lastDocument;
 
   bool get isEmpty => items.isEmpty && !isLoadingFirstPage;
 
@@ -161,7 +197,7 @@ class PaginatedCheckInsState {
     bool? isLoadingMore,
     bool? hasReachedEnd,
     String? error,
-    DocumentSnapshot<Map<String, dynamic>>? lastDocument,
+    Object? lastDocument,
     bool clearError = false,
     bool clearLastDocument = false,
   }) {
@@ -211,16 +247,15 @@ class PaginatedCheckInsNotifier extends Notifier<PaginatedCheckInsState> {
         clearError: true,
       );
     } catch (e) {
-      state = state.copyWith(
-        isLoadingFirstPage: false,
-        error: e.toString(),
-      );
+      state = state.copyWith(isLoadingFirstPage: false, error: e.toString());
     }
   }
 
   /// Loads the next page using startAfterDocument cursor.
   Future<void> loadNextPage() async {
-    if (state.isLoadingFirstPage || state.isLoadingMore || state.hasReachedEnd) {
+    if (state.isLoadingFirstPage ||
+        state.isLoadingMore ||
+        state.hasReachedEnd) {
       return;
     }
 
@@ -240,10 +275,7 @@ class PaginatedCheckInsNotifier extends Notifier<PaginatedCheckInsState> {
         clearError: true,
       );
     } catch (e) {
-      state = state.copyWith(
-        isLoadingMore: false,
-        error: e.toString(),
-      );
+      state = state.copyWith(isLoadingMore: false, error: e.toString());
     }
   }
 
@@ -267,7 +299,8 @@ class PaginatedCheckInsNotifier extends Notifier<PaginatedCheckInsState> {
     final fromId = replaceId ?? updated.id;
     var replaced = false;
     final items = state.items.map((item) {
-      final match = item.id == fromId ||
+      final match =
+          item.id == fromId ||
           item.id == updated.id ||
           (updated.memberId != null &&
               updated.memberId!.isNotEmpty &&
@@ -277,9 +310,7 @@ class PaginatedCheckInsNotifier extends Notifier<PaginatedCheckInsState> {
       replaced = true;
       return updated;
     }).toList();
-    state = state.copyWith(
-      items: replaced ? items : [...items, updated],
-    );
+    state = state.copyWith(items: replaced ? items : [...items, updated]);
   }
 
   /// Clears all items locally after bulk delete.
@@ -290,19 +321,22 @@ class PaginatedCheckInsNotifier extends Notifier<PaginatedCheckInsState> {
 
 final paginatedCheckInsProvider =
     NotifierProvider<PaginatedCheckInsNotifier, PaginatedCheckInsState>(() {
-  return PaginatedCheckInsNotifier();
-});
+      return PaginatedCheckInsNotifier();
+    });
 
 /// Filtered view over the real-time check-in stream based on search and attendance type filters.
-final filteredPaginatedCheckInsProvider =
-    Provider<List<CheckInSubmission>>((ref) {
+final filteredPaginatedCheckInsProvider = Provider<List<CheckInSubmission>>((
+  ref,
+) {
   final filteredAsync = ref.watch(filteredCheckInsProvider);
-  return filteredAsync.value ?? [];
+  // Prefer last good data while a refresh is in flight; never invent [].
+  return filteredAsync.asData?.value ?? const [];
 });
 
 /// Base records for the dashboard: maps all active members and their check-in status for the target Thursday.
-final baseDashboardRecordsProvider =
-    Provider<AsyncValue<List<CheckInSubmission>>>((ref) {
+final baseDashboardRecordsProvider = Provider<AsyncValue<List<CheckInSubmission>>>((
+  ref,
+) {
   final checkInsAsync = ref.watch(checkInsStreamProvider);
   final filters = ref.watch(adminDashboardFilterProvider);
   final employeesAsync = ref.watch(employeesStreamProvider);
@@ -331,7 +365,8 @@ final baseDashboardRecordsProvider =
   final restrictionsEnabled = ref.watch(restrictionsEnabledProvider);
 
   final now = DateTime.now();
-  final DateTime targetDate = filters.selectedDate ??
+  final DateTime targetDate =
+      filters.selectedDate ??
       defaultAttendanceSessionDate(
         now,
         restrictionsEnabled: restrictionsEnabled,
@@ -352,14 +387,15 @@ final baseDashboardRecordsProvider =
     if (daySubmissions.isNotEmpty) {
       // 1. Check if a substitute checked in for this member
       final subMatches = daySubmissions
-          .where(
-            (r) => substituteCheckInCoversMember(raw: r, member: emp),
-          )
+          .where((r) => substituteCheckInCoversMember(raw: r, member: emp))
           .toList();
 
       if (subMatches.isNotEmpty) {
-        subMatches.sort((a, b) => (b.createdAt ?? b.timestamp)
-            .compareTo(a.createdAt ?? a.timestamp));
+        subMatches.sort(
+          (a, b) => (b.createdAt ?? b.timestamp).compareTo(
+            a.createdAt ?? a.timestamp,
+          ),
+        );
         matchedSubmission = mapSubstituteCheckInForMember(
           raw: subMatches.first,
           member: emp,
@@ -381,8 +417,9 @@ final baseDashboardRecordsProvider =
             if (!a.id.startsWith('absent_') && b.id.startsWith('absent_')) {
               return -1;
             }
-            return (b.createdAt ?? b.timestamp)
-                .compareTo(a.createdAt ?? a.timestamp);
+            return (b.createdAt ?? b.timestamp).compareTo(
+              a.createdAt ?? a.timestamp,
+            );
           });
           final m = memberMatches.first;
           matchedSubmission = m.copyWith(
@@ -430,12 +467,6 @@ final baseDashboardRecordsProvider =
   return AsyncValue.data(resultRows);
 });
 
-class _FilterPayload {
-  final List<CheckInSubmission> records;
-  final AdminDashboardFilterState filters;
-  _FilterPayload(this.records, this.filters);
-}
-
 /// Filters and sorts daily attendance records. Exposed for unit tests.
 List<CheckInSubmission> filterAndSortDashboardRecords({
   required List<CheckInSubmission> records,
@@ -463,8 +494,9 @@ List<CheckInSubmission> filterAndSortDashboardRecords({
       final query = filters.searchQuery.toLowerCase();
       final matchesName = record.userName.toLowerCase().contains(query);
       final matchesPhone = record.userPhone.toLowerCase().contains(query);
-      final matchesSub =
-          (record.substituteName ?? '').toLowerCase().contains(query);
+      final matchesSub = (record.substituteName ?? '').toLowerCase().contains(
+        query,
+      );
       if (!matchesName && !matchesPhone && !matchesSub) return false;
     }
     return true;
@@ -472,8 +504,9 @@ List<CheckInSubmission> filterAndSortDashboardRecords({
 
   if (filters.sortMode == AdminDashboardSortMode.alphabetical) {
     filtered.sort((a, b) {
-      final byName =
-          a.userName.toLowerCase().compareTo(b.userName.toLowerCase());
+      final byName = a.userName.toLowerCase().compareTo(
+        b.userName.toLowerCase(),
+      );
       if (byName != 0) return byName;
       final aTime = a.createdAt ?? a.timestamp;
       final bTime = b.createdAt ?? b.timestamp;
@@ -495,22 +528,25 @@ List<CheckInSubmission> filterAndSortDashboardRecords({
   return filtered;
 }
 
-List<CheckInSubmission> _filterAndSortRecords(_FilterPayload payload) =>
-    filterAndSortDashboardRecords(
-      records: payload.records,
-      filters: payload.filters,
-    );
-
 /// Filtered view over the real-time check-in stream based on search and attendance type filters.
-final filteredCheckInsProvider =
-    FutureProvider<List<CheckInSubmission>>((ref) async {
+///
+/// Preserves loading/error from [baseDashboardRecordsProvider] instead of
+/// collapsing them to an empty list (which looked like "no data").
+final filteredCheckInsProvider = Provider<AsyncValue<List<CheckInSubmission>>>((
+  ref,
+) {
   final baseRecordsAsync = ref.watch(baseDashboardRecordsProvider);
-  if (baseRecordsAsync.isLoading) return [];
-  if (baseRecordsAsync.hasError) throw baseRecordsAsync.error!;
-  
-  final records = baseRecordsAsync.value ?? [];
   final filters = ref.watch(adminDashboardFilterProvider);
 
-  return await compute(_filterAndSortRecords, _FilterPayload(records, filters));
+  return baseRecordsAsync.when(
+    loading: () => const AsyncValue.loading(),
+    error: AsyncValue.error,
+    data: (records) {
+      final filtered = filterAndSortDashboardRecords(
+        records: records,
+        filters: filters,
+      );
+      return AsyncValue.data(filtered);
+    },
+  );
 });
-

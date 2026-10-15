@@ -42,14 +42,16 @@ String? distinctSubstituteAttendeeName({
 /// Source of truth (QR / form):
 /// - name → [CheckInSubmission.substituteName], else original [userName]
 ///   when that value is not the covered member
-/// - phone → [CheckInSubmission.substitutePhone], else [userPhone] from Firestore
-/// - [displayLabel] → name if present, otherwise phone (so the SUBSTITUTE
-///   column is never empty when the attendee typed a phone)
+/// - phone → dedicated [CheckInSubmission.substitutePhone] only (never
+///   [userPhone], roster, or covered-member phone — those often equal the
+///   member after dashboard remap)
+/// - [displayLabel] → name if present; never phone (analytics uses
+///   "Unknown substitute" when name is missing)
 ///
 /// [raw] is the unmapped Firestore document when available (preferred over a
 /// remapped dashboard row that already replaced userName with the member).
 ({String? name, String phone, String? displayLabel})
-    resolveSubstituteAttendeeFields({
+resolveSubstituteAttendeeFields({
   required CheckInSubmission displayed,
   CheckInSubmission? raw,
   String? coveredMemberName,
@@ -61,7 +63,8 @@ String? distinctSubstituteAttendeeName({
   final primary = raw ?? displayed;
   final secondary = identical(primary, displayed) ? null : displayed;
 
-  final name = distinctSubstituteAttendeeName(
+  final name =
+      distinctSubstituteAttendeeName(
         substituteName: primary.substituteName,
         memberName: memberName,
         fallbackAttendeeName: primary.userName,
@@ -78,26 +81,25 @@ String? distinctSubstituteAttendeeName({
     primary: primary,
     secondary: secondary,
     displayed: displayed,
-    coveredMemberPhone: coveredMemberPhone,
   );
 
+  // Never use phone as the display name — analytics shows "Unknown substitute".
   final displayLabel =
-      (name != null && name.isNotEmpty) ? name : (phone.isNotEmpty ? phone : null);
+      (name != null && name.isNotEmpty) ? name : null;
 
   return (name: name, phone: phone, displayLabel: displayLabel);
 }
 
+/// Dedicated [CheckInSubmission.substitutePhone] only — never [userPhone]
+/// or member roster (coveredMemberPhone is intentionally unused).
 String _resolveSubstitutePhone({
   required CheckInSubmission primary,
   CheckInSubmission? secondary,
   required CheckInSubmission displayed,
-  String? coveredMemberPhone,
 }) {
   String? pick(CheckInSubmission source) {
     final dedicated = source.substitutePhone?.trim() ?? '';
     if (dedicated.isNotEmpty) return dedicated;
-    final fallback = source.userPhone.trim();
-    if (fallback.isNotEmpty) return fallback;
     return null;
   }
 
@@ -138,8 +140,7 @@ CheckInSubmission mapSubstituteCheckInForMember({
   // it when it happens to match the member roster number.
   final dedicatedPhone = raw.substitutePhone?.trim() ?? '';
   final rawPhone = raw.userPhone.trim();
-  final attendingPhone =
-      dedicatedPhone.isNotEmpty ? dedicatedPhone : rawPhone;
+  final attendingPhone = dedicatedPhone.isNotEmpty ? dedicatedPhone : rawPhone;
 
   return raw.copyWith(
     userName: memberName,
@@ -168,10 +169,7 @@ bool substituteCheckInCoversMember({
   final byId = EmployeeLookup.byId([member], raw.memberId);
   if (byId != null) return true;
 
-  if (EmployeeLookup.forNamedMember(
-        [member],
-        raw.substituteForMember,
-      ) !=
+  if (EmployeeLookup.forNamedMember([member], raw.substituteForMember) !=
       null) {
     return true;
   }
@@ -243,8 +241,9 @@ CheckInSubmission prepareAdminEditedCheckIn({
             substituteName: original.substituteName,
             memberName: coveredName,
           );
-    final resolvedPhone =
-        phone.isNotEmpty ? phone : (original.substitutePhone ?? original.userPhone);
+    final resolvedPhone = phone.isNotEmpty
+        ? phone
+        : (original.substitutePhone ?? original.userPhone);
     edited = original.copyWith(
       // Dashboard remap convention: userName = covered member.
       userName: coveredName,
@@ -313,13 +312,14 @@ CheckInSubmission materializeAdminCheckInForWrite(
   String? fallbackLocationId,
   String? fallbackLocationName,
 }) {
-  final needsNewId = isAdminPlaceholderCheckIn(submission) ||
+  final needsNewId =
+      isAdminPlaceholderCheckIn(submission) ||
       CheckInSubmission.isPlaceholderId(submission.id);
   final locationId = submission.locationId.trim().isNotEmpty
       ? submission.locationId.trim()
       : (fallbackLocationId?.trim().isNotEmpty == true
-          ? fallbackLocationId!.trim()
-          : kDefaultAdminLocationId);
+            ? fallbackLocationId!.trim()
+            : kDefaultAdminLocationId);
   final locationName = _resolvedVenueName(
     venueField: submission.locationName,
     original: submission,
@@ -332,8 +332,8 @@ CheckInSubmission materializeAdminCheckInForWrite(
   return submission.copyWith(
     id: needsNewId
         ? (newCheckInId?.trim().isNotEmpty == true
-            ? newCheckInId!.trim()
-            : 'admin_${DateTime.now().microsecondsSinceEpoch}')
+              ? newCheckInId!.trim()
+              : 'admin_${DateTime.now().microsecondsSinceEpoch}')
         : submission.id,
     locationId: locationId,
     locationName: locationName,

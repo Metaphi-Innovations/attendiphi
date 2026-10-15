@@ -51,9 +51,9 @@ class _AdminShellLayoutState extends ConsumerState<AdminShellLayout> {
     _transitionTimer?.cancel();
 
     // Check if running in automated test suite
-    final isTest = WidgetsBinding.instance.runtimeType
-        .toString()
-        .contains('TestWidgetsFlutterBinding');
+    final isTest = WidgetsBinding.instance.runtimeType.toString().contains(
+      'TestWidgetsFlutterBinding',
+    );
 
     if (isTest) {
       _isPageTransitioning = false;
@@ -87,18 +87,12 @@ class _AdminShellLayoutState extends ConsumerState<AdminShellLayout> {
     if (isMobile) {
       Navigator.of(context, rootNavigator: false).pop();
     }
+    // Always open the branch root (e.g. /substitutes, not /substitutes/:id).
+    // initialLocation: false would restore a nested detail route left on the stack.
     if (index != widget.navigationShell.currentIndex) {
       _startPageLoadingTransition(index);
-      widget.navigationShell.goBranch(
-        index,
-        initialLocation: false,
-      );
-    } else {
-      widget.navigationShell.goBranch(
-        index,
-        initialLocation: true,
-      );
     }
+    widget.navigationShell.goBranch(index, initialLocation: true);
   }
 
   String _getTabTitle(int tab) {
@@ -112,8 +106,10 @@ class _AdminShellLayoutState extends ConsumerState<AdminShellLayout> {
       case 3:
         return 'Member Management';
       case 4:
-        return 'Venue QR Standee';
+        return 'Substitutes';
       case 5:
+        return 'Venue QR Standee';
+      case 6:
         return 'Admin Management';
       default:
         return 'Admin Portal';
@@ -156,9 +152,7 @@ class _AdminShellLayoutState extends ConsumerState<AdminShellLayout> {
                         color: isDark
                             ? const Color(0xFF0F172A)
                             : const Color(0xFFF8FAFC),
-                        child: const Center(
-                          child: MetaPhiLoadingIndicator(),
-                        ),
+                        child: const Center(child: MetaPhiLoadingIndicator()),
                       ),
                     ),
                 ],
@@ -224,10 +218,7 @@ class _AdminShellLayoutState extends ConsumerState<AdminShellLayout> {
     );
   }
 
-  Widget _buildSidebarContent(
-    BuildContext context, {
-    required bool isMobile,
-  }) {
+  Widget _buildSidebarContent(BuildContext context, {required bool isMobile}) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final currentAdmin = ref.watch(currentAdminUserProvider);
@@ -236,8 +227,8 @@ class _AdminShellLayoutState extends ConsumerState<AdminShellLayout> {
     final adminRoleLabel = currentAdmin?.role.label ?? 'Admin';
     final initials = adminName.trim().isNotEmpty
         ? (adminName.trim().split(' ').length > 1
-            ? '${adminName.trim().split(' ')[0][0]}${adminName.trim().split(' ')[1][0]}'
-            : adminName.substring(0, 1))
+              ? '${adminName.trim().split(' ')[0][0]}${adminName.trim().split(' ')[1][0]}'
+              : adminName.substring(0, 1))
         : 'A';
 
     return Column(
@@ -245,12 +236,7 @@ class _AdminShellLayoutState extends ConsumerState<AdminShellLayout> {
       children: [
         // Brand Header
         Padding(
-          padding: EdgeInsets.fromLTRB(
-            16,
-            isMobile ? 18 : 24,
-            16,
-            16,
-          ),
+          padding: EdgeInsets.fromLTRB(16, isMobile ? 18 : 24, 16, 16),
           child: Center(
             child: Image.asset(
               'assets/images/attendiphi_logo.png',
@@ -289,16 +275,22 @@ class _AdminShellLayoutState extends ConsumerState<AdminShellLayout> {
           onTap: () => _onItemTapped(context, 3, isMobile: isMobile),
         ),
         _SidebarNavItem(
-          icon: Icons.qr_code_2_rounded,
-          label: 'QR Standee',
+          icon: Icons.person_search_rounded,
+          label: 'Substitutes',
           isSelected: currentTab == 4,
           onTap: () => _onItemTapped(context, 4, isMobile: isMobile),
         ),
         _SidebarNavItem(
-          icon: Icons.supervisor_account_rounded,
-          label: 'Admins',
+          icon: Icons.qr_code_2_rounded,
+          label: 'QR Standee',
           isSelected: currentTab == 5,
           onTap: () => _onItemTapped(context, 5, isMobile: isMobile),
+        ),
+        _SidebarNavItem(
+          icon: Icons.supervisor_account_rounded,
+          label: 'Admins',
+          isSelected: currentTab == 6,
+          onTap: () => _onItemTapped(context, 6, isMobile: isMobile),
         ),
 
         const Spacer(),
@@ -336,8 +328,9 @@ class _AdminShellLayoutState extends ConsumerState<AdminShellLayout> {
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
-                            color:
-                                isDark ? Colors.white : const Color(0xFF0F172A),
+                            color: isDark
+                                ? Colors.white
+                                : const Color(0xFF0F172A),
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -412,7 +405,9 @@ class _SidebarNavItem extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
       child: Material(
         color: isSelected
-            ? (isDark ? AppColors.primary.withAlpha(45) : AppColors.primaryContainer)
+            ? (isDark
+                  ? AppColors.primary.withAlpha(45)
+                  : AppColors.primaryContainer)
             : Colors.transparent,
         borderRadius: AppRadius.mdAll,
         child: InkWell(

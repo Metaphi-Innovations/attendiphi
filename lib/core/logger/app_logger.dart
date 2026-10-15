@@ -1,56 +1,63 @@
 import 'dart:developer' as developer;
 
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 
 import '../errors/app_exception.dart';
+import '../observability/crash_reporting.dart';
 
-/// Structured logging utility with Crashlytics integration.
-///
-/// In debug mode, logs are printed to the console.
-/// In release mode, errors are sent to Firebase Crashlytics.
+/// Structured logging utility (console in debug; optional crash reporting).
 ///
 /// **Never log sensitive data** (phone numbers, photos, tokens).
 class AppLogger {
   AppLogger._();
 
-  static FirebaseCrashlytics? _crashlytics;
+  /// Initialize the logger (no-op hook kept for bootstrap call sites).
+  static void init() {}
 
-  /// Initialize the logger with a Crashlytics instance.
-  ///
-  /// Should be called once during app startup after Firebase initialization.
-  static void init({FirebaseCrashlytics? crashlytics}) {
-    _crashlytics = crashlytics;
+  /// Redacts common PII patterns from log / crash messages.
+  static String redact(String input) {
+    var out = input;
+    // E.164 / Indian mobiles (+91XXXXXXXXXX or 10-digit)
+    out = out.replaceAllMapped(
+      RegExp(r'\+?91[\s-]*[6-9]\d{9}\b|[6-9]\d{9}\b'),
+      (_) => '[phone]',
+    );
+    // Emails
+    out = out.replaceAllMapped(
+      RegExp(r'[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}', caseSensitive: false),
+      (_) => '[email]',
+    );
+    // Long base64-ish blobs
+    out = out.replaceAllMapped(
+      RegExp(r'(?:[A-Za-z0-9+/]{40,}={0,2})'),
+      (_) => '[redacted-blob]',
+    );
+    // Bearer / JWT fragments
+    out = out.replaceAllMapped(
+      RegExp(r'(Bearer\s+)[A-Za-z0-9\-._~+/]+=*', caseSensitive: false),
+      (m) => '${m[1]}[token]',
+    );
+    return out;
   }
 
-  /// Log a debug-level message.
-  ///
-  /// Only appears in debug mode. Never sent to Crashlytics.
   static void debug(String message, {String? tag}) {
     if (kDebugMode) {
-      developer.log(message, name: tag ?? 'APP');
+      developer.log(redact(message), name: tag ?? 'APP');
     }
   }
 
-  /// Log an informational message.
   static void info(String message, {String? tag}) {
     if (kDebugMode) {
-      developer.log('[INFO] $message', name: tag ?? 'APP');
+      developer.log('[INFO] ${redact(message)}', name: tag ?? 'APP');
     }
-    _crashlytics?.log(message);
   }
 
-  /// Log a warning.
   static void warning(String message, {String? tag}) {
     if (kDebugMode) {
-      developer.log('[WARN] $message', name: tag ?? 'APP');
+      developer.log('[WARN] ${redact(message)}', name: tag ?? 'APP');
     }
-    _crashlytics?.log('[WARN] $message');
   }
 
-  /// Log an error with optional exception and stack trace.
-  ///
-  /// Automatically records to Crashlytics in release builds.
   static void error(
     String message, {
     Object? error,
@@ -58,30 +65,27 @@ class AppLogger {
     String? tag,
     bool fatal = false,
   }) {
+    final safe = redact(message);
     if (kDebugMode) {
       developer.log(
-        '[ERROR] $message',
+        '[ERROR] $safe${fatal ? ' (fatal)' : ''}',
         name: tag ?? 'APP',
         error: error,
         stackTrace: stackTrace,
       );
     }
-
-    if (error != null) {
-      _crashlytics?.recordError(
-        error,
-        stackTrace ?? StackTrace.current,
-        reason: message,
+    if (CrashReporting.isEnabled) {
+      // Fire-and-forget; never block UI on reporting.
+      // ignore: unawaited_futures
+      CrashReporting.recordError(
+        error ?? safe,
+        stackTrace,
         fatal: fatal,
+        context: tag,
       );
-    } else {
-      _crashlytics?.log('[ERROR] $message');
     }
   }
 
-  /// Log an [AppException] with context.
-  ///
-  /// Uses the technical message for logging (not the user message).
   static void logException(
     AppException exception, {
     String? context,
@@ -96,10 +100,9 @@ class AppLogger {
     );
   }
 
-  /// Set a Crashlytics key-value pair for additional context.
-  ///
-  /// **Never set sensitive values** (phone numbers, tokens, etc.)
   static void setContext(String key, String value) {
-    _crashlytics?.setCustomKey(key, value);
+    if (kDebugMode) {
+      developer.log('context $key=${redact(value)}', name: 'APP');
+    }
   }
 }

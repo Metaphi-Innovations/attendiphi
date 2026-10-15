@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'dart:ui';
+
 import 'package:image/image.dart' as img;
 
 /// Web stub implementation of FaceEmbeddingService.
@@ -22,10 +23,22 @@ class FaceEmbeddingService {
 
     final int x = max(0, (boundingBox.left - marginX).toInt());
     final int y = max(0, (boundingBox.top - marginY).toInt());
-    final int w = min(image.width - x, (boundingBox.width + (marginX * 2)).toInt());
-    final int h = min(image.height - y, (boundingBox.height + (marginY * 2)).toInt());
+    final int w = min(
+      image.width - x,
+      (boundingBox.width + (marginX * 2)).toInt(),
+    );
+    final int h = min(
+      image.height - y,
+      (boundingBox.height + (marginY * 2)).toInt(),
+    );
 
-    final cropped = img.copyCrop(image, x: x, y: y, width: max(1, w), height: max(1, h));
+    final cropped = img.copyCrop(
+      image,
+      x: x,
+      y: y,
+      width: max(1, w),
+      height: max(1, h),
+    );
     return img.copyResize(cropped, width: 112, height: 112);
   }
 

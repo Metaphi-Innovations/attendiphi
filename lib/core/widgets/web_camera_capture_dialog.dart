@@ -1,8 +1,10 @@
 import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import 'web_camera_capture_dialog_stub.dart'
-    if (dart.library.html) 'web_camera_capture_dialog_web.dart' as platform;
+    if (dart.library.html) 'web_camera_capture_dialog_web.dart'
+    as platform;
 
 /// Cross-platform helper to capture photos using live camera preview.
 /// On Web: Opens real HTML5 webcam video viewfinder modal with live preview.

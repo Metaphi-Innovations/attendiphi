@@ -51,7 +51,8 @@ class AppCard extends StatelessWidget {
         color: color ?? theme.cardTheme.color ?? theme.colorScheme.surface,
         borderRadius: r,
         border: Border.all(
-          color: borderColor ??
+          color:
+              borderColor ??
               (isDark
                   ? theme.colorScheme.outline.withAlpha(50)
                   : theme.colorScheme.outline.withAlpha(70)),
@@ -62,10 +63,7 @@ class AppCard extends StatelessWidget {
     );
 
     if (onTap == null) {
-      return Padding(
-        padding: margin ?? EdgeInsets.zero,
-        child: cardContent,
-      );
+      return Padding(padding: margin ?? EdgeInsets.zero, child: cardContent);
     }
 
     return Padding(
@@ -88,4 +86,3 @@ class AppCard extends StatelessWidget {
     );
   }
 }
-

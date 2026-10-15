@@ -55,33 +55,32 @@ class _FakeRemote implements AdminRemoteDataSource {
 }
 
 void main() {
-  test('createAdmin cannot persist a Super Admin role from the client', () async {
-    final remote = _FakeRemote();
-    final repo = AdminRepositoryImpl(
-      remoteDataSource: remote,
-      emailService: EmailCredentialsService(
-        sendFn: ({
-          required admin,
-          required password,
-          required portalUrl,
-        }) async {
-          fail('create must not email');
-        },
-      ),
-      provisionAuthUserFn: (email, {password}) async => 'uid-admin',
-    );
+  test(
+    'createAdmin cannot persist a Super Admin role from the client',
+    () async {
+      final remote = _FakeRemote();
+      final repo = AdminRepositoryImpl(
+        remoteDataSource: remote,
+        emailService: EmailCredentialsService(
+          sendFn:
+              ({required admin, required password, required portalUrl}) async {
+                fail('create must not email');
+              },
+        ),
+      );
 
-    final admin = await repo.createAdmin(
-      name: 'Attempted Super',
-      email: 'admin@example.com',
-      phone: '9876543210',
-      password: 'TempPass1!',
-      role: AdminRole.superAdmin,
-      createdBy: 'uid-creator',
-    );
+      final admin = await repo.createAdmin(
+        name: 'Attempted Super',
+        email: 'admin@example.com',
+        phone: '9876543210',
+        password: 'TempPass1!',
+        role: AdminRole.superAdmin,
+        createdBy: 'uid-creator',
+      );
 
-    expect(admin.role, AdminRole.admin);
-    expect(admin.isSuperAdmin, isFalse);
-    expect(remote.lastCreated?.role, AdminRole.admin);
-  });
+      expect(admin.role, AdminRole.admin);
+      expect(admin.isSuperAdmin, isFalse);
+      expect(remote.lastCreated?.role, AdminRole.admin);
+    },
+  );
 }

@@ -22,6 +22,8 @@ class CheckInSubmission {
     this.category,
     this.invitedByMember,
     this.photoBase64,
+    this.photoPath,
+    this.hasPhoto = false,
     this.adminId,
     this.deviceId,
     this.isVerified = false,
@@ -99,8 +101,14 @@ class CheckInSubmission {
   /// Member name who invited the visitor.
   final String? invitedByMember;
 
-  /// Base64 encoded compressed JPEG face photo (required for substitutes).
+  /// Base64 encoded compressed JPEG face photo (capture pipeline only).
   final String? photoBase64;
+
+  /// Supabase Storage object path under `check-in-photos`.
+  final String? photoPath;
+
+  /// True when a selfie exists in Storage (or legacy base64).
+  final bool hasPhoto;
 
   /// Whether an admin has verified this attendee's presence.
   final bool isVerified;
@@ -155,6 +163,8 @@ class CheckInSubmission {
     String? category,
     String? invitedByMember,
     String? photoBase64,
+    String? photoPath,
+    bool? hasPhoto,
     String? adminId,
     String? deviceId,
     bool? isVerified,
@@ -199,6 +209,8 @@ class CheckInSubmission {
       category: category ?? this.category,
       invitedByMember: invitedByMember ?? this.invitedByMember,
       photoBase64: photoBase64 ?? this.photoBase64,
+      photoPath: photoPath ?? this.photoPath,
+      hasPhoto: hasPhoto ?? this.hasPhoto,
       adminId: adminId ?? this.adminId,
       deviceId: deviceId ?? this.deviceId,
       isVerified: isVerified ?? this.isVerified,
@@ -240,6 +252,8 @@ class CheckInSubmission {
       'category': category,
       'invitedByMember': invitedByMember,
       'photoBase64': photoBase64,
+      'photoPath': photoPath,
+      'hasPhoto': hasPhoto,
       'adminId': adminId,
       'deviceId': deviceId,
       'isVerified': isVerified,
@@ -288,9 +302,10 @@ class CheckInSubmission {
       userLongitude: (map['userLongitude'] as num?)?.toDouble() ?? 0.0,
       gpsAccuracy: (map['gpsAccuracy'] as num?)?.toDouble() ?? 0.0,
       distanceMeters: (map['distanceMeters'] as num?)?.toDouble() ?? 0.0,
-      timestamp: (DateTime.tryParse(map['timestamp']?.toString() ?? '') ??
-              DateTime.now())
-          .toLocal(),
+      timestamp:
+          (DateTime.tryParse(map['timestamp']?.toString() ?? '') ??
+                  DateTime.now())
+              .toLocal(),
       userEmail: map['userEmail']?.toString(),
       substituteForMember: map['substituteForMember']?.toString(),
       substituteName: map['substituteName']?.toString(),
@@ -299,14 +314,21 @@ class CheckInSubmission {
       category: map['category']?.toString(),
       invitedByMember: map['invitedByMember']?.toString(),
       photoBase64: map['photoBase64']?.toString(),
+      photoPath: map['photoPath']?.toString(),
+      hasPhoto:
+          map['hasPhoto'] == true ||
+          ((map['photoPath']?.toString().trim().isNotEmpty ?? false) ||
+              (map['photoBase64']?.toString().trim().isNotEmpty ?? false)),
       adminId: map['adminId']?.toString(),
       deviceId: map['deviceId']?.toString(),
       isVerified: map['isVerified'] == true,
-      verifiedAt: DateTime.tryParse(map['verifiedAt']?.toString() ?? '')?.toLocal(),
+      verifiedAt: DateTime.tryParse(map['verifiedAt']?.toString() ?? '')
+          ?.toLocal(),
       verifiedBy: map['verifiedBy']?.toString(),
       isEdited: map['isEdited'] == true,
       editedAt: DateTime.tryParse(map['editedAt']?.toString() ?? '')?.toLocal(),
-      createdAt: DateTime.tryParse(map['createdAt']?.toString() ?? '')?.toLocal(),
+      createdAt: DateTime.tryParse(map['createdAt']?.toString() ?? '')
+          ?.toLocal(),
       isFlagged: map['isFlagged'] == true,
       flagReason: map['flagReason']?.toString(),
       memberId: map['memberId']?.toString(),

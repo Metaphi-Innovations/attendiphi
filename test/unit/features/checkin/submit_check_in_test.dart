@@ -10,8 +10,10 @@ import 'package:qr_checkin/features/location/domain/entities/location_config.dar
 import 'package:qr_checkin/features/location/domain/usecases/validate_user_proximity.dart';
 
 class MockCheckInRepository extends Mock implements CheckInRepository {}
+
 class MockNotificationDispatchService extends Mock
     implements NotificationDispatchService {}
+
 class FakeCheckInSubmission extends Fake implements CheckInSubmission {}
 
 void main() {
@@ -63,6 +65,7 @@ void main() {
         sessionDateYmd: any(named: 'sessionDateYmd'),
         claimDeviceId: any(named: 'claimDeviceId'),
         claimMemberId: any(named: 'claimMemberId'),
+        sessionToken: any(named: 'sessionToken'),
       ),
     ).thenAnswer((_) async {});
     usecase = SubmitCheckIn(
@@ -73,109 +76,134 @@ void main() {
   });
 
   group('SubmitCheckIn', () {
-    test('throws CheckInSubmissionFailedException when submitting on non-Thursday', () async {
-      final nonThursdayUsecase = SubmitCheckIn(
-        mockRepository,
-        notificationDispatchService: mockDispatchService,
-        nowProvider: () => DateTime(2026, 9, 9, 10, 0), // Wednesday
-      );
+    test(
+      'throws CheckInSubmissionFailedException when submitting on non-Thursday',
+      () async {
+        final nonThursdayUsecase = SubmitCheckIn(
+          mockRepository,
+          notificationDispatchService: mockDispatchService,
+          nowProvider: () => DateTime(2026, 9, 9, 10, 0), // Wednesday
+        );
 
-      await expectLater(
-        nonThursdayUsecase(
+        await expectLater(
+          nonThursdayUsecase(
+            name: 'Rahul Sharma',
+            phone: '9876543210',
+            type: CheckInType.member,
+            location: testLocation,
+            proximityResult: testProximity,
+          ),
+          throwsA(isA<CheckInSubmissionFailedException>()),
+        );
+
+        verifyNever(
+          () => mockRepository.submitCheckIn(
+            any(),
+            enforceThursday: any(named: 'enforceThursday'),
+            sessionDateYmd: any(named: 'sessionDateYmd'),
+            claimDeviceId: any(named: 'claimDeviceId'),
+            claimMemberId: any(named: 'claimMemberId'),
+            sessionToken: any(named: 'sessionToken'),
+          ),
+        );
+      },
+    );
+    test(
+      'submits valid Member check-in and dispatches admin notification',
+      () async {
+        when(
+          () => mockRepository.submitCheckIn(
+            any(),
+            enforceThursday: any(named: 'enforceThursday'),
+            sessionDateYmd: any(named: 'sessionDateYmd'),
+            claimDeviceId: any(named: 'claimDeviceId'),
+            claimMemberId: any(named: 'claimMemberId'),
+            sessionToken: any(named: 'sessionToken'),
+          ),
+        ).thenAnswer((_) async {});
+        when(() => mockDispatchService.dispatchAdminCheckInNotification(any()))
+            .thenAnswer((_) async {});
+
+        final submission = await usecase(
           name: 'Rahul Sharma',
           phone: '9876543210',
           type: CheckInType.member,
           location: testLocation,
           proximityResult: testProximity,
-        ),
-        throwsA(isA<CheckInSubmissionFailedException>()),
-      );
+        );
 
-      verifyNever(() => mockRepository.submitCheckIn(
-          any(),
-          enforceThursday: any(named: 'enforceThursday'),
-          sessionDateYmd: any(named: 'sessionDateYmd'),
-          claimDeviceId: any(named: 'claimDeviceId'),
-          claimMemberId: any(named: 'claimMemberId'),
-        ));
-    });
-    test('submits valid Member check-in and dispatches admin notification', () async {
-      when(() => mockRepository.submitCheckIn(
-          any(),
-          enforceThursday: any(named: 'enforceThursday'),
-          sessionDateYmd: any(named: 'sessionDateYmd'),
-          claimDeviceId: any(named: 'claimDeviceId'),
-          claimMemberId: any(named: 'claimMemberId'),
-        ))
-          .thenAnswer((_) async {});
-      when(() => mockDispatchService.dispatchAdminCheckInNotification(any()))
-          .thenAnswer((_) async {});
+        expect(submission.userName, 'Rahul Sharma');
+        expect(submission.userPhone, '+919876543210');
+        expect(submission.type, CheckInType.member);
+        expect(submission.locationId, 'location_x');
+        verify(
+          () => mockRepository.submitCheckIn(
+            any(),
+            enforceThursday: any(named: 'enforceThursday'),
+            sessionDateYmd: any(named: 'sessionDateYmd'),
+            claimDeviceId: any(named: 'claimDeviceId'),
+            claimMemberId: any(named: 'claimMemberId'),
+            sessionToken: any(named: 'sessionToken'),
+          ),
+        ).called(1);
+        verify(
+          () => mockDispatchService.dispatchAdminCheckInNotification(any()),
+        ).called(1);
+      },
+    );
 
-      final submission = await usecase(
-        name: 'Rahul Sharma',
-        phone: '9876543210',
-        type: CheckInType.member,
-        location: testLocation,
-        proximityResult: testProximity,
-      );
+    test(
+      'manual member selection stores memberId without faceVerified',
+      () async {
+        when(
+          () => mockRepository.submitCheckIn(
+            any(),
+            enforceThursday: any(named: 'enforceThursday'),
+            sessionDateYmd: any(named: 'sessionDateYmd'),
+            claimDeviceId: any(named: 'claimDeviceId'),
+            claimMemberId: any(named: 'claimMemberId'),
+            sessionToken: any(named: 'sessionToken'),
+          ),
+        ).thenAnswer((_) async {});
+        when(() => mockDispatchService.dispatchAdminCheckInNotification(any()))
+            .thenAnswer((_) async {});
 
-      expect(submission.userName, 'Rahul Sharma');
-      expect(submission.userPhone, '+919876543210');
-      expect(submission.type, CheckInType.member);
-      expect(submission.locationId, 'location_x');
-      verify(() => mockRepository.submitCheckIn(
-          any(),
-          enforceThursday: any(named: 'enforceThursday'),
-          sessionDateYmd: any(named: 'sessionDateYmd'),
-          claimDeviceId: any(named: 'claimDeviceId'),
-          claimMemberId: any(named: 'claimMemberId'),
-        )).called(1);
-      verify(() => mockDispatchService.dispatchAdminCheckInNotification(any()))
-          .called(1);
-    });
+        final submission = await usecase(
+          name: 'Rahul Sharma',
+          phone: '9876543210',
+          type: CheckInType.member,
+          location: testLocation,
+          proximityResult: testProximity,
+          recognizedMemberId: 'emp_rahul',
+        );
 
-    test('manual member selection stores memberId without faceVerified', () async {
-      when(() => mockRepository.submitCheckIn(
-          any(),
-          enforceThursday: any(named: 'enforceThursday'),
-          sessionDateYmd: any(named: 'sessionDateYmd'),
-          claimDeviceId: any(named: 'claimDeviceId'),
-          claimMemberId: any(named: 'claimMemberId'),
-        ))
-          .thenAnswer((_) async {});
-      when(() => mockDispatchService.dispatchAdminCheckInNotification(any()))
-          .thenAnswer((_) async {});
-
-      final submission = await usecase(
-        name: 'Rahul Sharma',
-        phone: '9876543210',
-        type: CheckInType.member,
-        location: testLocation,
-        proximityResult: testProximity,
-        recognizedMemberId: 'emp_rahul',
-      );
-
-      expect(submission.memberId, 'emp_rahul');
-      expect(submission.verificationMethod, 'manual');
-      expect(submission.faceVerified, isFalse);
-      verify(() => mockRepository.submitCheckIn(
-          any(),
-          enforceThursday: any(named: 'enforceThursday'),
-          sessionDateYmd: any(named: 'sessionDateYmd'),
-          claimDeviceId: any(named: 'claimDeviceId'),
-          claimMemberId: any(named: 'claimMemberId'),
-        )).called(1);
-    });
+        expect(submission.memberId, 'emp_rahul');
+        expect(submission.verificationMethod, 'manual');
+        expect(submission.faceVerified, isFalse);
+        verify(
+          () => mockRepository.submitCheckIn(
+            any(),
+            enforceThursday: any(named: 'enforceThursday'),
+            sessionDateYmd: any(named: 'sessionDateYmd'),
+            claimDeviceId: any(named: 'claimDeviceId'),
+            claimMemberId: any(named: 'claimMemberId'),
+            sessionToken: any(named: 'sessionToken'),
+          ),
+        ).called(1);
+      },
+    );
 
     test('does NOT dispatch admin notification if submission fails', () async {
-      when(() => mockRepository.submitCheckIn(
+      when(
+        () => mockRepository.submitCheckIn(
           any(),
           enforceThursday: any(named: 'enforceThursday'),
           sessionDateYmd: any(named: 'sessionDateYmd'),
           claimDeviceId: any(named: 'claimDeviceId'),
           claimMemberId: any(named: 'claimMemberId'),
-        ))
-          .thenThrow(const ServerException(technicalMessage: 'DB write failed'));
+          sessionToken: any(named: 'sessionToken'),
+        ),
+      ).thenThrow(const ServerException(technicalMessage: 'DB write failed'));
 
       await expectLater(
         usecase(
@@ -188,55 +216,69 @@ void main() {
         throwsA(isA<ServerException>()),
       );
 
-      verify(() => mockRepository.submitCheckIn(
+      verify(
+        () => mockRepository.submitCheckIn(
           any(),
           enforceThursday: any(named: 'enforceThursday'),
           sessionDateYmd: any(named: 'sessionDateYmd'),
           claimDeviceId: any(named: 'claimDeviceId'),
           claimMemberId: any(named: 'claimMemberId'),
-        )).called(1);
-      verifyNever(() => mockDispatchService.dispatchAdminCheckInNotification(any()));
-    });
-
-    test('submits valid Substitute check-in with required face photo', () async {
-      when(() => mockRepository.submitCheckIn(
-          any(),
-          enforceThursday: any(named: 'enforceThursday'),
-          sessionDateYmd: any(named: 'sessionDateYmd'),
-          claimDeviceId: any(named: 'claimDeviceId'),
-          claimMemberId: any(named: 'claimMemberId'),
-        ))
-          .thenAnswer((_) async {});
-      when(() => mockDispatchService.dispatchAdminCheckInNotification(any()))
-          .thenAnswer((_) async {});
-
-      final submission = await usecase(
-        name: 'Amit Patel',
-        phone: '9876543211',
-        type: CheckInType.substitute,
-        location: testLocation,
-        proximityResult: testProximity,
-        photoBase64: 'fake_base64_photo_string',
-        substituteForMember: 'Rahul Sharma',
-        substituteForMemberId: 'emp_rahul',
+          sessionToken: any(named: 'sessionToken'),
+        ),
+      ).called(1);
+      verifyNever(
+        () => mockDispatchService.dispatchAdminCheckInNotification(any()),
       );
-
-      expect(submission.type, CheckInType.substitute);
-      expect(submission.photoBase64, 'fake_base64_photo_string');
-      expect(submission.userName, 'Amit Patel');
-      expect(submission.substituteName, 'Amit Patel');
-      expect(submission.substituteForMember, 'Rahul Sharma');
-      expect(submission.memberId, 'emp_rahul');
-      verify(() => mockRepository.submitCheckIn(
-          any(),
-          enforceThursday: any(named: 'enforceThursday'),
-          sessionDateYmd: any(named: 'sessionDateYmd'),
-          claimDeviceId: any(named: 'claimDeviceId'),
-          claimMemberId: any(named: 'claimMemberId'),
-        )).called(1);
-      verify(() => mockDispatchService.dispatchAdminCheckInNotification(any()))
-          .called(1);
     });
+
+    test(
+      'submits valid Substitute check-in with required face photo',
+      () async {
+        when(
+          () => mockRepository.submitCheckIn(
+            any(),
+            enforceThursday: any(named: 'enforceThursday'),
+            sessionDateYmd: any(named: 'sessionDateYmd'),
+            claimDeviceId: any(named: 'claimDeviceId'),
+            claimMemberId: any(named: 'claimMemberId'),
+            sessionToken: any(named: 'sessionToken'),
+          ),
+        ).thenAnswer((_) async {});
+        when(() => mockDispatchService.dispatchAdminCheckInNotification(any()))
+            .thenAnswer((_) async {});
+
+        final submission = await usecase(
+          name: 'Amit Patel',
+          phone: '9876543211',
+          type: CheckInType.substitute,
+          location: testLocation,
+          proximityResult: testProximity,
+          photoBase64: 'fake_base64_photo_string',
+          substituteForMember: 'Rahul Sharma',
+          substituteForMemberId: 'emp_rahul',
+        );
+
+        expect(submission.type, CheckInType.substitute);
+        expect(submission.photoBase64, 'fake_base64_photo_string');
+        expect(submission.userName, 'Amit Patel');
+        expect(submission.substituteName, 'Amit Patel');
+        expect(submission.substituteForMember, 'Rahul Sharma');
+        expect(submission.memberId, 'emp_rahul');
+        verify(
+          () => mockRepository.submitCheckIn(
+            any(),
+            enforceThursday: any(named: 'enforceThursday'),
+            sessionDateYmd: any(named: 'sessionDateYmd'),
+            claimDeviceId: any(named: 'claimDeviceId'),
+            claimMemberId: any(named: 'claimMemberId'),
+            sessionToken: any(named: 'sessionToken'),
+          ),
+        ).called(1);
+        verify(
+          () => mockDispatchService.dispatchAdminCheckInNotification(any()),
+        ).called(1);
+      },
+    );
 
     test('throws MissingSubstitutePhotoException when substitute has no photo and does not notify', () async {
       expect(
@@ -250,69 +292,90 @@ void main() {
         ),
         throwsA(isA<MissingSubstitutePhotoException>()),
       );
-      verifyNever(() => mockRepository.submitCheckIn(
+      verifyNever(
+        () => mockRepository.submitCheckIn(
           any(),
           enforceThursday: any(named: 'enforceThursday'),
           sessionDateYmd: any(named: 'sessionDateYmd'),
           claimDeviceId: any(named: 'claimDeviceId'),
           claimMemberId: any(named: 'claimMemberId'),
-        ));
-      verifyNever(() => mockDispatchService.dispatchAdminCheckInNotification(any()));
+          sessionToken: any(named: 'sessionToken'),
+        ),
+      );
+      verifyNever(
+        () => mockDispatchService.dispatchAdminCheckInNotification(any()),
+      );
     });
 
-    test('throws exception when phone number is invalid and does not notify', () async {
-      expect(
-        () => usecase(
+    test(
+      'throws exception when phone number is invalid and does not notify',
+      () async {
+        expect(
+          () => usecase(
+            name: 'Rahul Sharma',
+            phone: '123', // invalid
+            type: CheckInType.member,
+            location: testLocation,
+            proximityResult: testProximity,
+          ),
+          throwsA(isA<AppException>()),
+        );
+        verifyNever(
+          () => mockRepository.submitCheckIn(
+            any(),
+            enforceThursday: any(named: 'enforceThursday'),
+            sessionDateYmd: any(named: 'sessionDateYmd'),
+            claimDeviceId: any(named: 'claimDeviceId'),
+            claimMemberId: any(named: 'claimMemberId'),
+            sessionToken: any(named: 'sessionToken'),
+          ),
+        );
+        verifyNever(
+          () => mockDispatchService.dispatchAdminCheckInNotification(any()),
+        );
+      },
+    );
+
+    test(
+      'records submission timestamp matching sessionDateStr (e.g. 2026-09-03)',
+      () async {
+        when(
+          () => mockRepository.submitCheckIn(
+            any(),
+            enforceThursday: any(named: 'enforceThursday'),
+            sessionDateYmd: any(named: 'sessionDateYmd'),
+            claimDeviceId: any(named: 'claimDeviceId'),
+            claimMemberId: any(named: 'claimMemberId'),
+            sessionToken: any(named: 'sessionToken'),
+          ),
+        ).thenAnswer((_) async {});
+        when(() => mockDispatchService.dispatchAdminCheckInNotification(any()))
+            .thenAnswer((_) async {});
+
+        final submission = await usecase(
           name: 'Rahul Sharma',
-          phone: '123', // invalid
+          phone: '9876543210',
           type: CheckInType.member,
           location: testLocation,
           proximityResult: testProximity,
-        ),
-        throwsA(isA<AppException>()),
-      );
-      verifyNever(() => mockRepository.submitCheckIn(
-          any(),
-          enforceThursday: any(named: 'enforceThursday'),
-          sessionDateYmd: any(named: 'sessionDateYmd'),
-          claimDeviceId: any(named: 'claimDeviceId'),
-          claimMemberId: any(named: 'claimMemberId'),
-        ));
-      verifyNever(() => mockDispatchService.dispatchAdminCheckInNotification(any()));
-    });
+          sessionDateStr: '2026-09-03',
+        );
 
-    test('records submission timestamp matching sessionDateStr (e.g. 2026-09-03)', () async {
-      when(() => mockRepository.submitCheckIn(
-          any(),
-          enforceThursday: any(named: 'enforceThursday'),
-          sessionDateYmd: any(named: 'sessionDateYmd'),
-          claimDeviceId: any(named: 'claimDeviceId'),
-          claimMemberId: any(named: 'claimMemberId'),
-        ))
-          .thenAnswer((_) async {});
-      when(() => mockDispatchService.dispatchAdminCheckInNotification(any()))
-          .thenAnswer((_) async {});
-
-      final submission = await usecase(
-        name: 'Rahul Sharma',
-        phone: '9876543210',
-        type: CheckInType.member,
-        location: testLocation,
-        proximityResult: testProximity,
-        sessionDateStr: '2026-09-03',
-      );
-
-      expect(submission.timestamp.year, 2026);
-      expect(submission.timestamp.month, 9);
-      expect(submission.timestamp.day, 3);
-      verify(() => mockRepository.submitCheckIn(
-          any(),
-          enforceThursday: any(named: 'enforceThursday'),
-          sessionDateYmd: any(named: 'sessionDateYmd'),
-          claimDeviceId: any(named: 'claimDeviceId'),
-          claimMemberId: any(named: 'claimMemberId'),
-        )).called(1);
-    });
+        expect(submission.timestamp.year, 2026);
+        expect(submission.timestamp.month, 9);
+        expect(submission.timestamp.day, 3);
+        verify(
+          () => mockRepository.submitCheckIn(
+            any(),
+            enforceThursday: any(named: 'enforceThursday'),
+            sessionDateYmd: any(named: 'sessionDateYmd'),
+            claimDeviceId: any(named: 'claimDeviceId'),
+            claimMemberId: any(named: 'claimMemberId'),
+            sessionToken: any(named: 'sessionToken'),
+          ),
+        ).called(1);
+      },
+    );
 
     test('throws DuplicateCheckInException when phone has already checked in on session date', () async {
       final existingSubmission = CheckInSubmission(
@@ -343,105 +406,73 @@ void main() {
         throwsA(isA<DuplicateCheckInException>()),
       );
 
-      verifyNever(() => mockRepository.submitCheckIn(
+      verifyNever(
+        () => mockRepository.submitCheckIn(
           any(),
           enforceThursday: any(named: 'enforceThursday'),
           sessionDateYmd: any(named: 'sessionDateYmd'),
           claimDeviceId: any(named: 'claimDeviceId'),
           claimMemberId: any(named: 'claimMemberId'),
-        ));
-      verifyNever(() => mockDispatchService.dispatchAdminCheckInNotification(any()));
-    });
-
-    test('2026-09-03 rejects same device second check-in', () async {
-      final existingDevice = CheckInSubmission(
-        id: 'device-existing',
-        locationId: testLocation.id,
-        locationName: testLocation.name,
-        userName: 'Prior Guest',
-        userPhone: '+919999999999',
-        type: CheckInType.member,
-        userLatitude: 19.0829,
-        userLongitude: 72.9129,
-        gpsAccuracy: 10.0,
-        distanceMeters: 45.0,
-        timestamp: DateTime(2026, 9, 3, 9, 0),
-        deviceId: 'device-a',
-      );
-
-      when(() => mockRepository.getDeviceSubmission(any(), any()))
-          .thenAnswer((_) async => existingDevice);
-
-      await expectLater(
-        usecase(
-          name: 'Rahul Sharma',
-          phone: '9876543210',
-          type: CheckInType.member,
-          location: testLocation,
-          proximityResult: testProximity,
-          sessionDateStr: '2026-09-03',
-          deviceId: 'device-a',
+          sessionToken: any(named: 'sessionToken'),
         ),
-        throwsA(isA<DuplicateCheckInException>()),
       );
-
-      verifyNever(() => mockRepository.submitCheckIn(
-          any(),
-          enforceThursday: any(named: 'enforceThursday'),
-          sessionDateYmd: any(named: 'sessionDateYmd'),
-          claimDeviceId: any(named: 'claimDeviceId'),
-          claimMemberId: any(named: 'claimMemberId'),
-        ));
+      verifyNever(
+        () => mockDispatchService.dispatchAdminCheckInNotification(any()),
+      );
     });
 
-    test('2026-09-24 rejects same device second check-in', () async {
+    test('2026-09-24 allows shared device with a different phone', () async {
       final thursday24 = SubmitCheckIn(
         mockRepository,
         notificationDispatchService: mockDispatchService,
         nowProvider: () => DateTime(2026, 9, 24, 10, 0),
       );
 
-      final existingDevice = CheckInSubmission(
-        id: 'device-existing',
-        locationId: testLocation.id,
-        locationName: testLocation.name,
-        userName: 'Prior Guest',
-        userPhone: '+919999999999',
-        type: CheckInType.member,
-        userLatitude: 19.0829,
-        userLongitude: 72.9129,
-        gpsAccuracy: 10.0,
-        distanceMeters: 45.0,
-        timestamp: DateTime(2026, 9, 24, 9, 0),
-        deviceId: 'device-a',
-      );
-
-      when(() => mockRepository.getDeviceSubmission(any(), any()))
-          .thenAnswer((_) async => existingDevice);
-
-      await expectLater(
-        thursday24(
-          name: 'Rahul Sharma',
-          phone: '9876543210',
+      // Prior device history must not block another member (venue tablets).
+      when(() => mockRepository.getDeviceSubmission(any(), any())).thenAnswer(
+        (_) async => CheckInSubmission(
+          id: 'device-existing',
+          locationId: testLocation.id,
+          locationName: testLocation.name,
+          userName: 'Prior Guest',
+          userPhone: '+919999999999',
           type: CheckInType.member,
-          location: testLocation,
-          proximityResult: testProximity,
-          sessionDateStr: '2026-09-24',
+          userLatitude: 19.0829,
+          userLongitude: 72.9129,
+          gpsAccuracy: 10.0,
+          distanceMeters: 45.0,
+          timestamp: DateTime(2026, 9, 24, 9, 0),
           deviceId: 'device-a',
         ),
-        throwsA(isA<DuplicateCheckInException>()),
       );
 
-      verifyNever(() => mockRepository.submitCheckIn(
+      when(() => mockDispatchService.dispatchAdminCheckInNotification(any()))
+          .thenAnswer((_) async {});
+
+      await thursday24(
+        name: 'Rahul Sharma',
+        phone: '9876543210',
+        type: CheckInType.member,
+        location: testLocation,
+        proximityResult: testProximity,
+        sessionDateStr: '2026-09-24',
+        deviceId: 'device-a',
+        recognizedMemberId: 'emp_rahul',
+      );
+
+      verify(
+        () => mockRepository.submitCheckIn(
           any(),
-          enforceThursday: any(named: 'enforceThursday'),
-          sessionDateYmd: any(named: 'sessionDateYmd'),
-          claimDeviceId: any(named: 'claimDeviceId'),
-          claimMemberId: any(named: 'claimMemberId'),
-        ));
+          enforceThursday: true,
+          sessionDateYmd: '2026-09-24',
+          claimDeviceId: null,
+          claimMemberId: 'emp_rahul',
+          sessionToken: any(named: 'sessionToken'),
+        ),
+      ).called(1);
     });
 
-    test('2026-09-24 rejects when atomic device lock already claimed', () async {
+    test('2026-09-24 surfaces phone duplicate from server submit', () async {
       final thursday24 = SubmitCheckIn(
         mockRepository,
         notificationDispatchService: mockDispatchService,
@@ -455,12 +486,13 @@ void main() {
           sessionDateYmd: any(named: 'sessionDateYmd'),
           claimDeviceId: any(named: 'claimDeviceId'),
           claimMemberId: any(named: 'claimMemberId'),
+          sessionToken: any(named: 'sessionToken'),
         ),
       ).thenThrow(
         const DuplicateCheckInException(
           userMessage:
-              'This device has already recorded attendance for today.',
-          technicalMessage: 'deviceSessionLocks already-exists',
+              'This phone number has already submitted attendance for today.',
+          technicalMessage: 'submit_public_check_in duplicate_phone',
         ),
       );
 
@@ -483,65 +515,77 @@ void main() {
           sessionDateYmd: any(named: 'sessionDateYmd'),
         ),
       );
-      verifyNever(() => mockDispatchService.dispatchAdminCheckInNotification(any()));
+      verifyNever(
+        () => mockDispatchService.dispatchAdminCheckInNotification(any()),
+      );
     });
 
-    test('2026-09-03 rejects check-in on a non-Thursday calendar day',
-        () async {
-      final tuesdayUsecase = SubmitCheckIn(
-        mockRepository,
-        notificationDispatchService: mockDispatchService,
-        nowProvider: () => DateTime(2026, 9, 22, 15, 0), // Tuesday
-      );
+    test(
+      '2026-09-03 rejects check-in on a non-Thursday calendar day',
+      () async {
+        final tuesdayUsecase = SubmitCheckIn(
+          mockRepository,
+          notificationDispatchService: mockDispatchService,
+          nowProvider: () => DateTime(2026, 9, 22, 15, 0), // Tuesday
+        );
 
-      await expectLater(
-        tuesdayUsecase(
-          name: 'Rahul Sharma',
-          phone: '9876543210',
-          type: CheckInType.member,
-          location: testLocation,
-          proximityResult: testProximity,
-          sessionDateStr: '2026-09-03',
-          deviceId: 'device-a',
-        ),
-        throwsA(isA<CheckInSubmissionFailedException>()),
-      );
-      verifyNever(() => mockRepository.submitCheckIn(
-          any(),
-          enforceThursday: any(named: 'enforceThursday'),
-          sessionDateYmd: any(named: 'sessionDateYmd'),
-          claimDeviceId: any(named: 'claimDeviceId'),
-          claimMemberId: any(named: 'claimMemberId'),
-        ));
-    });
+        await expectLater(
+          tuesdayUsecase(
+            name: 'Rahul Sharma',
+            phone: '9876543210',
+            type: CheckInType.member,
+            location: testLocation,
+            proximityResult: testProximity,
+            sessionDateStr: '2026-09-03',
+            deviceId: 'device-a',
+          ),
+          throwsA(isA<CheckInSubmissionFailedException>()),
+        );
+        verifyNever(
+          () => mockRepository.submitCheckIn(
+            any(),
+            enforceThursday: any(named: 'enforceThursday'),
+            sessionDateYmd: any(named: 'sessionDateYmd'),
+            claimDeviceId: any(named: 'claimDeviceId'),
+            claimMemberId: any(named: 'claimMemberId'),
+            sessionToken: any(named: 'sessionToken'),
+          ),
+        );
+      },
+    );
 
-    test('2026-09-24 rejects check-in on a non-Thursday calendar day',
-        () async {
-      final tuesdayUsecase = SubmitCheckIn(
-        mockRepository,
-        notificationDispatchService: mockDispatchService,
-        nowProvider: () => DateTime(2026, 9, 22, 15, 0), // Tuesday
-      );
+    test(
+      '2026-09-24 rejects check-in on a non-Thursday calendar day',
+      () async {
+        final tuesdayUsecase = SubmitCheckIn(
+          mockRepository,
+          notificationDispatchService: mockDispatchService,
+          nowProvider: () => DateTime(2026, 9, 22, 15, 0), // Tuesday
+        );
 
-      await expectLater(
-        tuesdayUsecase(
-          name: 'Rahul Sharma',
-          phone: '9876543210',
-          type: CheckInType.member,
-          location: testLocation,
-          proximityResult: testProximity,
-          sessionDateStr: '2026-09-24',
-          deviceId: 'device-a',
-        ),
-        throwsA(isA<CheckInSubmissionFailedException>()),
-      );
-      verifyNever(() => mockRepository.submitCheckIn(
-          any(),
-          enforceThursday: any(named: 'enforceThursday'),
-          sessionDateYmd: any(named: 'sessionDateYmd'),
-          claimDeviceId: any(named: 'claimDeviceId'),
-          claimMemberId: any(named: 'claimMemberId'),
-        ));
-    });
+        await expectLater(
+          tuesdayUsecase(
+            name: 'Rahul Sharma',
+            phone: '9876543210',
+            type: CheckInType.member,
+            location: testLocation,
+            proximityResult: testProximity,
+            sessionDateStr: '2026-09-24',
+            deviceId: 'device-a',
+          ),
+          throwsA(isA<CheckInSubmissionFailedException>()),
+        );
+        verifyNever(
+          () => mockRepository.submitCheckIn(
+            any(),
+            enforceThursday: any(named: 'enforceThursday'),
+            sessionDateYmd: any(named: 'sessionDateYmd'),
+            claimDeviceId: any(named: 'claimDeviceId'),
+            claimMemberId: any(named: 'claimMemberId'),
+            sessionToken: any(named: 'sessionToken'),
+          ),
+        );
+      },
+    );
   });
 }

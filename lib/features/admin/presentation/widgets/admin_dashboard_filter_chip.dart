@@ -34,10 +34,10 @@ class AdminDashboardFilterChip extends StatelessWidget {
           decoration: BoxDecoration(
             color: isSelected
                 ? (isDark
-                    ? effectiveAccent.withAlpha(45)
-                    : (accentColor != null
-                        ? effectiveAccent.withAlpha(25)
-                        : const Color(0xFFEEF2FF)))
+                      ? effectiveAccent.withAlpha(45)
+                      : (accentColor != null
+                            ? effectiveAccent.withAlpha(25)
+                            : const Color(0xFFEEF2FF)))
                 : (isDark ? AppColors.surfaceDark : AppColors.surfaceLight),
             borderRadius: AppRadius.fullAll,
             border: Border.all(
@@ -51,11 +51,7 @@ class AdminDashboardFilterChip extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (isSelected) ...[
-                Icon(
-                  Icons.check_rounded,
-                  size: 13,
-                  color: effectiveAccent,
-                ),
+                Icon(Icons.check_rounded, size: 13, color: effectiveAccent),
                 const SizedBox(width: 5),
               ],
               Text(
@@ -65,11 +61,11 @@ class AdminDashboardFilterChip extends StatelessWidget {
                   fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                   color: isSelected
                       ? (isDark
-                          ? (accentColor ?? const Color(0xFF818CF8))
-                          : effectiveAccent)
+                            ? (accentColor ?? const Color(0xFF818CF8))
+                            : effectiveAccent)
                       : (isDark
-                          ? AppColors.onSurfaceVariantDark
-                          : AppColors.onSurfaceVariantLight),
+                            ? AppColors.onSurfaceVariantDark
+                            : AppColors.onSurfaceVariantLight),
                 ),
               ),
             ],

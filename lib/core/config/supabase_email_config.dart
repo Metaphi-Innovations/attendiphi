@@ -1,20 +1,21 @@
+import 'supabase_app_config.dart';
+
 /// Public Supabase configuration for the Attendiphi email Edge Function.
 ///
-/// The anon key is a publishable browser key, like the Firebase web API key.
+/// Uses the same Attendiphi data project as Auth/Postgres
+/// (`fzghxzybyygslfjyfewu`). The anon key is a publishable browser key.
 /// Never put SMTP passwords or other email-provider secrets here.
 class SupabaseEmailConfig {
   SupabaseEmailConfig._();
 
-  static const firebaseProjectId = 'qr-checkin-dev';
   static const functionName = 'send-attendiphi-email';
   static const functionNamePath = '/functions/v1/$functionName';
 
-  /// Hosted Edge Function project. Not a Firebase replacement.
-  static const productionUrl = 'https://ktnhyohshdwqvvlgeynp.supabase.co';
+  /// Attendiphi data + Auth project (same as [SupabaseAppConfig]).
+  static String get productionUrl => SupabaseAppConfig.url;
 
-  /// Publishable gateway key (`apikey` header). Not an SMTP password.
-  static const productionPublishableKey =
-      'sb_publishable_PsUeIywCm_AlwmVBVEIZ5A_Y_44_o3i';
+  /// Publishable anon / gateway key for the data project.
+  static String get productionPublishableKey => SupabaseAppConfig.anonKey;
 
   static const dartDefinedUrl = String.fromEnvironment(
     'SUPABASE_URL',

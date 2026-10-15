@@ -95,8 +95,18 @@ class _AdminForgotPasswordScreenState
               maxWidth: ResponsiveBreakpoints.maxCardWidth,
             ),
             child: _sent
-                ? _buildSuccess(theme, isDark, isCompact ? 88.0 : 110.0, isCompact ? 20.0 : 28.0)
-                : _buildForm(theme, isDark, isCompact ? 88.0 : 110.0, isCompact ? 20.0 : 28.0),
+                ? _buildSuccess(
+                    theme,
+                    isDark,
+                    isCompact ? 88.0 : 110.0,
+                    isCompact ? 20.0 : 28.0,
+                  )
+                : _buildForm(
+                    theme,
+                    isDark,
+                    isCompact ? 88.0 : 110.0,
+                    isCompact ? 20.0 : 28.0,
+                  ),
           ),
         ),
       ),
@@ -155,7 +165,7 @@ class _AdminForgotPasswordScreenState
                   label: 'Email',
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
-                  enabled: !_isSending,  
+                  enabled: !_isSending,
                   prefixIcon: const Icon(Icons.email_outlined),
                   validator: Validators.validateEmail,
                 ),

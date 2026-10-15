@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 /// Branded MetaPhi loading indicator widget.
@@ -55,10 +56,7 @@ class MetaPhiLoadingIndicator extends StatelessWidget {
       ],
     );
 
-    final displayContent = FittedBox(
-      fit: BoxFit.scaleDown,
-      child: content,
-    );
+    final displayContent = FittedBox(fit: BoxFit.scaleDown, child: content);
 
     if (!showCard) {
       return displayContent;
@@ -131,11 +129,12 @@ class _PageLoadingTransitionWrapperState
     _timer?.cancel();
 
     // Check if running under automated widget test suite
-    final isTest = WidgetsBinding.instance.runtimeType
-        .toString()
-        .contains('TestWidgetsFlutterBinding');
+    final isTest = WidgetsBinding.instance.runtimeType.toString().contains(
+      'TestWidgetsFlutterBinding',
+    );
 
-    final duration = widget.minimumDuration ??
+    final duration =
+        widget.minimumDuration ??
         (isTest ? Duration.zero : const Duration(seconds: 1));
 
     if (duration == Duration.zero) {
@@ -162,8 +161,9 @@ class _PageLoadingTransitionWrapperState
       final theme = Theme.of(context);
       final isDark = theme.brightness == Brightness.dark;
       return Scaffold(
-        backgroundColor:
-            isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+        backgroundColor: isDark
+            ? const Color(0xFF0F172A)
+            : const Color(0xFFF8FAFC),
         body: Center(
           child: MetaPhiLoadingIndicator(
             message: widget.message,

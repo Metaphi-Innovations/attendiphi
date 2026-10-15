@@ -6,11 +6,7 @@ void main() {
   group('QrOverlay Widget Tests', () {
     testWidgets('renders CustomPaints for cutout and brackets', (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: QrOverlay(scanWindowSize: 260),
-          ),
-        ),
+        const MaterialApp(home: Scaffold(body: QrOverlay(scanWindowSize: 260))),
       );
 
       // Verify custom painters are in the tree

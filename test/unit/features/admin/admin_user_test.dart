@@ -54,17 +54,20 @@ void main() {
       expect(deserialized.matchesPassword('wrong'), isFalse);
     });
 
-    test('matchesPassword rejects plaintext and hash-as-password legacy forms', () {
-      const admin = AdminUser(
-        id: 'adm-legacy',
-        name: 'Legacy',
-        email: 'legacy@example.com',
-        phone: '9876543211',
-        plainPassword: 'TempPass@123',
-        passwordHash: 'TempPass@123',
-      );
-      expect(admin.matchesPassword('TempPass@123'), isFalse);
-      expect(admin.matchesPassword(admin.passwordHash), isFalse);
-    });
+    test(
+      'matchesPassword rejects plaintext and hash-as-password legacy forms',
+      () {
+        const admin = AdminUser(
+          id: 'adm-legacy',
+          name: 'Legacy',
+          email: 'legacy@example.com',
+          phone: '9876543211',
+          plainPassword: 'TempPass@123',
+          passwordHash: 'TempPass@123',
+        );
+        expect(admin.matchesPassword('TempPass@123'), isFalse);
+        expect(admin.matchesPassword(admin.passwordHash), isFalse);
+      },
+    );
   });
 }

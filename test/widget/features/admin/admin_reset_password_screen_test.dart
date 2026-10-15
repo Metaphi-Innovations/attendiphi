@@ -13,10 +13,7 @@ class MockAdminAuthNotifier extends AdminAuthNotifier {
 
   @override
   AdminAuthState build() {
-    return AdminAuthState(
-      isAuthenticated: true,
-      currentAdmin: initialAdmin,
-    );
+    return AdminAuthState(isAuthenticated: true, currentAdmin: initialAdmin);
   }
 }
 
@@ -33,8 +30,9 @@ void main() {
       isActive: true,
     );
 
-    testWidgets('renders Attendiphi reset form with confirm password',
-        (tester) async {
+    testWidgets('renders Attendiphi reset form with confirm password', (
+      tester,
+    ) async {
       tester.view.physicalSize = const Size(1200, 1000);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
@@ -42,11 +40,11 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            adminAuthProvider.overrideWith(() => MockAdminAuthNotifier(testAdmin)),
+            adminAuthProvider.overrideWith(
+              () => MockAdminAuthNotifier(testAdmin),
+            ),
           ],
-          child: const MaterialApp(
-            home: AdminResetPasswordScreen(),
-          ),
+          child: const MaterialApp(home: AdminResetPasswordScreen()),
         ),
       );
 
@@ -62,8 +60,9 @@ void main() {
       expect(find.text('Back to Login'), findsOneWidget);
     });
 
-    testWidgets('validates password minimum length and mismatch',
-        (tester) async {
+    testWidgets('validates password minimum length and mismatch', (
+      tester,
+    ) async {
       tester.view.physicalSize = const Size(1200, 1000);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
@@ -71,11 +70,11 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            adminAuthProvider.overrideWith(() => MockAdminAuthNotifier(testAdmin)),
+            adminAuthProvider.overrideWith(
+              () => MockAdminAuthNotifier(testAdmin),
+            ),
           ],
-          child: const MaterialApp(
-            home: AdminResetPasswordScreen(),
-          ),
+          child: const MaterialApp(home: AdminResetPasswordScreen()),
         ),
       );
 
@@ -95,7 +94,10 @@ void main() {
       await tester.tap(submitBtn);
       await tester.pumpAndSettle();
 
-      expect(find.text('Password must be at least 8 characters'), findsOneWidget);
+      expect(
+        find.text('Password must be at least 8 characters'),
+        findsOneWidget,
+      );
     });
   });
 }

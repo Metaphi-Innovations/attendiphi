@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-
 import '../../../../app/theme/app_radius.dart';
 import '../../../../core/responsive/responsive_breakpoints.dart';
 import '../../../../core/widgets/app_scaffold.dart';
@@ -56,17 +55,18 @@ class _CheckInResultScreenState extends ConsumerState<CheckInResultScreen>
       curve: Curves.easeOut,
     );
 
-    _cardSlideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.15),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _cardFadeController,
-      curve: Curves.easeOutCubic,
-    ));
+    _cardSlideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _cardFadeController,
+            curve: Curves.easeOutCubic,
+          ),
+        );
 
     // Device last-submission is only a last resort when this route has no
     // check-in extra and no memberId/checkInId in the URL.
-    final hasIdentity = widget.submission != null ||
+    final hasIdentity =
+        widget.submission != null ||
         (widget.memberId != null && widget.memberId!.trim().isNotEmpty) ||
         (widget.checkInId != null && widget.checkInId!.trim().isNotEmpty);
     if (!hasIdentity) {
@@ -104,24 +104,27 @@ class _CheckInResultScreenState extends ConsumerState<CheckInResultScreen>
   Widget build(BuildContext context) {
     final isCompact = context.isCompactMobile;
     final submission = _resolvedSubmission ?? widget.submission;
-    final memberId =
-        (widget.memberId ?? submission?.memberId)?.trim() ?? '';
+    final memberId = (widget.memberId ?? submission?.memberId)?.trim() ?? '';
     Employee? authoritativeMember;
     if (memberId.isNotEmpty) {
-      authoritativeMember =
-          ref.watch(employeeByIdProvider(memberId)).asData?.value;
+      authoritativeMember = ref
+          .watch(employeeByIdProvider(memberId))
+          .asData
+          ?.value;
     }
     final employees =
         ref.watch(publicMembersStreamProvider).asData?.value ??
-            const <Employee>[];
-    final displayName = EmployeeLookup.successDisplayName(
+        const <Employee>[];
+    final displayName =
+        EmployeeLookup.successDisplayName(
           submission: submission,
           employees: employees,
           memberId: memberId,
           authoritativeMember: authoritativeMember,
         ) ??
         '';
-    final displayPhone = EmployeeLookup.successDisplayPhone(
+    final displayPhone =
+        EmployeeLookup.successDisplayPhone(
           submission: submission,
           employees: employees,
           memberId: memberId,
@@ -258,4 +261,3 @@ class _CheckInResultScreenState extends ConsumerState<CheckInResultScreen>
     );
   }
 }
-

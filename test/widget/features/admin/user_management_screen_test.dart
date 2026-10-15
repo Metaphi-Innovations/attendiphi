@@ -96,43 +96,41 @@ void main() {
             (ref) => Stream.value(mockCheckIns),
           ),
         ],
-        child: const MaterialApp(
-          home: Scaffold(
-            body: UserManagementScreen(),
-          ),
-        ),
+        child: const MaterialApp(home: Scaffold(body: UserManagementScreen())),
       );
     }
 
-    testWidgets('renders active members, invited visitor ranking, and table column',
-        (tester) async {
-      tester.view.physicalSize = const Size(1400, 900);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() => tester.view.resetPhysicalSize());
+    testWidgets(
+      'renders active members, invited visitor ranking, and table column',
+      (tester) async {
+        tester.view.physicalSize = const Size(1400, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() => tester.view.resetPhysicalSize());
 
-      await tester.pumpWidget(createTestWidget());
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(createTestWidget());
+        await tester.pumpAndSettle();
 
-      // Verify Header Title
-      expect(find.text('Member Management'), findsOneWidget);
+        // Verify Header Title
+        expect(find.text('Member Management'), findsOneWidget);
 
-      // Verify KPI Metric Cards (Total & Active only)
-      expect(find.text('Total Members'), findsOneWidget);
-      expect(find.text('Active Members'), findsOneWidget);
-      expect(find.text('Omkar Anarse'), findsAtLeastNWidgets(1));
+        // Verify KPI Metric Cards (Total & Active only)
+        expect(find.text('Total Members'), findsOneWidget);
+        expect(find.text('Active Members'), findsOneWidget);
+        expect(find.text('Omkar Anarse'), findsAtLeastNWidgets(1));
 
-      // Verify Desktop Table Column Header
-      expect(find.text('VISITORS'), findsOneWidget);
-      expect(find.text('STATUS'), findsAtLeastNWidgets(1));
-      expect(find.byType(Switch), findsAtLeastNWidgets(1));
+        // Verify Desktop Table Column Header
+        expect(find.text('VISITORS'), findsOneWidget);
+        expect(find.text('STATUS'), findsAtLeastNWidgets(1));
+        expect(find.byType(Switch), findsAtLeastNWidgets(1));
 
-      // Omkar Anarse has 2 visitors -> Ranked #1
-      expect(find.text('2 Visitors'), findsOneWidget);
-      // Akhil has 1 visitor -> Ranked #2
-      expect(find.text('1 Visitor'), findsOneWidget);
-      // Others have 0 visitors
-      expect(find.text('0 Visitors'), findsAtLeastNWidgets(1));
-    });
+        // Omkar Anarse has 2 visitors -> Ranked #1
+        expect(find.text('2 Visitors'), findsOneWidget);
+        // Akhil has 1 visitor -> Ranked #2
+        expect(find.text('1 Visitor'), findsOneWidget);
+        // Others have 0 visitors
+        expect(find.text('0 Visitors'), findsAtLeastNWidgets(1));
+      },
+    );
 
     testWidgets('filters members by status filter', (tester) async {
       tester.view.physicalSize = const Size(1400, 900);

@@ -48,22 +48,28 @@ void main() {
       expect(result.matchedMember, isNull);
     });
 
-    test('Returns isMatch = false when candidates have no face embeddings', () async {
-      final service = CloudFaceRecognitionService();
-      const memberWithoutEmbedding = Employee(
-        id: 'emp_999',
-        name: 'No Biometric',
-        phone: '1234567890',
-      );
+    test(
+      'Returns isMatch = false when candidates have no face embeddings',
+      () async {
+        final service = CloudFaceRecognitionService();
+        const memberWithoutEmbedding = Employee(
+          id: 'emp_999',
+          name: 'No Biometric',
+          phone: '1234567890',
+        );
 
-      final result = await service.matchFace(
-        photoBase64: 'mock_base64_data',
-        candidates: [memberWithoutEmbedding],
-      );
+        final result = await service.matchFace(
+          photoBase64: 'mock_base64_data',
+          candidates: [memberWithoutEmbedding],
+        );
 
-      expect(result.isMatch, isFalse);
-      expect(result.errorMessage, contains('No enrolled member face profiles found'));
-    });
+        expect(result.isMatch, isFalse);
+        expect(
+          result.errorMessage,
+          contains('No enrolled member face profiles found'),
+        );
+      },
+    );
 
     test('Rejects automatic match when multiple faces are detected', () async {
       final service = CloudFaceRecognitionService(
@@ -101,26 +107,27 @@ void main() {
       expect(result.errorMessage, contains('No face detected'));
     });
 
-    test('Successfully recognizes member with high SFace similarity and margin', () async {
-      final targetEmb = createMockVector(0);
+    test(
+      'Successfully recognizes member with high SFace similarity and margin',
+      () async {
+        final targetEmb = createMockVector(0);
 
-      final service = CloudFaceRecognitionService(
-        frameExtractor: (_) async => ValidatedFaceFrame(
-          isValid: true,
-          embedding: targetEmb,
-        ),
-      );
+        final service = CloudFaceRecognitionService(
+          frameExtractor: (_) async =>
+              ValidatedFaceFrame(isValid: true, embedding: targetEmb),
+        );
 
-      final result = await service.matchFace(
-        photoBase64: 'mock_base64_data',
-        candidates: candidates,
-      );
+        final result = await service.matchFace(
+          photoBase64: 'mock_base64_data',
+          candidates: candidates,
+        );
 
-      expect(result.isMatch, isTrue);
-      expect(result.matchedMember?.id, equals('emp_101'));
-      expect(result.matchedMember?.name, equals('Omkar Anarse'));
-      expect(result.confidence, equals(100.0));
-    });
+        expect(result.isMatch, isTrue);
+        expect(result.matchedMember?.id, equals('emp_101'));
+        expect(result.matchedMember?.name, equals('Omkar Anarse'));
+        expect(result.confidence, equals(100.0));
+      },
+    );
 
     test('Skips native-only 192-d enrollments on the web matcher', () async {
       final nativeOnly = Employee(
@@ -129,10 +136,8 @@ void main() {
         faceTemplates: [List<double>.filled(192, 0.01)],
       );
       final service = CloudFaceRecognitionService(
-        frameExtractor: (_) async => ValidatedFaceFrame(
-          isValid: true,
-          embedding: createMockVector(0),
-        ),
+        frameExtractor: (_) async =>
+            ValidatedFaceFrame(isValid: true, embedding: createMockVector(0)),
       );
 
       final result = await service.matchFace(
@@ -144,57 +149,59 @@ void main() {
       expect(result.errorMessage, contains('web face enrollment'));
     });
 
-    test('Flags ambiguous match when runner-up margin is below threshold', () async {
-      // Two candidates with almost identical embeddings
-      final closeEmb1 = createMockVector(0);
-      final closeEmb2 = List<double>.from(closeEmb1);
-      closeEmb2[1] = 0.02; // tiny difference
+    test(
+      'Flags ambiguous match when runner-up margin is below threshold',
+      () async {
+        // Two candidates with almost identical embeddings
+        final closeEmb1 = createMockVector(0);
+        final closeEmb2 = List<double>.from(closeEmb1);
+        closeEmb2[1] = 0.02; // tiny difference
 
-      final closeCandidates = [
-        Employee(id: 'emp_a', name: 'Member A', faceTemplates: [closeEmb1]),
-        Employee(id: 'emp_b', name: 'Member B', faceTemplates: [closeEmb2]),
-      ];
+        final closeCandidates = [
+          Employee(id: 'emp_a', name: 'Member A', faceTemplates: [closeEmb1]),
+          Employee(id: 'emp_b', name: 'Member B', faceTemplates: [closeEmb2]),
+        ];
 
-      final service = CloudFaceRecognitionService(
-        frameExtractor: (_) async => ValidatedFaceFrame(
-          isValid: true,
-          embedding: closeEmb1,
-        ),
-      );
+        final service = CloudFaceRecognitionService(
+          frameExtractor: (_) async =>
+              ValidatedFaceFrame(isValid: true, embedding: closeEmb1),
+        );
 
-      final result = await service.matchFace(
-        photoBase64: 'mock_base64_data',
-        candidates: closeCandidates,
-      );
+        final result = await service.matchFace(
+          photoBase64: 'mock_base64_data',
+          candidates: closeCandidates,
+        );
 
-      expect(result.isMatch, isFalse);
-      expect(result.isAmbiguous, isTrue);
-      expect(result.errorMessage, contains('Face match ambiguous'));
-    });
+        expect(result.isMatch, isFalse);
+        expect(result.isAmbiguous, isTrue);
+        expect(result.errorMessage, contains('Face match ambiguous'));
+      },
+    );
 
-    test('Multi-frame burst verifies member when frames are consistent', () async {
-      final targetEmb = createMockVector(0);
+    test(
+      'Multi-frame burst verifies member when frames are consistent',
+      () async {
+        final targetEmb = createMockVector(0);
 
-      final service = CloudFaceRecognitionService(
-        frameExtractor: (_) async => ValidatedFaceFrame(
-          isValid: true,
-          embedding: targetEmb,
-        ),
-      );
+        final service = CloudFaceRecognitionService(
+          frameExtractor: (_) async =>
+              ValidatedFaceFrame(isValid: true, embedding: targetEmb),
+        );
 
-      final decision = await service.matchMultiFrameBurst(
-        photosBase64: ['f1', 'f2', 'f3', 'f4', 'f5'],
-        candidates: candidates,
-      );
+        final decision = await service.matchMultiFrameBurst(
+          photosBase64: ['f1', 'f2', 'f3', 'f4', 'f5'],
+          candidates: candidates,
+        );
 
-      expect(decision.verified, isTrue);
-      expect(decision.matchedMember?.id, equals('emp_101'));
-      expect(decision.consistencyRate, equals(1.0));
-      expect(
-        decision.validFramesCount,
-        greaterThanOrEqualTo(FaceMatchingConfig.minimumValidFrames),
-      );
-    });
+        expect(decision.verified, isTrue);
+        expect(decision.matchedMember?.id, equals('emp_101'));
+        expect(decision.consistencyRate, equals(1.0));
+        expect(
+          decision.validFramesCount,
+          greaterThanOrEqualTo(FaceMatchingConfig.minimumValidFrames),
+        );
+      },
+    );
 
     test('Multi-frame burst stops once enough frames already verify', () async {
       var extractCount = 0;
@@ -202,10 +209,7 @@ void main() {
       final service = CloudFaceRecognitionService(
         frameExtractor: (_) async {
           extractCount++;
-          return ValidatedFaceFrame(
-            isValid: true,
-            embedding: targetEmb,
-          );
+          return ValidatedFaceFrame(isValid: true, embedding: targetEmb);
         },
       );
 
@@ -218,27 +222,30 @@ void main() {
       expect(extractCount, equals(FaceMatchingConfig.minimumValidFrames));
     });
 
-    test('Multi-frame burst rejects when inconsistent or poor quality', () async {
-      int frameIndex = 0;
-      final service = CloudFaceRecognitionService(
-        frameExtractor: (_) async {
-          frameIndex++;
-          // Alternate between candidate 1, candidate 2, and candidate 3
-          return ValidatedFaceFrame(
-            isValid: true,
-            embedding: createMockVector(frameIndex % 3),
-          );
-        },
-      );
+    test(
+      'Multi-frame burst rejects when inconsistent or poor quality',
+      () async {
+        int frameIndex = 0;
+        final service = CloudFaceRecognitionService(
+          frameExtractor: (_) async {
+            frameIndex++;
+            // Alternate between candidate 1, candidate 2, and candidate 3
+            return ValidatedFaceFrame(
+              isValid: true,
+              embedding: createMockVector(frameIndex % 3),
+            );
+          },
+        );
 
-      final decision = await service.matchMultiFrameBurst(
-        photosBase64: ['f1', 'f2', 'f3', 'f4', 'f5'],
-        candidates: candidates,
-      );
+        final decision = await service.matchMultiFrameBurst(
+          photosBase64: ['f1', 'f2', 'f3', 'f4', 'f5'],
+          candidates: candidates,
+        );
 
-      expect(decision.verified, isFalse);
-      expect(decision.shouldRetry, isTrue);
-      expect(decision.consistencyRate, lessThan(0.60));
-    });
+        expect(decision.verified, isFalse);
+        expect(decision.shouldRetry, isTrue);
+        expect(decision.consistencyRate, lessThan(0.60));
+      },
+    );
   });
 }

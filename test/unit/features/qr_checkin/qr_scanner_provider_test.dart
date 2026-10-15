@@ -46,43 +46,52 @@ void main() {
       expect(state, isA<QrScannerInitial>());
     });
 
-    test('transitions to QrScannerSuccess on valid QR and active location', () async {
-      when(() => mockRepository.getLocationConfig('location_x'))
-          .thenAnswer((_) async => testLocation);
+    test(
+      'transitions to QrScannerSuccess on valid QR and active location',
+      () async {
+        when(() => mockRepository.getLocationConfig('location_x'))
+            .thenAnswer((_) async => testLocation);
 
-      final notifier = container.read(qrScannerProvider.notifier);
-      await notifier.onQrCodeDetected('{"locationId": "location_x"}');
+        final notifier = container.read(qrScannerProvider.notifier);
+        await notifier.onQrCodeDetected('{"locationId": "location_x"}');
 
-      final state = container.read(qrScannerProvider);
-      expect(state, isA<QrScannerSuccess>());
+        final state = container.read(qrScannerProvider);
+        expect(state, isA<QrScannerSuccess>());
 
-      final successState = state as QrScannerSuccess;
-      expect(successState.location.id, 'location_x');
-      expect(successState.location.name, 'Main Campus');
-    });
+        final successState = state as QrScannerSuccess;
+        expect(successState.location.id, 'location_x');
+        expect(successState.location.name, 'Main Campus');
+      },
+    );
 
-    test('transitions to QrScannerError when location does not exist in Firestore', () async {
-      when(() => mockRepository.getLocationConfig('unknown_loc'))
-          .thenThrow(const LocationNotFoundException());
+    test(
+      'transitions to QrScannerError when location does not exist in Firestore',
+      () async {
+        when(() => mockRepository.getLocationConfig('unknown_loc'))
+            .thenThrow(const LocationNotFoundException());
 
-      final notifier = container.read(qrScannerProvider.notifier);
-      await notifier.onQrCodeDetected('{"locationId": "unknown_loc"}');
+        final notifier = container.read(qrScannerProvider.notifier);
+        await notifier.onQrCodeDetected('{"locationId": "unknown_loc"}');
 
-      final state = container.read(qrScannerProvider);
-      expect(state, isA<QrScannerError>());
-      final errorState = state as QrScannerError;
-      expect(errorState.exception, isA<LocationNotFoundException>());
-    });
+        final state = container.read(qrScannerProvider);
+        expect(state, isA<QrScannerError>());
+        final errorState = state as QrScannerError;
+        expect(errorState.exception, isA<LocationNotFoundException>());
+      },
+    );
 
-    test('transitions to QrScannerError when QR payload is malformed', () async {
-      final notifier = container.read(qrScannerProvider.notifier);
-      await notifier.onQrCodeDetected('{"invalidKey": 123}');
+    test(
+      'transitions to QrScannerError when QR payload is malformed',
+      () async {
+        final notifier = container.read(qrScannerProvider.notifier);
+        await notifier.onQrCodeDetected('{"invalidKey": 123}');
 
-      final state = container.read(qrScannerProvider);
-      expect(state, isA<QrScannerError>());
-      final errorState = state as QrScannerError;
-      expect(errorState.exception, isA<MalformedQrPayloadException>());
-    });
+        final state = container.read(qrScannerProvider);
+        expect(state, isA<QrScannerError>());
+        final errorState = state as QrScannerError;
+        expect(errorState.exception, isA<MalformedQrPayloadException>());
+      },
+    );
 
     test('reset() sets state back to QrScannerInitial', () async {
       final notifier = container.read(qrScannerProvider.notifier);

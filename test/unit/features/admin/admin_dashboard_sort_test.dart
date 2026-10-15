@@ -54,10 +54,11 @@ void main() {
       ),
     );
 
-    expect(
-      sorted.map((r) => r.userName).toList(),
-      ['amit shah', 'Meera Joshi', 'Zara Khan'],
-    );
+    expect(sorted.map((r) => r.userName).toList(), [
+      'amit shah',
+      'Meera Joshi',
+      'Zara Khan',
+    ]);
   });
 
   test('recent sort keeps checked-in before absent, then newest first', () {
@@ -68,9 +69,10 @@ void main() {
       ),
     );
 
-    expect(
-      sorted.map((r) => r.userName).toList(),
-      ['Meera Joshi', 'Zara Khan', 'amit shah'],
-    );
+    expect(sorted.map((r) => r.userName).toList(), [
+      'Meera Joshi',
+      'Zara Khan',
+      'amit shah',
+    ]);
   });
 }

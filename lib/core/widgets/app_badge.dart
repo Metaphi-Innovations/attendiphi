@@ -5,14 +5,7 @@ import '../../app/theme/app_radius.dart';
 import '../../features/checkin/domain/entities/check_in_type.dart';
 
 /// Semantic badge variants for status and role indicators.
-enum AppBadgeVariant {
-  primary,
-  success,
-  warning,
-  error,
-  info,
-  neutral,
-}
+enum AppBadgeVariant { primary, success, warning, error, info, neutral }
 
 /// Universal, clean status badge component.
 class AppBadge extends StatelessWidget {
@@ -47,27 +40,19 @@ class AppBadge extends StatelessWidget {
         fg = isDark ? AppColors.primaryLight : AppColors.onPrimaryContainer;
         border = BorderSide(color: fg.withAlpha(50));
       case AppBadgeVariant.success:
-        bg = isDark
-            ? AppColors.success.withAlpha(40)
-            : AppColors.successLight;
+        bg = isDark ? AppColors.success.withAlpha(40) : AppColors.successLight;
         fg = isDark ? const Color(0xFF34D399) : AppColors.onSuccessContainer;
         border = BorderSide(color: fg.withAlpha(50));
       case AppBadgeVariant.warning:
-        bg = isDark
-            ? AppColors.warning.withAlpha(40)
-            : AppColors.warningLight;
+        bg = isDark ? AppColors.warning.withAlpha(40) : AppColors.warningLight;
         fg = isDark ? const Color(0xFFFBBF24) : AppColors.onWarningContainer;
         border = BorderSide(color: fg.withAlpha(50));
       case AppBadgeVariant.error:
-        bg = isDark
-            ? AppColors.error.withAlpha(40)
-            : AppColors.errorLight;
+        bg = isDark ? AppColors.error.withAlpha(40) : AppColors.errorLight;
         fg = isDark ? const Color(0xFFF87171) : AppColors.onErrorContainer;
         border = BorderSide(color: fg.withAlpha(50));
       case AppBadgeVariant.info:
-        bg = isDark
-            ? AppColors.info.withAlpha(40)
-            : AppColors.infoLight;
+        bg = isDark ? AppColors.info.withAlpha(40) : AppColors.infoLight;
         fg = isDark ? const Color(0xFF60A5FA) : AppColors.onInfoContainer;
         border = BorderSide(color: fg.withAlpha(50));
       case AppBadgeVariant.neutral:
@@ -178,7 +163,9 @@ class AppAttendanceTypeBadge extends StatelessWidget {
     return AppBadge(
       label: isSubstitute ? 'Substitute' : 'Member',
       variant: isSubstitute ? AppBadgeVariant.warning : AppBadgeVariant.success,
-      icon: isSubstitute ? Icons.swap_horiz_rounded : Icons.verified_user_outlined,
+      icon: isSubstitute
+          ? Icons.swap_horiz_rounded
+          : Icons.verified_user_outlined,
       fontSize: fontSize,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
     );
@@ -205,9 +192,7 @@ class AppLiveSyncBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF10B981).withAlpha(25),
         borderRadius: AppRadius.fullAll,
-        border: Border.all(
-          color: const Color(0xFF10B981).withAlpha(60),
-        ),
+        border: Border.all(color: const Color(0xFF10B981).withAlpha(60)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

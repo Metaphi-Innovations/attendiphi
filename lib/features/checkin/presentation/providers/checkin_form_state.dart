@@ -28,6 +28,7 @@ class CheckInFormState {
   final String email;
   final CheckInType? type;
   final String? substituteForMember;
+
   /// Employee id for [substituteForMember] (session member lock + typeahead).
   final String? substituteForMemberId;
   final String companyName;
@@ -79,9 +80,8 @@ class CheckInFormState {
       substituteForMember: (clearSubstituteFor || clearIdentity)
           ? null
           : (substituteForMember ?? this.substituteForMember),
-      substituteForMemberId: (clearSubstituteForMemberId ||
-              clearSubstituteFor ||
-              clearIdentity)
+      substituteForMemberId:
+          (clearSubstituteForMemberId || clearSubstituteFor || clearIdentity)
           ? null
           : (substituteForMemberId ?? this.substituteForMemberId),
       companyName: companyName ?? this.companyName,

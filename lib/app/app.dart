@@ -49,14 +49,8 @@ class _QrCheckInAppState extends ConsumerState<QrCheckInApp> {
         const AssetImage('assets/images/attendiphi_logo.png'),
         context,
       );
-      precacheImage(
-        const AssetImage('assets/images/RISE.png'),
-        context,
-      );
-      precacheImage(
-        const AssetImage('assets/images/BNI.jpg'),
-        context,
-      );
+      precacheImage(const AssetImage('assets/images/RISE.png'), context);
+      precacheImage(const AssetImage('assets/images/BNI.jpg'), context);
     }
   }
 

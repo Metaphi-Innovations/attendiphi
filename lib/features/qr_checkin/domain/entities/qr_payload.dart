@@ -39,4 +39,3 @@ class QrPayload {
   String toString() =>
       'QrPayload(locationId: $locationId, sessionDateStr: $sessionDateStr, adminId: $adminId)';
 }
-

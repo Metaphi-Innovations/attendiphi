@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 /// Google Pay style animated success checkmark with expanding ripple rings and particle burst.
@@ -260,10 +261,7 @@ class _AnimatedCheckmarkPainter extends CustomPainter {
 
 /// Custom painter drawing festive particle dots shooting outward.
 class _ParticlesPainter extends CustomPainter {
-  const _ParticlesPainter({
-    required this.progress,
-    required this.baseColor,
-  });
+  const _ParticlesPainter({required this.progress, required this.baseColor});
 
   final double progress;
   final Color baseColor;
@@ -290,7 +288,9 @@ class _ParticlesPainter extends CustomPainter {
       final distance = (maxRadius * 0.5) + (maxRadius * 0.5 * progress);
       final alpha = ((1.0 - progress) * 255).toInt().clamp(0, 255);
 
-      final color = _particleColors[i % _particleColors.length].withAlpha(alpha);
+      final color = _particleColors[i % _particleColors.length].withAlpha(
+        alpha,
+      );
       final particlePaint = Paint()..color = color;
 
       final pos = Offset(

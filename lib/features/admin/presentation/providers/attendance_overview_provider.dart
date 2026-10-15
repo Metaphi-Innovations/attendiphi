@@ -1,11 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/supabase/resilient_poll_stream.dart';
 import '../../../checkin/domain/entities/check_in_submission.dart';
 import '../../../checkin/domain/entities/check_in_type.dart';
+import '../../../checkin/presentation/providers/checkin_providers.dart';
 import '../../../employee/domain/employee_lookup.dart';
 import '../../../employee/domain/entities/employee.dart';
 import '../../../employee/presentation/providers/employee_providers.dart';
-import 'admin_dashboard_provider.dart';
+import 'admin_auth_provider.dart';
 
 /// Represents the attendance status of a member on a specific Thursday meeting.
 enum MemberAttendanceStatus {
@@ -89,8 +91,9 @@ class AttendanceOverviewFilterState {
   }) {
     return AttendanceOverviewFilterState(
       searchQuery: searchQuery ?? this.searchQuery,
-      selectedMonth:
-          selectedMonth != null ? selectedMonth() : this.selectedMonth,
+      selectedMonth: selectedMonth != null
+          ? selectedMonth()
+          : this.selectedMonth,
     );
   }
 }
@@ -116,10 +119,11 @@ class AttendanceOverviewFilterNotifier
   }
 }
 
-final attendanceOverviewFilterProvider = NotifierProvider<
-    AttendanceOverviewFilterNotifier, AttendanceOverviewFilterState>(
-  AttendanceOverviewFilterNotifier.new,
-);
+final attendanceOverviewFilterProvider =
+    NotifierProvider<
+      AttendanceOverviewFilterNotifier,
+      AttendanceOverviewFilterState
+    >(AttendanceOverviewFilterNotifier.new);
 
 /// Generates all Thursday dates from September 2026 to September 2027 inclusive.
 final allThursdayDatesProvider = Provider<List<DateTime>>((ref) {
@@ -157,11 +161,42 @@ final meetingMonthsProvider = Provider<List<DateTime>>((ref) {
   return months;
 });
 
+String _overviewYmd(DateTime d) {
+  final m = d.month.toString().padLeft(2, '0');
+  final day = d.day.toString().padLeft(2, '0');
+  return '${d.year}-$m-$day';
+}
+
+/// Month-scoped check-ins for Attendance Overview (avoids full-history dumps).
+final overviewCheckInsStreamProvider = StreamProvider<List<CheckInSubmission>>((
+  ref,
+) {
+  final auth = ref.watch(adminAuthProvider);
+  if (!auth.sessionResolved) {
+    return pendingStreamController<List<CheckInSubmission>>(
+      onDispose: ref.onDispose,
+    ).stream;
+  }
+  if (!auth.isAuthenticated) {
+    return Stream.value(const <CheckInSubmission>[]);
+  }
+  final filters = ref.watch(attendanceOverviewFilterProvider);
+  final month = filters.selectedMonth ?? DateTime.now();
+  final from = DateTime(month.year, month.month, 1);
+  final to = DateTime(month.year, month.month + 1, 0);
+  final repository = ref.watch(checkInRepositoryProvider);
+  return repository.streamCheckIns(
+    sessionDateFrom: _overviewYmd(from),
+    sessionDateTo: _overviewYmd(to),
+  );
+});
+
 /// Computed attendance matrix rows for all members based on real-time check-ins.
-final attendanceMatrixProvider =
-    Provider<AsyncValue<List<MemberAttendanceRow>>>((ref) {
+final attendanceMatrixProvider = Provider<AsyncValue<List<MemberAttendanceRow>>>((
+  ref,
+) {
   final employeesAsync = ref.watch(employeesStreamProvider);
-  final checkInsAsync = ref.watch(checkInsStreamProvider);
+  final checkInsAsync = ref.watch(overviewCheckInsStreamProvider);
   final allThursdays = ref.watch(allThursdayDatesProvider);
   final filters = ref.watch(attendanceOverviewFilterProvider);
 
@@ -220,17 +255,17 @@ final attendanceMatrixProvider =
     for (final thursday in allThursdays) {
       final key = dateKey(thursday);
       final isTodayOrFuture = !thursday.isBefore(today);
-      final isThursInSelectedMonth = filters.selectedMonth == null ||
+      final isThursInSelectedMonth =
+          filters.selectedMonth == null ||
           (thursday.year == filters.selectedMonth!.year &&
               thursday.month == filters.selectedMonth!.month);
 
       final daySubs = byDate[key] ?? const <CheckInSubmission>[];
       final matchingSubmissions = daySubs.where((sub) {
         if (sub.type.isSubstitute) {
-          return EmployeeLookup.forNamedMember(
-                [member],
-                sub.substituteForMember,
-              ) !=
+          return EmployeeLookup.forNamedMember([
+                member,
+              ], sub.substituteForMember) !=
               null;
         }
         return EmployeeLookup.forCheckIn([member], sub) != null;
@@ -335,32 +370,32 @@ class AttendanceOverviewStats {
 
 final attendanceOverviewStatsProvider =
     Provider<AsyncValue<AttendanceOverviewStats>>((ref) {
-  final matrixAsync = ref.watch(attendanceMatrixProvider);
+      final matrixAsync = ref.watch(attendanceMatrixProvider);
 
-  return matrixAsync.whenData((rows) {
-    int totalPresents = 0;
-    int totalSubstitutes = 0;
-    int totalAbsences = 0;
+      return matrixAsync.whenData((rows) {
+        int totalPresents = 0;
+        int totalSubstitutes = 0;
+        int totalAbsences = 0;
 
-    for (final row in rows) {
-      totalPresents += row.presentCount;
-      totalSubstitutes += row.substituteCount;
-      totalAbsences += row.absentCount;
-    }
+        for (final row in rows) {
+          totalPresents += row.presentCount;
+          totalSubstitutes += row.substituteCount;
+          totalAbsences += row.absentCount;
+        }
 
-    final totalAttended = totalPresents + totalSubstitutes;
-    final totalMeetingsRecorded = totalAttended + totalAbsences;
-    final rate = totalMeetingsRecorded > 0
-        ? (totalAttended / totalMeetingsRecorded) * 100
-        : 0.0;
+        final totalAttended = totalPresents + totalSubstitutes;
+        final totalMeetingsRecorded = totalAttended + totalAbsences;
+        final rate = totalMeetingsRecorded > 0
+            ? (totalAttended / totalMeetingsRecorded) * 100
+            : 0.0;
 
-    return AttendanceOverviewStats(
-      totalMembers: rows.length,
-      totalCheckIns: totalAttended,
-      totalPresents: totalPresents,
-      totalSubstitutes: totalSubstitutes,
-      totalAbsences: totalAbsences,
-      overallAttendanceRate: rate,
-    );
-  });
-});
+        return AttendanceOverviewStats(
+          totalMembers: rows.length,
+          totalCheckIns: totalAttended,
+          totalPresents: totalPresents,
+          totalSubstitutes: totalSubstitutes,
+          totalAbsences: totalAbsences,
+          overallAttendanceRate: rate,
+        );
+      });
+    });

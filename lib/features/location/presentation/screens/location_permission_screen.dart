@@ -17,7 +17,6 @@ import '../../../../core/widgets/app_card.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/metaphi_loading_indicator.dart';
 import '../../../app_config/presentation/providers/check_in_restrictions_provider.dart';
-import '../../../checkin/data/datasources/device_checkin_service.dart';
 import '../../../checkin/domain/entities/check_in_submission.dart';
 import '../../../checkin/presentation/screens/checkin_result_screen.dart';
 import '../../../qr_checkin/domain/check_in_session_token.dart';
@@ -60,7 +59,8 @@ class _LocationPermissionScreenState
 
   /// Robust extraction of session date query parameter across Native and Web.
   String? get _effectiveSessionDateStr {
-    if (widget.sessionDateStr != null && widget.sessionDateStr!.trim().isNotEmpty) {
+    if (widget.sessionDateStr != null &&
+        widget.sessionDateStr!.trim().isNotEmpty) {
       return widget.sessionDateStr!.trim();
     }
     if (kIsWeb) {
@@ -99,8 +99,11 @@ class _LocationPermissionScreenState
     final sessionDate = _parsedSessionDate;
     if (sessionDate == null) return false;
     final today = DateTime(_now.year, _now.month, _now.day);
-    final sessionDay =
-        DateTime(sessionDate.year, sessionDate.month, sessionDate.day);
+    final sessionDay = DateTime(
+      sessionDate.year,
+      sessionDate.month,
+      sessionDate.day,
+    );
     return sessionDay.isBefore(today);
   }
 
@@ -108,8 +111,11 @@ class _LocationPermissionScreenState
     final sessionDate = _parsedSessionDate;
     if (sessionDate == null) return false;
     final today = DateTime(_now.year, _now.month, _now.day);
-    final sessionDay =
-        DateTime(sessionDate.year, sessionDate.month, sessionDate.day);
+    final sessionDay = DateTime(
+      sessionDate.year,
+      sessionDate.month,
+      sessionDate.day,
+    );
     return sessionDay.isAfter(today);
   }
 
@@ -130,8 +136,9 @@ class _LocationPermissionScreenState
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // After Deny → browser/app settings → Allow, retry automatically on return.
     if (state == AppLifecycleState.resumed && mounted) {
-      final current =
-          ref.read(locationValidationFamilyProvider(widget.location));
+      final current = ref.read(
+        locationValidationFamilyProvider(widget.location),
+      );
       if (current is LocationValidationError) {
         _retryLocationPermission();
       }
@@ -200,7 +207,9 @@ class _LocationPermissionScreenState
     );
   }
 
-  Future<void> _applyRestrictionsGate({required bool restrictionsEnabled}) async {
+  Future<void> _applyRestrictionsGate({
+    required bool restrictionsEnabled,
+  }) async {
     if (!restrictionsEnabled) {
       // Test mode: any QR date, multi check-in, no GPS/location gate.
       if (_hasCheckedIn || _existingSubmission != null) {
@@ -227,32 +236,10 @@ class _LocationPermissionScreenState
     }
 
     // Production restrictions ON.
-    // Only shortcut to Approved when a real submission payload exists —
-    // lock-only / cookie-'1' must not open an empty success screen.
-    final deviceService = ref.read(deviceCheckInServiceProvider);
-    final existingSubmission = await deviceService.getSubmissionForSession(
-      sessionDateStr: _effectiveSessionDateStr,
-      locationId: widget.location.id,
-    );
-
+    // Venue phones/tablets are shared: never redirect to "Attendance Recorded"
+    // based on this device's previous member. Phone + member locks enforce
+    // one check-in per person on submit.
     if (!mounted) return;
-
-    if (existingSubmission != null) {
-      setState(() {
-        _hasCheckedIn = true;
-        _existingSubmission = existingSubmission;
-        _isCheckingDevice = false;
-        _gateApplied = true;
-      });
-      context.go(
-        RouteNames.checkinResultPath(
-          checkInId: existingSubmission.id,
-          memberId: existingSubmission.memberId,
-        ),
-        extra: existingSubmission,
-      );
-      return;
-    }
 
     setState(() {
       _hasCheckedIn = false;
@@ -292,9 +279,7 @@ class _LocationPermissionScreenState
     });
 
     if (configAsync.isLoading && !configAsync.hasValue) {
-      return const Scaffold(
-        body: Center(child: MetaPhiLoadingIndicator()),
-      );
+      return const Scaffold(body: Center(child: MetaPhiLoadingIndicator()));
     }
 
     final restrictionsEnabled = configAsync.maybeWhen(
@@ -319,15 +304,12 @@ class _LocationPermissionScreenState
     }
 
     if (_isCheckingDevice) {
-      return const Scaffold(
-        body: Center(
-          child: MetaPhiLoadingIndicator(),
-        ),
-      );
+      return const Scaffold(body: Center(child: MetaPhiLoadingIndicator()));
     }
 
-    final validationState =
-        ref.watch(locationValidationFamilyProvider(widget.location));
+    final validationState = ref.watch(
+      locationValidationFamilyProvider(widget.location),
+    );
     final isCompact = context.isCompactMobile;
 
     final hPadding = context.responsiveValue<double>(
@@ -351,16 +333,14 @@ class _LocationPermissionScreenState
       },
     );
 
-    final isBusy = validationState is LocationValidationRequestingPermission ||
+    final isBusy =
+        validationState is LocationValidationRequestingPermission ||
         validationState is LocationValidationFetchingPosition;
 
     // When restrictions OFF: PAST / UPCOMING / any weekday QR is allowed.
-    final showNotThursday =
-        restrictionsEnabled && !_isTodayThursday;
-    final showExpired =
-        restrictionsEnabled && _isSessionExpired;
-    final showFuture =
-        restrictionsEnabled && _isSessionFuture;
+    final showNotThursday = restrictionsEnabled && !_isTodayThursday;
+    final showExpired = restrictionsEnabled && _isSessionExpired;
+    final showFuture = restrictionsEnabled && _isSessionFuture;
 
     return AppScaffold(
       title: AppStrings.locationPermissionTitle,
@@ -377,129 +357,136 @@ class _LocationPermissionScreenState
             child: showNotThursday
                 ? _buildNotThursdayView(context)
                 : showExpired
-                    ? _buildExpiredSessionView(
-                        context, _parsedSessionDate ?? DateTime.now())
-                    : showFuture
-                        ? _buildFutureSessionView(
-                            context, _parsedSessionDate ?? DateTime.now())
-                        : Column(
-                        children: [
-                          SizedBox(height: isCompact ? 10 : 20),
-
-                // 1. Animated Radar / Status Icon
-                _LocationRadarIndicator(
-                  pulseController: _pulseController,
-                  state: validationState,
-                ),
-
-                SizedBox(height: isCompact ? 20 : 32),
-
-                // 2. Venue Target Card
-                AppCard(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .surfaceContainerHighest
-                      .withAlpha(50),
-                  child: Column(
+                ? _buildExpiredSessionView(
+                    context,
+                    _parsedSessionDate ?? DateTime.now(),
+                  )
+                : showFuture
+                ? _buildFutureSessionView(
+                    context,
+                    _parsedSessionDate ?? DateTime.now(),
+                  )
+                : Column(
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: AppColors.primaryLight.withAlpha(40),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.location_on_rounded,
-                              color: AppColors.primary,
-                              size: 24,
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                      SizedBox(height: isCompact ? 10 : 20),
+
+                      // 1. Animated Radar / Status Icon
+                      _LocationRadarIndicator(
+                        pulseController: _pulseController,
+                        state: validationState,
+                      ),
+
+                      SizedBox(height: isCompact ? 20 : 32),
+
+                      // 2. Venue Target Card
+                      AppCard(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHighest
+                            .withAlpha(50),
+                        child: Column(
+                          children: [
+                            Row(
                               children: [
-                                Text(
-                                  widget.location.name,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleMedium
-                                      ?.copyWith(fontWeight: FontWeight.bold),
-                                ),
-                                if (widget.location.address != null) ...[
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    widget.location.address!,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodySmall
-                                        ?.copyWith(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .onSurfaceVariant,
-                                        ),
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primaryLight.withAlpha(40),
+                                    shape: BoxShape.circle,
                                   ),
-                                ],
+                                  child: const Icon(
+                                    Icons.location_on_rounded,
+                                    color: AppColors.primary,
+                                    size: 24,
+                                  ),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        widget.location.name,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleMedium
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                      ),
+                                      if (widget.location.address != null) ...[
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          widget.location.address!,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .onSurfaceVariant,
+                                              ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
                               ],
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      const Divider(),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        alignment: WrapAlignment.spaceBetween,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        spacing: 8,
-                        runSpacing: 4,
-                        children: [
-                          Text(
-                            'Allowed Perimeter:',
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant,
+                            const SizedBox(height: 12),
+                            const Divider(),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              alignment: WrapAlignment.spaceBetween,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              spacing: 8,
+                              runSpacing: 4,
+                              children: [
+                                Text(
+                                  'Allowed Perimeter:',
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant,
+                                      ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withAlpha(20),
+                                    borderRadius: AppRadius.smAll,
+                                  ),
+                                  child: Text(
+                                    'Within ${widget.location.radiusMeters.round()} meters',
+                                    style: const TextStyle(
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
                                     ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
+                                  ),
+                                ),
+                              ],
                             ),
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withAlpha(20),
-                              borderRadius: AppRadius.smAll,
-                            ),
-                            child: Text(
-                              'Within ${widget.location.radiusMeters.round()} meters',
-                              style: const TextStyle(
-                                color: AppColors.primary,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
+
+                      SizedBox(height: isCompact ? 20 : 28),
+
+                      // 3. Dynamic State Message
+                      _buildStateMessage(context, validationState),
+
+                      SizedBox(height: isCompact ? 20 : 32),
+
+                      // 4. Action Buttons
+                      _buildActionButtons(context, validationState, isBusy),
                     ],
                   ),
-                ),
-
-                SizedBox(height: isCompact ? 20 : 28),
-
-                // 3. Dynamic State Message
-                _buildStateMessage(context, validationState),
-
-                SizedBox(height: isCompact ? 20 : 32),
-
-                // 4. Action Buttons
-                _buildActionButtons(context, validationState, isBusy),
-              ],
-            ),
           ),
         ),
       ),
@@ -510,10 +497,10 @@ class _LocationPermissionScreenState
     final theme = Theme.of(context);
     final isCompact = context.isCompactMobile;
     final isDark = theme.brightness == Brightness.dark;
-    final formattedSessionDate =
-        DateFormat('EEEE, dd MMMM yyyy').format(sessionDate);
-    final formattedToday =
-        DateFormat('EEEE, dd MMMM yyyy').format(DateTime.now());
+    final formattedSessionDate = DateFormat('EEEE, dd MMMM yyyy')
+        .format(sessionDate);
+    final formattedToday = DateFormat('EEEE, dd MMMM yyyy')
+        .format(DateTime.now());
 
     return Column(
       children: [
@@ -616,8 +603,8 @@ class _LocationPermissionScreenState
     final theme = Theme.of(context);
     final isCompact = context.isCompactMobile;
     final isDark = theme.brightness == Brightness.dark;
-    final formattedSessionDate =
-        DateFormat('EEEE, dd MMMM yyyy').format(sessionDate);
+    final formattedSessionDate = DateFormat('EEEE, dd MMMM yyyy')
+        .format(sessionDate);
 
     return Column(
       children: [
@@ -750,7 +737,11 @@ class _LocationPermissionScreenState
           child: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.lock_clock_rounded, size: 12, color: Color(0xFFD97706)),
+              Icon(
+                Icons.lock_clock_rounded,
+                size: 12,
+                color: Color(0xFFD97706),
+              ),
               SizedBox(width: 5),
               Text(
                 'THURSDAY ONLY',
@@ -916,7 +907,8 @@ class _LocationPermissionScreenState
     }
 
     if (state is LocationValidationError) {
-      final isPermissionDeny = state.exception is LocationPermissionDeniedException ||
+      final isPermissionDeny =
+          state.exception is LocationPermissionDeniedException ||
           state.exception is LocationPermissionPermanentlyDeniedException;
       return Container(
         padding: const EdgeInsets.all(AppSpacing.md),
@@ -983,7 +975,8 @@ class _LocationPermissionScreenState
               onPressed: () {
                 ref
                     .read(
-                      locationValidationFamilyProvider(widget.location).notifier,
+                      locationValidationFamilyProvider(widget.location)
+                          .notifier,
                     )
                     .openSettings();
               },
@@ -1030,14 +1023,15 @@ class _LocationRadarIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isSuccess = state is LocationValidationSuccess;
-    final isError = state is LocationValidationOutsideRadius ||
+    final isError =
+        state is LocationValidationOutsideRadius ||
         state is LocationValidationError;
 
     final primaryColor = isSuccess
         ? AppColors.success
         : isError
-            ? AppColors.error
-            : AppColors.primary;
+        ? AppColors.error
+        : AppColors.primary;
 
     return Center(
       child: SizedBox(
@@ -1056,8 +1050,9 @@ class _LocationRadarIndicator extends StatelessWidget {
                     height: 60 + (pulseController.value * 70),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: primaryColor
-                          .withAlpha((120 * (1 - pulseController.value)).toInt()),
+                      color: primaryColor.withAlpha(
+                        (120 * (1 - pulseController.value)).toInt(),
+                      ),
                     ),
                   );
                 },
@@ -1082,8 +1077,8 @@ class _LocationRadarIndicator extends StatelessWidget {
                 isSuccess
                     ? Icons.check_rounded
                     : isError
-                        ? Icons.location_off_rounded
-                        : Icons.my_location_rounded,
+                    ? Icons.location_off_rounded
+                    : Icons.my_location_rounded,
                 color: Colors.white,
                 size: 38,
               ),

@@ -64,6 +64,7 @@ void main() {
         sessionDateYmd: any(named: 'sessionDateYmd'),
         claimDeviceId: any(named: 'claimDeviceId'),
         claimMemberId: any(named: 'claimMemberId'),
+        sessionToken: any(named: 'sessionToken'),
       ),
     ).thenAnswer((_) async {});
     when(() => mockDispatchService.dispatchAdminCheckInNotification(any()))
@@ -131,11 +132,12 @@ void main() {
           sessionDateYmd: '2026-09-03',
           claimDeviceId: null,
           claimMemberId: any(named: 'claimMemberId'),
+          sessionToken: any(named: 'sessionToken'),
         ),
       ).called(1);
     });
 
-    test('ON claims device lock atomically via submitCheckIn', () async {
+    test('ON does not claim device lock (shared venue tablets)', () async {
       final usecase = SubmitCheckIn(
         mockRepository,
         notificationDispatchService: mockDispatchService,
@@ -154,8 +156,8 @@ void main() {
         restrictionsEnabled: true,
       );
 
-      // Device lock is passed into the atomic write — never claimed separately
-      // (avoids orphan locks when checkIns write fails / times out).
+      // Shared venue devices must not block other members — claimDeviceId is
+      // always null; uniqueness is phone + member locks only.
       verifyNever(
         () => mockRepository.claimDeviceSessionLock(
           deviceId: any(named: 'deviceId'),
@@ -167,86 +169,91 @@ void main() {
           any(),
           enforceThursday: true,
           sessionDateYmd: '2026-09-24',
-          claimDeviceId: 'device-a',
+          claimDeviceId: null,
           claimMemberId: 'emp_rahul',
         ),
       ).called(1);
     });
 
-    test('atomic write failure does not leave a separate device lock claim',
-        () async {
-      when(
-        () => mockRepository.submitCheckIn(
-          any(),
-          enforceThursday: any(named: 'enforceThursday'),
-          sessionDateYmd: any(named: 'sessionDateYmd'),
-          claimDeviceId: any(named: 'claimDeviceId'),
-          claimMemberId: any(named: 'claimMemberId'),
-        ),
-      ).thenThrow(
-        const ServerException(technicalMessage: 'Firestore write timed out'),
-      );
+    test(
+      'atomic write failure does not leave a separate device lock claim',
+      () async {
+        when(
+          () => mockRepository.submitCheckIn(
+            any(),
+            enforceThursday: any(named: 'enforceThursday'),
+            sessionDateYmd: any(named: 'sessionDateYmd'),
+            claimDeviceId: any(named: 'claimDeviceId'),
+            claimMemberId: any(named: 'claimMemberId'),
+            sessionToken: any(named: 'sessionToken'),
+          ),
+        ).thenThrow(
+          const ServerException(technicalMessage: 'Firestore write timed out'),
+        );
 
-      final usecase = SubmitCheckIn(
-        mockRepository,
-        notificationDispatchService: mockDispatchService,
-        nowProvider: () => DateTime(2026, 9, 24, 10, 0),
-      );
+        final usecase = SubmitCheckIn(
+          mockRepository,
+          notificationDispatchService: mockDispatchService,
+          nowProvider: () => DateTime(2026, 9, 24, 10, 0),
+        );
 
-      await expectLater(
-        usecase(
+        await expectLater(
+          usecase(
+            name: 'Rahul Sharma',
+            phone: '9876543210',
+            type: CheckInType.member,
+            location: testLocation,
+            proximityResult: testProximity,
+            sessionDateStr: '2026-09-24',
+            deviceId: 'device-a',
+            restrictionsEnabled: true,
+          ),
+          throwsA(isA<ServerException>()),
+        );
+
+        verifyNever(
+          () => mockRepository.claimDeviceSessionLock(
+            deviceId: any(named: 'deviceId'),
+            sessionDateYmd: any(named: 'sessionDateYmd'),
+          ),
+        );
+      },
+    );
+
+    test(
+      'OFF allows mismatched QR session date and stamps that session day',
+      () async {
+        final usecase = SubmitCheckIn(
+          mockRepository,
+          notificationDispatchService: mockDispatchService,
+          nowProvider: () => DateTime(2026, 9, 24, 10, 30),
+        );
+
+        final submission = await usecase(
           name: 'Rahul Sharma',
           phone: '9876543210',
           type: CheckInType.member,
           location: testLocation,
           proximityResult: testProximity,
-          sessionDateStr: '2026-09-24',
+          sessionDateStr: '2026-09-03',
           deviceId: 'device-a',
-          restrictionsEnabled: true,
-        ),
-        throwsA(isA<ServerException>()),
-      );
+          restrictionsEnabled: false,
+        );
 
-      verifyNever(
-        () => mockRepository.claimDeviceSessionLock(
-          deviceId: any(named: 'deviceId'),
-          sessionDateYmd: any(named: 'sessionDateYmd'),
-        ),
-      );
-    });
-
-    test('OFF allows mismatched QR session date and stamps that session day',
-        () async {
-      final usecase = SubmitCheckIn(
-        mockRepository,
-        notificationDispatchService: mockDispatchService,
-        nowProvider: () => DateTime(2026, 9, 24, 10, 30),
-      );
-
-      final submission = await usecase(
-        name: 'Rahul Sharma',
-        phone: '9876543210',
-        type: CheckInType.member,
-        location: testLocation,
-        proximityResult: testProximity,
-        sessionDateStr: '2026-09-03',
-        deviceId: 'device-a',
-        restrictionsEnabled: false,
-      );
-
-      // Attendance is attributed to the QR session date (not "today").
-      expect(submission.timestamp.year, 2026);
-      expect(submission.timestamp.month, 9);
-      expect(submission.timestamp.day, 3);
-      expect(submission.timestamp.hour, 10);
-      expect(submission.timestamp.minute, 30);
-      verifyNever(
-        () => mockRepository.claimDeviceSessionLock(
-          deviceId: any(named: 'deviceId'),
-          sessionDateYmd: any(named: 'sessionDateYmd'),
-        ),
-      );
-    });
+        // Attendance is attributed to the QR session date (not "today").
+        expect(submission.timestamp.year, 2026);
+        expect(submission.timestamp.month, 9);
+        expect(submission.timestamp.day, 3);
+        expect(submission.timestamp.hour, 10);
+        expect(submission.timestamp.minute, 30);
+        verifyNever(
+          () => mockRepository.claimDeviceSessionLock(
+            deviceId: any(named: 'deviceId'),
+            sessionDateYmd: any(named: 'sessionDateYmd'),
+          ),
+        );
+      },
+    );
 
     test('OFF Oct 8 QR stamps Oct 8 even when today is earlier', () async {
       final usecase = SubmitCheckIn(

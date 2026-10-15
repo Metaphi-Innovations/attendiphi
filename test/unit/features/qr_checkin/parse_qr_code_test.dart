@@ -20,7 +20,8 @@ void main() {
     });
 
     test('parses JSON with timestamp and extra metadata', () {
-      const raw = '{"locationId": "mumbai_hq", "timestamp": "2026-08-26T10:00:00Z"}';
+      const raw =
+          '{"locationId": "mumbai_hq", "timestamp": "2026-08-26T10:00:00Z"}';
       final payload = usecase(raw);
 
       expect(payload.locationId, 'mumbai_hq');
@@ -28,21 +29,21 @@ void main() {
       expect(payload.timestamp?.year, 2026);
     });
 
-    test('throws MalformedQrPayloadException when locationId is missing in JSON', () {
-      const raw = '{"name": "Invalid Location"}';
-      expect(
-        () => usecase(raw),
-        throwsA(isA<MalformedQrPayloadException>()),
-      );
-    });
+    test(
+      'throws MalformedQrPayloadException when locationId is missing in JSON',
+      () {
+        const raw = '{"name": "Invalid Location"}';
+        expect(() => usecase(raw), throwsA(isA<MalformedQrPayloadException>()));
+      },
+    );
 
-    test('throws MalformedQrPayloadException for empty locationId string in JSON', () {
-      const raw = '{"locationId": "   "}';
-      expect(
-        () => usecase(raw),
-        throwsA(isA<MalformedQrPayloadException>()),
-      );
-    });
+    test(
+      'throws MalformedQrPayloadException for empty locationId string in JSON',
+      () {
+        const raw = '{"locationId": "   "}';
+        expect(() => usecase(raw), throwsA(isA<MalformedQrPayloadException>()));
+      },
+    );
   });
 
   group('ParseQrCode - URI format', () {
@@ -109,11 +110,14 @@ void main() {
       expect(() => usecase('   '), throwsA(isA<InvalidQrCodeException>()));
     });
 
-    test('throws InvalidQrCodeException for special characters or binary garbage', () {
-      expect(
-        () => usecase('!@#%^&*()'),
-        throwsA(isA<InvalidQrCodeException>()),
-      );
-    });
+    test(
+      'throws InvalidQrCodeException for special characters or binary garbage',
+      () {
+        expect(
+          () => usecase('!@#%^&*()'),
+          throwsA(isA<InvalidQrCodeException>()),
+        );
+      },
+    );
   });
 }

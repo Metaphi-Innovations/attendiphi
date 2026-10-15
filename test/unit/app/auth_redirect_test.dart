@@ -32,18 +32,21 @@ void main() {
     }
   });
 
-  test('password reset with oobCode stays public and does not authenticate', () {
-    expect(
-      AuthRedirect.location(
-        path: RouteNames.adminResetPassword,
-        sessionResolved: true,
-        isAuthenticated: false,
-        mustResetPassword: false,
-        hasPasswordResetCode: true,
-      ),
-      isNull,
-    );
-  });
+  test(
+    'password reset with oobCode stays public and does not authenticate',
+    () {
+      expect(
+        AuthRedirect.location(
+          path: RouteNames.adminResetPassword,
+          sessionResolved: true,
+          isAuthenticated: false,
+          mustResetPassword: false,
+          hasPasswordResetCode: true,
+        ),
+        isNull,
+      );
+    },
+  );
 
   test('password reset without oobCode does not open an admin session', () {
     expect(

@@ -1,8 +1,10 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 import 'check_in_submission.dart';
 
-/// Result container for cursor-based Firestore pagination of check-in submissions.
+/// Result container for cursor-based pagination of check-in submissions.
+///
+/// [lastDocument] is backend-specific:
+/// - Firestore: `DocumentSnapshot`
+/// - Supabase: `String` keyset cursor (`"$iso|$id"`)
 class PaginatedCheckInsResult {
   const PaginatedCheckInsResult({
     required this.items,
@@ -13,8 +15,8 @@ class PaginatedCheckInsResult {
   /// The check-in items loaded in the current page.
   final List<CheckInSubmission> items;
 
-  /// The cursor snapshot pointing to the last document in this page.
-  final DocumentSnapshot<Map<String, dynamic>>? lastDocument;
+  /// Opaque pagination cursor for the next page request.
+  final Object? lastDocument;
 
   /// Whether there are additional records to fetch in subsequent pages.
   final bool hasMore;

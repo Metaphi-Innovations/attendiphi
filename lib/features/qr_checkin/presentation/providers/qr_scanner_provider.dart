@@ -37,10 +37,7 @@ class QrScannerNotifier extends Notifier<QrScannerState> {
       final getLocationConfig = ref.read(getLocationConfigUseCaseProvider);
       final location = await getLocationConfig(payload.locationId);
 
-      state = QrScannerSuccess(
-        payload: payload,
-        location: location,
-      );
+      state = QrScannerSuccess(payload: payload, location: location);
 
       AppLogger.info(
         'QR verified: location "${location.name}" (ID: ${location.id}) is active',
@@ -74,7 +71,8 @@ class QrScannerNotifier extends Notifier<QrScannerState> {
 }
 
 /// Provider for [QrScannerNotifier].
-final qrScannerProvider =
-    NotifierProvider<QrScannerNotifier, QrScannerState>(() {
-  return QrScannerNotifier();
-});
+final qrScannerProvider = NotifierProvider<QrScannerNotifier, QrScannerState>(
+  () {
+    return QrScannerNotifier();
+  },
+);

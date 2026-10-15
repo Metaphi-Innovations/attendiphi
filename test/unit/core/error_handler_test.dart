@@ -6,10 +6,7 @@ void main() {
   group('ErrorHandler - getUserMessage', () {
     test('returns custom user message for AppException', () {
       const exception = LocationPermissionDeniedException();
-      expect(
-        ErrorHandler.getUserMessage(exception),
-        exception.userMessage,
-      );
+      expect(ErrorHandler.getUserMessage(exception), exception.userMessage);
     });
 
     test('returns friendly fallback for generic exceptions', () {
@@ -46,10 +43,7 @@ void main() {
         ),
         isFalse,
       );
-      expect(
-        ErrorHandler.isRetryable(const InvalidQrCodeException()),
-        isFalse,
-      );
+      expect(ErrorHandler.isRetryable(const InvalidQrCodeException()), isFalse);
       expect(
         ErrorHandler.isRetryable(const DuplicateCheckInException()),
         isFalse,
@@ -66,9 +60,7 @@ void main() {
         isTrue,
       );
       expect(
-        ErrorHandler.requiresSettings(
-          const LocationServiceDisabledException(),
-        ),
+        ErrorHandler.requiresSettings(const LocationServiceDisabledException()),
         isTrue,
       );
       expect(

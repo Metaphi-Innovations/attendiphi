@@ -1,5 +1,6 @@
 import 'device_fingerprint_stub.dart'
-    if (dart.library.html) 'device_fingerprint_web.dart' as platform;
+    if (dart.library.html) 'device_fingerprint_web.dart'
+    as platform;
 
 /// Cross-platform helper for deterministic physical device fingerprinting.
 class DeviceFingerprintHelper {

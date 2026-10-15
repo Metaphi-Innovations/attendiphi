@@ -157,10 +157,11 @@ class Employee {
       map['faceTemplates'] ?? map['faceDescriptors'],
     );
 
-    final bool isEnrolled = map['faceEnrolled'] as bool? ??
+    final bool isEnrolled =
+        map['faceEnrolled'] as bool? ??
         map['faceRegistered'] as bool? ??
         ((parsedTemplates != null && parsedTemplates.isNotEmpty) ||
-         (parsedEmbedding != null && parsedEmbedding.isNotEmpty));
+            (parsedEmbedding != null && parsedEmbedding.isNotEmpty));
 
     return Employee(
       id: docId ?? map['id']?.toString() ?? '',
@@ -191,7 +192,10 @@ class Employee {
     if (raw.isNotEmpty && raw.first is List) {
       return firestoreVector(List<dynamic>.from(raw.first as List));
     }
-    return [for (final e in raw) if (e is num) e.toDouble()];
+    return [
+      for (final e in raw)
+        if (e is num) e.toDouble(),
+    ];
   }
 
   /// Map with non-numeric keys. Flutter web `jsify` turns `"0","1"` into a JS
@@ -249,6 +253,9 @@ class Employee {
     if (raw is! List || raw.isEmpty) return null;
     if (raw.first is List) return _parseVector(raw.first);
     if (raw.first is! num) return null;
-    return [for (final e in raw) if (e is num) e.toDouble()];
+    return [
+      for (final e in raw)
+        if (e is num) e.toDouble(),
+    ];
   }
 }

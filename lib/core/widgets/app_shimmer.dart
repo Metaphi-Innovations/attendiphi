@@ -61,11 +61,7 @@ class _AppShimmerState extends State<AppShimmer>
             gradient: LinearGradient(
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
-              colors: [
-                baseColor,
-                highlightColor,
-                baseColor,
-              ],
+              colors: [baseColor, highlightColor, baseColor],
               stops: [
                 (_controller.value - 0.3).clamp(0.0, 1.0),
                 _controller.value,
@@ -81,10 +77,7 @@ class _AppShimmerState extends State<AppShimmer>
 
 /// Skeleton loading list for attendance check-in cards and user cards.
 class CheckInCardSkeletonList extends StatelessWidget {
-  const CheckInCardSkeletonList({
-    super.key,
-    this.count = 5,
-  });
+  const CheckInCardSkeletonList({super.key, this.count = 5});
 
   final int count;
 
@@ -101,7 +94,8 @@ class CheckInCardSkeletonList extends StatelessWidget {
               color: Theme.of(context).colorScheme.surface,
               borderRadius: AppRadius.mdAll,
               border: Border.all(
-                color: Theme.of(context).colorScheme.outlineVariant.withAlpha(50),
+                color: Theme.of(context).colorScheme.outlineVariant
+                    .withAlpha(50),
               ),
             ),
             child: const Row(
@@ -123,7 +117,11 @@ class CheckInCardSkeletonList extends StatelessWidget {
                   ),
                 ),
                 SizedBox(width: AppSpacing.sm),
-                AppShimmer(width: 60, height: 24, borderRadius: AppRadius.smAll),
+                AppShimmer(
+                  width: 60,
+                  height: 24,
+                  borderRadius: AppRadius.smAll,
+                ),
               ],
             ),
           ),

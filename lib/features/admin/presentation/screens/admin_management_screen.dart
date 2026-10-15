@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:math';
 
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../app/router/app_url.dart';
 import '../../../../app/theme/app_colors.dart';
@@ -20,7 +20,6 @@ import '../../../../core/widgets/app_card.dart';
 import '../../../../core/widgets/app_empty_view.dart';
 import '../../../../core/widgets/app_page_header.dart';
 import '../../../../core/widgets/metaphi_loading_indicator.dart';
-import '../../data/datasources/admin_auth_email.dart';
 import '../../domain/entities/admin_user.dart';
 import '../providers/admin_auth_provider.dart';
 import '../providers/admin_management_provider.dart';
@@ -36,10 +35,12 @@ class AdminManagementScreen extends ConsumerStatefulWidget {
 
 class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _adminTableHScrollController = ScrollController();
 
   @override
   void dispose() {
     _searchController.dispose();
+    _adminTableHScrollController.dispose();
     super.dispose();
   }
 
@@ -416,16 +417,26 @@ class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
                                             adminRepositoryProvider,
                                           );
 
-                                          final currentAuthUid =
-                                              FirebaseAuth.instance.currentUser?.uid ??
-                                                  '';
-                                          final createdByValue = currentAuthUid
-                                                  .isNotEmpty
-                                              ? currentAuthUid
-                                              : (currentAdmin?.uid.isNotEmpty ==
-                                                      true
-                                                  ? currentAdmin!.uid
-                                                  : (currentAdmin?.id ?? ''));
+                                          // Prefer admin profile id (stable across
+                                          // admin profile id vs Supabase Auth UUID).
+                                          final createdByValue =
+                                              (currentAdmin?.id
+                                                      .trim()
+                                                      .isNotEmpty ==
+                                                  true)
+                                              ? currentAdmin!.id.trim()
+                                              : (currentAdmin?.uid
+                                                            .trim()
+                                                            .isNotEmpty ==
+                                                        true
+                                                    ? currentAdmin!.uid.trim()
+                                                    : (Supabase
+                                                              .instance
+                                                              .client
+                                                              .auth
+                                                              .currentUser
+                                                              ?.id ??
+                                                          ''));
 
                                           final createdAdmin = await repo
                                               .createAdmin(
@@ -437,8 +448,10 @@ class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
                                                 role: AdminRole.admin,
                                               );
 
-                                          // Refresh list from Firestore stream.
-                                          ref.invalidate(allAdminsStreamProvider);
+                                          // Refresh the admin list stream.
+                                          ref.invalidate(
+                                            allAdminsStreamProvider,
+                                          );
 
                                           if (ctx.mounted) {
                                             Navigator.pop(ctx);
@@ -455,9 +468,16 @@ class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
                                             () => isSubmitting = false,
                                           );
                                           if (mounted) {
-                                            final message =
-                                                AdminAuthEmailClient
-                                                    .publicCreateError(e);
+                                            final raw = e
+                                                .toString()
+                                                .replaceFirst(
+                                                  RegExp(r'^Exception:\s*'),
+                                                  '',
+                                                )
+                                                .trim();
+                                            final message = raw.isEmpty
+                                                ? 'Could not create the admin. Please try again.'
+                                                : raw;
                                             ScaffoldMessenger.of(
                                               context,
                                             ).showSnackBar(
@@ -514,10 +534,8 @@ class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
     final sent = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AdminCredentialsMailDialog(
-        admin: admin,
-        password: password,
-      ),
+      builder: (ctx) =>
+          AdminCredentialsMailDialog(admin: admin, password: password),
     );
     if (!mounted || sent != true) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -1204,12 +1222,13 @@ class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
     const double rowHeight = 56.0;
 
     // Shared flex ratios to guarantee ample room, equal alignment, and zero clashing:
-    const int flexAdmin = 3;     // ADMIN (Avatar + Name + Role)
-    const int flexEmail = 4;     // EMAIL (Long email addresses like attendiphi.metaphi@gmail.com)
-    const int flexPhone = 2;     // PHONE (Phone numbers)
-    const int flexStatus = 1;    // STATUS (Active / Inactive badge)
-    const int flexCreated = 2;   // CREATED ON (e.g. 07 Sep 2026)
-    const int flexActions = 1;   // ACTIONS (3-dots icon)
+    const int flexAdmin = 3; // ADMIN (Avatar + Name + Role)
+    const int flexEmail =
+        4; // EMAIL (Long email addresses like attendiphi.metaphi@gmail.com)
+    const int flexPhone = 2; // PHONE (Phone numbers)
+    const int flexStatus = 1; // STATUS (Active / Inactive badge)
+    const int flexCreated = 2; // CREATED ON (e.g. 07 Sep 2026)
+    const int flexActions = 1; // ACTIONS (3-dots icon)
 
     final headerStyle = TextStyle(
       fontWeight: FontWeight.w700,
@@ -1220,8 +1239,9 @@ class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final double minTableWidth =
-            constraints.maxWidth < 950 ? 950.0 : constraints.maxWidth;
+        final double minTableWidth = constraints.maxWidth < 950
+            ? 950.0
+            : constraints.maxWidth;
         final hasBoundedHeight = constraints.maxHeight.isFinite;
 
         final tableContent = Container(
@@ -1316,8 +1336,8 @@ class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
                     final rowBg = isEven
                         ? Colors.transparent
                         : (isDark
-                            ? const Color(0xFF1E293B).withAlpha(50)
-                            : const Color(0xFFF8FAFC));
+                              ? const Color(0xFF1E293B).withAlpha(50)
+                              : const Color(0xFFF8FAFC));
 
                     return Container(
                       height: rowHeight,
@@ -1623,8 +1643,10 @@ class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
 
         if (constraints.maxWidth < 950) {
           return Scrollbar(
+            controller: _adminTableHScrollController,
             thumbVisibility: true,
             child: SingleChildScrollView(
+              controller: _adminTableHScrollController,
               scrollDirection: Axis.horizontal,
               child: tableContent,
             ),
@@ -1927,7 +1949,7 @@ class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'The original password is not stored. Ask this admin to use Forgot Password for a Firebase reset email.',
+            'The original password is not stored. Ask this admin to use Forgot Password for a Supabase Auth reset email.',
           ),
           behavior: SnackBarBehavior.floating,
         ),
@@ -1964,15 +1986,14 @@ class _AdminManagementScreenState extends ConsumerState<AdminManagementScreen> {
 
     if (confirm == true) {
       try {
-        await ref.read(adminRepositoryProvider).deleteAdmin(
-          admin.id,
-          email: admin.email,
-        );
+        await ref
+            .read(adminRepositoryProvider)
+            .deleteAdmin(admin.id, email: admin.email, authUserId: admin.uid);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                'Deleted admin "${admin.name}" from database and Firebase Authentication.',
+                'Deleted admin "${admin.name}" from database and Supabase Auth.',
               ),
               backgroundColor: const Color(0xFF10B981),
               behavior: SnackBarBehavior.floating,
@@ -2066,7 +2087,9 @@ class _AdminCredentialsMailDialogState
       tag: 'AdminCredentialsMail',
     );
 
-    final result = await ref.read(adminRepositoryProvider).sendCredentials(
+    final result = await ref
+        .read(adminRepositoryProvider)
+        .sendCredentials(
           admin: widget.admin,
           password: widget.password,
           senderEmail: sender.email,
@@ -2106,7 +2129,8 @@ class _AdminCredentialsMailDialogState
   }
 
   void _copyCredentials() {
-    final text = '''
+    final text =
+        '''
 QR Check-in Portal — Admin
 Portal URL: ${AppUrl.portalOrigin}/
 Name: ${widget.admin.name}
@@ -2216,10 +2240,7 @@ Password: ${widget.password}
         _state == _MailSendUi.sending || _state == _MailSendUi.authorizing;
     return OutlinedButton.icon(
       onPressed: busy ? null : _copyCredentials,
-      icon: Icon(
-        _copied ? Icons.check_rounded : Icons.copy_rounded,
-        size: 16,
-      ),
+      icon: Icon(_copied ? Icons.check_rounded : Icons.copy_rounded, size: 16),
       label: Text(_copied ? 'Credentials copied' : 'Copy Credentials'),
     );
   }
@@ -2230,10 +2251,10 @@ Password: ${widget.password}
     final label = _state == _MailSendUi.authorizing
         ? 'Sending...'
         : _state == _MailSendUi.sending
-            ? 'Sending...'
-            : _state == _MailSendUi.sent
-                ? 'Email Sent'
-                : 'Send Mail';
+        ? 'Sending...'
+        : _state == _MailSendUi.sent
+        ? 'Email Sent'
+        : 'Send Mail';
     return FilledButton.icon(
       onPressed: busy ? null : _sendMail,
       icon: busy
@@ -2260,8 +2281,8 @@ Password: ${widget.password}
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return PopScope(
-      canPop: _state != _MailSendUi.sending &&
-          _state != _MailSendUi.authorizing,
+      canPop:
+          _state != _MailSendUi.sending && _state != _MailSendUi.authorizing,
       child: AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
@@ -2290,7 +2311,9 @@ Password: ${widget.password}
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _statusBanner(),
-            if (_copied && _state != _MailSendUi.authorizing && _state != _MailSendUi.sending) ...[
+            if (_copied &&
+                _state != _MailSendUi.authorizing &&
+                _state != _MailSendUi.sending) ...[
               const SizedBox(height: 8),
               const Text(
                 '✓ Credentials copied',
@@ -2305,11 +2328,14 @@ Password: ${widget.password}
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                color: isDark
+                    ? const Color(0xFF0F172A)
+                    : const Color(0xFFF1F5F9),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color:
-                      isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                  color: isDark
+                      ? const Color(0xFF334155)
+                      : const Color(0xFFCBD5E1),
                 ),
               ),
               child: Column(
@@ -2366,4 +2392,3 @@ Password: ${widget.password}
     );
   }
 }
-

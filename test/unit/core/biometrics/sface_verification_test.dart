@@ -1,4 +1,5 @@
 import 'dart:math';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qr_checkin/core/biometrics/face_matching_config.dart';
 import 'package:qr_checkin/core/biometrics/face_matching_service.dart';
@@ -52,7 +53,11 @@ void main() {
       final result = service.matchProbeAgainstCandidates(
         probeEmbedding: probe,
         candidates: [
-          Employee(id: 'native', name: 'Native Only', faceTemplates: [native192]),
+          Employee(
+            id: 'native',
+            name: 'Native Only',
+            faceTemplates: [native192],
+          ),
           Employee(id: 'web', name: 'Web', faceTemplates: [sface]),
         ],
       );
@@ -60,71 +65,102 @@ void main() {
       expect(result.status, equals(FaceMatchStatus.match));
     });
 
-    test('Candidate score is the maximum similarity across all enrolled templates', () {
-      final t1 = createSFaceVector(1.0); // very different
-      final t2 = createSFaceVector(2.5, noise: 0.02); // close to probe
-      final t3 = createSFaceVector(4.0); // very different
+    test(
+      'Candidate score is the maximum similarity across all enrolled templates',
+      () {
+        final t1 = createSFaceVector(1.0); // very different
+        final t2 = createSFaceVector(2.5, noise: 0.02); // close to probe
+        final t3 = createSFaceVector(4.0); // very different
 
-      final probe = createSFaceVector(2.5);
+        final probe = createSFaceVector(2.5);
 
-      final candidate = Employee(
-        id: 'emp_omkar',
-        name: 'Omkar Anarse',
-        faceTemplates: [t1, t2, t3],
-      );
+        final candidate = Employee(
+          id: 'emp_omkar',
+          name: 'Omkar Anarse',
+          faceTemplates: [t1, t2, t3],
+        );
 
-      final result = service.matchProbeAgainstCandidates(
-        probeEmbedding: probe,
-        candidates: [candidate],
-      );
+        final result = service.matchProbeAgainstCandidates(
+          probeEmbedding: probe,
+          candidates: [candidate],
+        );
 
-      expect(result.status, equals(FaceMatchStatus.match));
-      expect(result.bestCandidate?.id, equals('emp_omkar'));
-      expect(result.bestScore, greaterThan(0.95));
-    });
+        expect(result.status, equals(FaceMatchStatus.match));
+        expect(result.bestCandidate?.id, equals('emp_omkar'));
+        expect(result.bestScore, greaterThan(0.95));
+      },
+    );
   });
 
   group('Runner-Up Margin & Ambiguity Rejection', () {
-    test('Accepts match when similarity and member-level margin clear the floor', () {
-      final omkarTemplate = createSFaceVector(1.0);
-      final otherTemplate = createSFaceVector(3.0); // significantly different
-      final probe = createSFaceVector(1.0, noise: 0.02); // very close to Omkar
+    test(
+      'Accepts match when similarity and member-level margin clear the floor',
+      () {
+        final omkarTemplate = createSFaceVector(1.0);
+        final otherTemplate = createSFaceVector(3.0); // significantly different
+        final probe = createSFaceVector(
+          1.0,
+          noise: 0.02,
+        ); // very close to Omkar
 
-      final omkar = Employee(id: 'emp_omkar', name: 'Omkar', faceTemplates: [omkarTemplate]);
-      final other = Employee(id: 'emp_other', name: 'Other', faceTemplates: [otherTemplate]);
+        final omkar = Employee(
+          id: 'emp_omkar',
+          name: 'Omkar',
+          faceTemplates: [omkarTemplate],
+        );
+        final other = Employee(
+          id: 'emp_other',
+          name: 'Other',
+          faceTemplates: [otherTemplate],
+        );
 
-      final result = service.matchProbeAgainstCandidates(
-        probeEmbedding: probe,
-        candidates: [omkar, other],
-      );
+        final result = service.matchProbeAgainstCandidates(
+          probeEmbedding: probe,
+          candidates: [omkar, other],
+        );
 
-      expect(result.status, equals(FaceMatchStatus.match));
-      expect(result.bestCandidate?.id, equals('emp_omkar'));
-      expect(result.margin, greaterThanOrEqualTo(FaceMatchingConfig.marginThreshold));
-    });
+        expect(result.status, equals(FaceMatchStatus.match));
+        expect(result.bestCandidate?.id, equals('emp_omkar'));
+        expect(
+          result.margin,
+          greaterThanOrEqualTo(FaceMatchingConfig.marginThreshold),
+        );
+      },
+    );
 
-    test('Rejects match as AMBIGUOUS when runner-up margin is below the floor', () {
-      // Candidate 1: Omkar
-      final omkarTemplate = createSFaceVector(1.0);
-      // Candidate 2: Very similar looking impostor or lighting condition
-      final similarTemplate = createSFaceVector(1.0, noise: 0.04);
+    test(
+      'Rejects match as AMBIGUOUS when runner-up margin is below the floor',
+      () {
+        // Candidate 1: Omkar
+        final omkarTemplate = createSFaceVector(1.0);
+        // Candidate 2: Very similar looking impostor or lighting condition
+        final similarTemplate = createSFaceVector(1.0, noise: 0.04);
 
-      final probe = createSFaceVector(1.0, noise: 0.02);
+        final probe = createSFaceVector(1.0, noise: 0.02);
 
-      final cand1 = Employee(id: 'emp_1', name: 'Omkar', faceTemplates: [omkarTemplate]);
-      final cand2 = Employee(id: 'emp_2', name: 'Similar Face', faceTemplates: [similarTemplate]);
+        final cand1 = Employee(
+          id: 'emp_1',
+          name: 'Omkar',
+          faceTemplates: [omkarTemplate],
+        );
+        final cand2 = Employee(
+          id: 'emp_2',
+          name: 'Similar Face',
+          faceTemplates: [similarTemplate],
+        );
 
-      final result = service.matchProbeAgainstCandidates(
-        probeEmbedding: probe,
-        candidates: [cand1, cand2],
-        marginThreshold: FaceMatchingConfig.marginThreshold,
-      );
+        final result = service.matchProbeAgainstCandidates(
+          probeEmbedding: probe,
+          candidates: [cand1, cand2],
+          marginThreshold: FaceMatchingConfig.marginThreshold,
+        );
 
-      expect(result.status, equals(FaceMatchStatus.ambiguous));
-      expect(result.isMatch, isFalse);
-      expect(result.isAmbiguous, isTrue);
-      expect(result.margin, lessThan(FaceMatchingConfig.marginThreshold));
-    });
+        expect(result.status, equals(FaceMatchStatus.ambiguous));
+        expect(result.isMatch, isFalse);
+        expect(result.isAmbiguous, isTrue);
+        expect(result.margin, lessThan(FaceMatchingConfig.marginThreshold));
+      },
+    );
   });
 
   group('Regression Test: Devendra Probe vs Omkar Candidate', () {
@@ -181,56 +217,59 @@ void main() {
   });
 
   group('Multi-Frame Burst Aggregator', () {
-    test('Decision verifies candidate when consistency >= 70% and margin is sound', () {
-      final omkar = Employee(
-        id: 'emp_omkar',
-        name: 'Omkar Anarse',
-        faceTemplates: [createSFaceVector(1.0)],
-      );
+    test(
+      'Decision verifies candidate when consistency >= 70% and margin is sound',
+      () {
+        final omkar = Employee(
+          id: 'emp_omkar',
+          name: 'Omkar Anarse',
+          faceTemplates: [createSFaceVector(1.0)],
+        );
 
-      final frames = [
-        SingleFrameMatchResult(
-          status: FaceMatchStatus.match,
-          bestCandidate: omkar,
-          bestScore: 0.88,
-          secondBestScore: 0.60,
-          margin: 0.28,
-        ),
-        SingleFrameMatchResult(
-          status: FaceMatchStatus.match,
-          bestCandidate: omkar,
-          bestScore: 0.86,
-          secondBestScore: 0.62,
-          margin: 0.24,
-        ),
-        SingleFrameMatchResult(
-          status: FaceMatchStatus.match,
-          bestCandidate: omkar,
-          bestScore: 0.89,
-          secondBestScore: 0.61,
-          margin: 0.28,
-        ),
-        SingleFrameMatchResult(
-          status: FaceMatchStatus.match,
-          bestCandidate: omkar,
-          bestScore: 0.85,
-          secondBestScore: 0.58,
-          margin: 0.27,
-        ),
-      ];
+        final frames = [
+          SingleFrameMatchResult(
+            status: FaceMatchStatus.match,
+            bestCandidate: omkar,
+            bestScore: 0.88,
+            secondBestScore: 0.60,
+            margin: 0.28,
+          ),
+          SingleFrameMatchResult(
+            status: FaceMatchStatus.match,
+            bestCandidate: omkar,
+            bestScore: 0.86,
+            secondBestScore: 0.62,
+            margin: 0.24,
+          ),
+          SingleFrameMatchResult(
+            status: FaceMatchStatus.match,
+            bestCandidate: omkar,
+            bestScore: 0.89,
+            secondBestScore: 0.61,
+            margin: 0.28,
+          ),
+          SingleFrameMatchResult(
+            status: FaceMatchStatus.match,
+            bestCandidate: omkar,
+            bestScore: 0.85,
+            secondBestScore: 0.58,
+            margin: 0.27,
+          ),
+        ];
 
-      final decision = service.evaluateMultiFrameDecision(
-        frameMatches: frames,
-        totalFramesCount: 5,
-      );
+        final decision = service.evaluateMultiFrameDecision(
+          frameMatches: frames,
+          totalFramesCount: 5,
+        );
 
-      expect(decision.verified, isTrue);
-      expect(decision.matchedMember?.id, equals('emp_omkar'));
-      expect(decision.consistencyRate, equals(1.0));
-      expect(decision.averageScore, greaterThan(0.85));
-      expect(decision.averageMargin, greaterThan(0.20));
-      expect(decision.shouldRetry, isFalse);
-    });
+        expect(decision.verified, isTrue);
+        expect(decision.matchedMember?.id, equals('emp_omkar'));
+        expect(decision.consistencyRate, equals(1.0));
+        expect(decision.averageScore, greaterThan(0.85));
+        expect(decision.averageMargin, greaterThan(0.20));
+        expect(decision.shouldRetry, isFalse);
+      },
+    );
 
     test('Unknown-person frames are not counted as wins', () {
       final omkar = Employee(
@@ -376,9 +415,15 @@ void main() {
     test('Rejects enrollment templates from a totally different person', () {
       final t1 = createSFaceVector(1.0);
       final t2 = createSFaceVector(1.0, noise: 0.02);
-      final tDifferent = createSFaceVector(3.5); // completely different person/pose
+      final tDifferent = createSFaceVector(
+        3.5,
+      ); // completely different person/pose
 
-      final isValid = service.validateEnrollmentConsistency([t1, t2, tDifferent]);
+      final isValid = service.validateEnrollmentConsistency([
+        t1,
+        t2,
+        tDifferent,
+      ]);
       expect(isValid, isFalse);
     });
 

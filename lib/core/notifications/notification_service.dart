@@ -27,16 +27,19 @@ class NotificationPayload {
   factory NotificationPayload.fromMap(Map<String, dynamic> map) {
     return NotificationPayload(
       title: map['title'] as String? ?? 'New Attendance Submission',
-      body: map['body'] as String? ?? 'A new user has submitted the attendance form.',
-      submissionId: map['submissionId'] as String? ?? map['id'] as String? ?? '',
+      body:
+          map['body'] as String? ??
+          'A new user has submitted the attendance form.',
+      submissionId:
+          map['submissionId'] as String? ?? map['id'] as String? ?? '',
       userName: map['userName'] as String?,
       locationId: map['locationId'] as String?,
       locationName: map['locationName'] as String?,
       checkInType: map['checkInType'] as String? ?? map['type'] as String?,
       timestamp: map['timestamp'] != null
           ? (map['timestamp'] is String
-              ? DateTime.tryParse(map['timestamp'] as String)
-              : null)
+                ? DateTime.tryParse(map['timestamp'] as String)
+                : null)
           : null,
       data: map,
     );

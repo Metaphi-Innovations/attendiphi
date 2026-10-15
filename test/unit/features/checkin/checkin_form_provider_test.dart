@@ -15,6 +15,7 @@ import 'package:qr_checkin/features/location/domain/usecases/validate_user_proxi
 import 'package:shared_preferences/shared_preferences.dart';
 
 class MockCheckInRepository extends Mock implements CheckInRepository {}
+
 class FakeCheckInSubmission extends Fake implements CheckInSubmission {}
 
 void main() {
@@ -101,14 +102,16 @@ void main() {
     });
 
     test('submits successfully for Member and updates state', () async {
-      when(() => mockRepository.submitCheckIn(
+      when(
+        () => mockRepository.submitCheckIn(
           any(),
           enforceThursday: any(named: 'enforceThursday'),
           sessionDateYmd: any(named: 'sessionDateYmd'),
           claimDeviceId: any(named: 'claimDeviceId'),
           claimMemberId: any(named: 'claimMemberId'),
-        ))
-          .thenAnswer((_) async {});
+          sessionToken: any(named: 'sessionToken'),
+        ),
+      ).thenAnswer((_) async {});
 
       final notifier = container.read(checkInFormProvider.notifier);
       notifier.setName('Pooja Nair');
@@ -129,13 +132,16 @@ void main() {
 
     test('ignores second submit while isSubmitting (H4)', () async {
       var calls = 0;
-      when(() => mockRepository.submitCheckIn(
-            any(),
-            enforceThursday: any(named: 'enforceThursday'),
-            sessionDateYmd: any(named: 'sessionDateYmd'),
-            claimDeviceId: any(named: 'claimDeviceId'),
-            claimMemberId: any(named: 'claimMemberId'),
-          )).thenAnswer((_) async {
+      when(
+        () => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: any(named: 'enforceThursday'),
+          sessionDateYmd: any(named: 'sessionDateYmd'),
+          claimDeviceId: any(named: 'claimDeviceId'),
+          claimMemberId: any(named: 'claimMemberId'),
+          sessionToken: any(named: 'sessionToken'),
+        ),
+      ).thenAnswer((_) async {
         calls++;
         await Future<void>.delayed(const Duration(milliseconds: 40));
       });
@@ -160,172 +166,98 @@ void main() {
       expect(calls, 1);
     });
 
-    test('defaults type to Member when submitted without explicitly setting type', () async {
-      when(() => mockRepository.submitCheckIn(
-          any(),
-          enforceThursday: any(named: 'enforceThursday'),
-          sessionDateYmd: any(named: 'sessionDateYmd'),
-          claimDeviceId: any(named: 'claimDeviceId'),
-          claimMemberId: any(named: 'claimMemberId'),
-        ))
-          .thenAnswer((_) async {});
+    test(
+      'defaults type to Member when submitted without explicitly setting type',
+      () async {
+        when(
+          () => mockRepository.submitCheckIn(
+            any(),
+            enforceThursday: any(named: 'enforceThursday'),
+            sessionDateYmd: any(named: 'sessionDateYmd'),
+            claimDeviceId: any(named: 'claimDeviceId'),
+            claimMemberId: any(named: 'claimMemberId'),
+            sessionToken: any(named: 'sessionToken'),
+          ),
+        ).thenAnswer((_) async {});
 
-      final notifier = container.read(checkInFormProvider.notifier);
-      notifier.setName('Rohan Mehta');
-      notifier.setPhone('9876543211');
-      // Do NOT set type - verify it auto-defaults to Member
+        final notifier = container.read(checkInFormProvider.notifier);
+        notifier.setName('Rohan Mehta');
+        notifier.setPhone('9876543211');
+        // Do NOT set type - verify it auto-defaults to Member
 
-      final success = await notifier.submit(
-        location: testLocation,
-        proximityResult: testProximity,
-      );
+        final success = await notifier.submit(
+          location: testLocation,
+          proximityResult: testProximity,
+        );
 
-      expect(success, isTrue);
-      final state = container.read(checkInFormProvider);
-      expect(state.type, CheckInType.member);
-      expect(state.submissionResult?.userName, 'Rohan Mehta');
-    });
+        expect(success, isTrue);
+        final state = container.read(checkInFormProvider);
+        expect(state.type, CheckInType.member);
+        expect(state.submissionResult?.userName, 'Rohan Mehta');
+      },
+    );
 
-    test('blocks re-submission on same device for production session dates', () async {
-      final notifier = container.read(checkInFormProvider.notifier);
-      final deviceService = container.read(deviceCheckInServiceProvider);
+    test(
+      'shared device local history does not block a different member',
+      () async {
+        // Freeze "today" so sessionDateStr matches Thursday restrictions.
+        // (Provider uses DateTime.now() inside SubmitCheckIn via default now.)
+        final notifier = container.read(checkInFormProvider.notifier);
+        final deviceService = container.read(deviceCheckInServiceProvider);
 
-      final existing = CheckInSubmission(
-        id: 'sub-existing-01',
-        locationId: 'location_x',
-        locationName: 'Excel Plaza, Ghatkopar',
-        userName: 'Pooja Nair',
-        userPhone: '+919876543210',
-        type: CheckInType.member,
-        userLatitude: 19.0829,
-        userLongitude: 72.9129,
-        gpsAccuracy: 10.0,
-        distanceMeters: 30.0,
-        timestamp: DateTime(2026, 9, 24, 10, 0),
-      );
+        final existing = CheckInSubmission(
+          id: 'sub-first',
+          locationId: 'location_x',
+          locationName: 'Excel Plaza, Ghatkopar',
+          userName: 'First Member',
+          userPhone: '+919876543210',
+          type: CheckInType.member,
+          userLatitude: 19.0829,
+          userLongitude: 72.9129,
+          gpsAccuracy: 10.0,
+          distanceMeters: 30.0,
+          timestamp: DateTime.now(),
+          memberId: 'member_first',
+        );
 
-      await deviceService.recordSubmission(
-        sessionDateStr: '2026-09-24',
-        submission: existing,
-      );
+        await deviceService.recordSubmission(
+          sessionDateStr: null,
+          submission: existing,
+        );
 
-      notifier.setName('Pooja Nair');
-      notifier.setPhone('9876543210');
-      notifier.setType(CheckInType.member);
+        when(
+          () => mockRepository.submitCheckIn(
+            any(),
+            enforceThursday: any(named: 'enforceThursday'),
+            sessionDateYmd: any(named: 'sessionDateYmd'),
+            claimDeviceId: any(named: 'claimDeviceId'),
+            claimMemberId: any(named: 'claimMemberId'),
+            sessionToken: any(named: 'sessionToken'),
+          ),
+        ).thenAnswer((_) async {});
 
-      final success = await notifier.submit(
-        location: testLocation,
-        proximityResult: testProximity,
-        sessionDateStr: '2026-09-24',
-      );
+        notifier.setName('Second Member');
+        notifier.setPhone('9876543211');
+        notifier.setType(CheckInType.member);
+        notifier.setRecognizedMember('member_second');
 
-      expect(success, isFalse);
-      final state = container.read(checkInFormProvider);
-      expect(state.error, isA<DuplicateCheckInException>());
-      expect(state.submissionResult?.id, 'sub-existing-01');
-      verifyNever(() => mockRepository.submitCheckIn(
-          any(),
-          enforceThursday: any(named: 'enforceThursday'),
-          sessionDateYmd: any(named: 'sessionDateYmd'),
-          claimDeviceId: any(named: 'claimDeviceId'),
-          claimMemberId: any(named: 'claimMemberId'),
-        ));
-    });
+        final success = await notifier.submit(
+          location: testLocation,
+          proximityResult: testProximity,
+        );
 
-    test('2026-09-03 rejects second face check-in on the same device', () async {
-      final notifier = container.read(checkInFormProvider.notifier);
-      final deviceService = container.read(deviceCheckInServiceProvider);
-
-      final existing = CheckInSubmission(
-        id: 'sub-omkaarr',
-        locationId: 'location_x',
-        locationName: 'Excel Plaza, Ghatkopar',
-        userName: 'Omkaarr',
-        userPhone: '+918356011246',
-        type: CheckInType.member,
-        userLatitude: 19.0829,
-        userLongitude: 72.9129,
-        gpsAccuracy: 10.0,
-        distanceMeters: 30.0,
-        timestamp: DateTime(2026, 9, 3, 10, 0),
-        memberId: 'member_omkaarr',
-      );
-
-      await deviceService.recordSubmission(
-        sessionDateStr: '2026-09-03',
-        submission: existing,
-      );
-
-      notifier.setName('Omkar Anarse');
-      notifier.setPhone('8356011246');
-      notifier.setType(CheckInType.member);
-      notifier.setRecognizedMember('member_omkar');
-
-      final success = await notifier.submit(
-        location: testLocation,
-        proximityResult: testProximity,
-        sessionDateStr: '2026-09-03',
-      );
-
-      expect(success, isFalse);
-      final state = container.read(checkInFormProvider);
-      expect(state.error, isA<DuplicateCheckInException>());
-      expect(state.submissionResult?.id, 'sub-omkaarr');
-      verifyNever(() => mockRepository.submitCheckIn(
-          any(),
-          enforceThursday: any(named: 'enforceThursday'),
-          sessionDateYmd: any(named: 'sessionDateYmd'),
-          claimDeviceId: any(named: 'claimDeviceId'),
-          claimMemberId: any(named: 'claimMemberId'),
-        ));
-    });
-
-    test('2026-09-24 rejects second face check-in on the same device', () async {
-      final notifier = container.read(checkInFormProvider.notifier);
-      final deviceService = container.read(deviceCheckInServiceProvider);
-
-      final existing = CheckInSubmission(
-        id: 'sub-first',
-        locationId: 'location_x',
-        locationName: 'Excel Plaza, Ghatkopar',
-        userName: 'First Member',
-        userPhone: '+919876543210',
-        type: CheckInType.member,
-        userLatitude: 19.0829,
-        userLongitude: 72.9129,
-        gpsAccuracy: 10.0,
-        distanceMeters: 30.0,
-        timestamp: DateTime(2026, 9, 24, 10, 0),
-        memberId: 'member_first',
-      );
-
-      await deviceService.recordSubmission(
-        sessionDateStr: '2026-09-24',
-        submission: existing,
-      );
-
-      notifier.setName('Second Member');
-      notifier.setPhone('9876543211');
-      notifier.setType(CheckInType.member);
-      notifier.setRecognizedMember('member_second');
-
-      final success = await notifier.submit(
-        location: testLocation,
-        proximityResult: testProximity,
-        sessionDateStr: '2026-09-24',
-      );
-
-      expect(success, isFalse);
-      final state = container.read(checkInFormProvider);
-      expect(state.error, isA<DuplicateCheckInException>());
-      expect(state.submissionResult?.id, 'sub-first');
-      verifyNever(() => mockRepository.submitCheckIn(
-          any(),
-          enforceThursday: any(named: 'enforceThursday'),
-          sessionDateYmd: any(named: 'sessionDateYmd'),
-          claimDeviceId: any(named: 'claimDeviceId'),
-          claimMemberId: any(named: 'claimMemberId'),
-        ));
-    });
+        expect(success, isTrue);
+        verify(
+          () => mockRepository.submitCheckIn(
+            any(),
+            enforceThursday: any(named: 'enforceThursday'),
+            sessionDateYmd: any(named: 'sessionDateYmd'),
+            claimDeviceId: any(named: 'claimDeviceId'),
+            claimMemberId: any(named: 'claimMemberId'),
+            sessionToken: any(named: 'sessionToken'),
+          ),
+        ).called(1);
+      },
+    );
   });
 }
