@@ -1,28 +1,42 @@
-# Devops: deploy Attendiphi web to `attendiphi.metaphi.in`
+# Devops: deploy Attendiphi web
 
-## Build artifact
+Full engineer flow: [ENVIRONMENTS.md](./ENVIRONMENTS.md)  
+(**local Docker → staging site → production**).
 
-From the repo (developer machine):
+## Hosts
+
+| Site | Zip from | Backend |
+|---|---|---|
+| **https://attendiphi_staging.metaphi.in** | `./scripts/build_web_staging.sh` → `build/web-staging.zip` | attendiphi-test |
+| **https://attendiphi.metaphi.in** | `./scripts/build_web_release.sh` → `build/web.zip` | production Attendiphi |
+
+Do **not** deploy Firebase Hosting. Unpack zip so `index.html` is site root.
+
+## Staging build artifact
 
 ```bash
-export CHECKIN_SESSION_TOKEN_SECRET='…'   # ≥16 chars; MUST match app_secrets
+export CHECKIN_SESSION_TOKEN_SECRET='…'   # ≥16; MUST match attendiphi-test app_secrets
+export SUPABASE_URL_STAGING='https://ofieqhdkvofsjnpxkmee.supabase.co'
+export SUPABASE_ANON_KEY_STAGING='…'      # publishable anon only
+./scripts/build_web_staging.sh
+# → hand build/web-staging.zip to devops → attendiphi_staging.metaphi.in
+```
+
+## Production build artifact
+
+```bash
+export CHECKIN_SESSION_TOKEN_SECRET='…'   # ≥16 chars; MUST match live app_secrets
 export SUPABASE_URL='https://fzghxzybyygslfjyfewu.supabase.co'
 export SUPABASE_ANON_KEY='…'              # publishable anon only
 ./scripts/build_web_release.sh
+# → hand build/web.zip to devops → attendiphi.metaphi.in
 ```
 
-In **CI**, the script fails closed if `CHECKIN_SESSION_TOKEN_SECRET` is missing
+In **CI**, the production script fails closed if `CHECKIN_SESSION_TOKEN_SECRET` is missing
 or shorter than 16 characters (no auto-generate).
 
-Produces:
-
-- `build/web/` — Flutter web release
-- `build/web.zip` — zip of `build/web` for transfer
-
-The build rewrites `web/index.html` supabase meta tags from the same
-`SUPABASE_URL` / `SUPABASE_ANON_KEY` passed as `--dart-define` (no drift).
-
-Hand **`build/web.zip`** to devops. Do **not** deploy Firebase Hosting.
+Both builds rewrite `web/index.html` supabase meta tags from the same
+values passed as `--dart-define` (no drift).
 
 ### Pre-deploy checklist (P0–P2)
 

@@ -1,7 +1,16 @@
 #!/usr/bin/env node
 /**
- * Idempotent demo seed for Supabase **attendiphi-test** only.
+ * Idempotent demo seed for:
+ *   - local Docker Supabase (127.0.0.1 / localhost), or
+ *   - cloud attendiphi-test
  *
+ * Local:
+ *   eval "$(supabase status -o env)"
+ *   export SUPABASE_URL="http://127.0.0.1:54321"
+ *   export SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
+ *   node scripts/seed_attendiphi_staging.js
+ *
+ * Cloud test:
  *   SUPABASE_URL='https://ofieqhdkvofsjnpxkmee.supabase.co' \
  *   SUPABASE_SERVICE_ROLE_KEY='…test service_role…' \
  *   node scripts/seed_attendiphi_staging.js
@@ -15,11 +24,17 @@
  * Never commit service_role keys.
  */
 
+const path = require('path');
+const { spawnSync } = require('child_process');
+
 const PROD_REF = 'fzghxzybyygslfjyfewu';
 const STAGING_REF = 'ofieqhdkvofsjnpxkmee';
 
 const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const ODS_PATH =
+  process.env.ODS_PATH ||
+  path.join(__dirname, '../supabase/seed/members_list.ods');
 const ADMIN_EMAIL =
   process.env.STAGING_ADMIN_EMAIL || 'staging.admin@example.com';
 const ADMIN_PASSWORD =
@@ -27,10 +42,20 @@ const ADMIN_PASSWORD =
 const SESSION_DATE = process.env.SESSION_DATE || '2026-10-15';
 const PREV_SESSION = process.env.PREV_SESSION_DATE || '2026-10-08';
 
+function isLocalHost(host) {
+  const h = host.toLowerCase();
+  return (
+    h === '127.0.0.1' ||
+    h === 'localhost' ||
+    h.startsWith('127.0.0.1:') ||
+    h.startsWith('localhost:')
+  );
+}
+
 function assertStagingTarget() {
   if (!SUPABASE_URL || !SERVICE_ROLE) {
     console.error(
-      'Missing SUPABASE_URL and/or SUPABASE_SERVICE_ROLE_KEY (test project only).',
+      'Missing SUPABASE_URL and/or SUPABASE_SERVICE_ROLE_KEY (local Docker or attendiphi-test only).',
     );
     process.exit(1);
   }
@@ -43,17 +68,17 @@ function assertStagingTarget() {
   }
   if (host.includes(PROD_REF)) {
     console.error(
-      `REFUSING to seed production host (${host}). Use attendiphi-test (${STAGING_REF}).`,
+      `REFUSING to seed production host (${host}). Use local Docker or attendiphi-test (${STAGING_REF}).`,
     );
     process.exit(1);
   }
-  if (!host.includes(STAGING_REF)) {
+  if (!isLocalHost(host) && !host.includes(STAGING_REF)) {
     console.error(
-      `REFUSING: host ${host} is not attendiphi-test (${STAGING_REF}).`,
+      `REFUSING: host ${host} is not local Docker or attendiphi-test (${STAGING_REF}).`,
     );
     process.exit(1);
   }
-  console.log(`Seeding staging only → ${SUPABASE_URL}`);
+  console.log(`Seeding demo data → ${SUPABASE_URL}`);
 }
 
 const headers = {
@@ -338,10 +363,28 @@ async function main() {
   );
   console.log('Upserted session_attendance rows');
 
+  // Roster from ODS (local Docker or attendiphi-test only — same safety gates).
+  const importScript = path.join(__dirname, 'import_members_ods_to_supabase.js');
+  const odsImport = spawnSync(process.execPath, [importScript], {
+    env: {
+      ...process.env,
+      SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY: SERVICE_ROLE,
+      ODS_PATH,
+    },
+    stdio: 'inherit',
+  });
+  if (odsImport.status !== 0) {
+    throw new Error(
+      `ODS member import failed (exit ${odsImport.status}). ODS_PATH=${ODS_PATH}`,
+    );
+  }
+
   console.log('\nStaging seed complete.');
   console.log(`  Admin login: ${ADMIN_EMAIL}`);
   console.log('  Password: (STAGING_ADMIN_PASSWORD or AttendiphiStaging1!)');
   console.log(`  Sessions: ${PREV_SESSION}, ${SESSION_DATE}`);
+  console.log(`  ODS roster: ${ODS_PATH}`);
 }
 
 main().catch((e) => {

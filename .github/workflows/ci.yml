@@ -72,13 +72,3 @@ jobs:
           fi
           grep -qi 'at least 16' /tmp/short_err.txt
           echo "release secret contract ok"
-
-  # Historical Firebase rules suite — quarantined after Supabase cutover.
-  firestore-rules:
-    name: Firestore rules (quarantined)
-    if: false
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Skipped
-        run: echo "Quarantined — Supabase RLS is the source of truth."

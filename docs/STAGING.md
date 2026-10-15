@@ -1,34 +1,55 @@
 # Attendiphi staging (attendiphi-test)
 
-## Staging vs production
+**Three-stage workflow (source of truth):** [ENVIRONMENTS.md](./ENVIRONMENTS.md)
+
+1. **Local** — Docker Supabase + `./scripts/run_web_local.sh`
+2. **Staging** — `staging` branch + cloud test + site **attendiphi_staging.metaphi.in**
+3. **Production** — `main` + **attendiphi.metaphi.in**
+
+## Staging vs production (cloud)
 
 | | Staging | Production |
 |---|---|---|
-| **Entrypoint** | `lib/main_staging.dart` or local `flutter run` (`main.dart` debug → staging) | Release `main.dart` / `main_prod.dart` / `build_web_release.sh` |
+| **Entrypoint** | `lib/main_staging.dart` / `build_web_staging.sh` | `main.dart` release / `build_web_release.sh` |
 | **Supabase project** | **Attendiphi-test** (`ofieqhdkvofsjnpxkmee`) | **Attendiphi** (`fzghxzybyygslfjyfewu`) |
+| **Website** | `attendiphi_staging.metaphi.in` | `attendiphi.metaphi.in` |
 | **Region** | `ap-northeast-2` | `ap-northeast-1` |
 | **Data** | Demo / safe to break | Real members & check-ins |
-| **Git (team process)** | Prefer `staging` branch | `main` → live deploy |
+| **Git** | `staging` branch | `main` |
 | **Keys** | `SUPABASE_URL_STAGING` / `SUPABASE_ANON_KEY_STAGING` | `SUPABASE_URL` / `SUPABASE_ANON_KEY` |
 
 Never put **service_role** keys in the Flutter app or git.
 
-## Run locally (always demo DB)
-
-Local debug/profile defaults to **attendiphi-test** so day-to-day work never
-touches live data:
+## Stage 1 — Local Docker (before staging)
 
 ```bash
-flutter run -d chrome          # uses demo DB
-# or explicitly:
+supabase start
+supabase db reset   # apply migrations
+./scripts/run_web_local.sh
+```
+
+See [ENVIRONMENTS.md](./ENVIRONMENTS.md) and `docs/local.env.example`.
+
+## Stage 2 — Cloud staging (attendiphi-test)
+
+Smoke against cloud test DB (no zip):
+
+```bash
 ./scripts/run_web_staging.sh
 ```
 
 Smoke-check: Network / logs should show host `ofieqhdkvofsjnpxkmee.supabase.co`,
 not `fzghxzybyygslfjyfewu.supabase.co`.
 
-**Live data** only after you merge to `main` and build/deploy with
-`./scripts/build_web_release.sh` (release mode → production).  
+Staging **website** zip for devops:
+
+```bash
+./scripts/build_web_staging.sh
+# → build/web-staging.zip → attendiphi_staging.metaphi.in
+```
+
+**Live production** only after staging site is good: merge to `main` and
+`./scripts/build_web_release.sh` → `attendiphi.metaphi.in`.  
 Rare intentional live local: `flutter run -t lib/main_prod.dart`.
 
 `CHECKIN_SESSION_TOKEN_SECRET` for staging Flutter defaults to `staging-dev-secret-16`
@@ -118,20 +139,27 @@ Edge Function is **deployed** on test. SMTP secrets are **not** configured by de
 - [ ] Visitors filter for 08 Oct 2026 shows “Demo Visitor Oct8”
 - [ ] Check-in RPC `submit_public_check_in` exists (no missing-RPC 500)
 
-## 6. Develop on staging
+## 6. Develop (local → staging branch)
 
 ```bash
+# Stage 1 — prove on Docker
+supabase start && supabase db reset
+./scripts/run_web_local.sh
+
+# Stage 2 — push to staging branch + optional cloud smoke
 git checkout staging
-# make changes
 flutter test
-flutter run -d chrome          # demo DB (default local)
-# or: ./scripts/run_web_staging.sh
+./scripts/run_web_staging.sh    # cloud attendiphi-test
 git add …
 git commit -m "…"
 git push origin staging
+
+# Staging website for devops
+./scripts/build_web_staging.sh
+# hand build/web-staging.zip → attendiphi_staging.metaphi.in
 ```
 
-## 7. Promote to production only when staging is good
+## 7. Promote to production only when staging *site* is good
 
 ```bash
 git checkout main
@@ -150,17 +178,18 @@ export CHECKIN_SESSION_TOKEN_SECRET='…must match live app_secrets…'
 # hand build/web.zip to devops → attendiphi.metaphi.in
 ```
 
-See [DEVOPS_WEB_DEPLOY.md](./DEVOPS_WEB_DEPLOY.md).
+See [ENVIRONMENTS.md](./ENVIRONMENTS.md) and [DEVOPS_WEB_DEPLOY.md](./DEVOPS_WEB_DEPLOY.md).
 
 ## 8. Team rules
 
 - Never run migrations against live while “just testing”
 - Never commit anon/service keys into git (publishable anon in config is OK;
   **service_role** never)
-- Feature work → staging first; `main` only after demo DB verification
-- If a migration is needed: apply to **attendiphi-test** first, verify app, then
-  apply to live, then merge/deploy
-- Same code on both branches; only the Supabase URL/keys change by environment
+- Feature work → **local Docker** first → `staging` branch + staging site → then `main`
+- Migrations: local → **attendiphi-test** → live (same order)
+- Same code on branches; only the Supabase URL/keys (and build script) change by stage
+- Never use plain `flutter build web --release` for the staging site — use
+  `./scripts/build_web_staging.sh`
 
 ## Production (unchanged)
 

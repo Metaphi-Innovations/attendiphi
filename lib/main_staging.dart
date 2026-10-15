@@ -1,7 +1,10 @@
 import 'app/config/environment.dart';
 import 'main.dart';
 
-/// Staging environment entry point.
+/// Cloud staging (attendiphi-test) entry point (Stage 2).
+///
+/// Used by `./scripts/run_web_staging.sh` and `./scripts/build_web_staging.sh`
+/// (staging site → attendiphi_staging.metaphi.in). See [docs/ENVIRONMENTS.md].
 void main() {
   bootstrap(config: EnvironmentConfig.staging);
 }

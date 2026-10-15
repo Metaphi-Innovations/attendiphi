@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
-# Production web release for Attendiphi (Supabase-only client).
+# Stage 3 — PRODUCTION web release for Attendiphi (Supabase-only client).
 # Injects CHECKIN_SESSION_TOKEN_SECRET + SUPABASE_URL/ANON_KEY into Dart and
 # rewrites web/index.html meta tags from the same values (no drift).
 # Output: build/web + build/web.zip for devops → https://attendiphi.metaphi.in
+#
+# For staging site (attendiphi_staging.metaphi.in) use ./scripts/build_web_staging.sh
+# — never this script with staging keys (entrypoint would still be production).
+# See docs/ENVIRONMENTS.md.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -102,5 +106,6 @@ rm -f "$ZIP_PATH"
 )
 echo "Build complete: build/web"
 echo "Devops package: $ZIP_PATH"
+echo "→ devops host: https://attendiphi.metaphi.in"
 echo "Keep .secrets/checkin_session_token_secret stable across deploys; rotating it invalidates printed standees."
-echo "See docs/DEVOPS_WEB_DEPLOY.md for nginx SPA notes."
+echo "See docs/ENVIRONMENTS.md and docs/DEVOPS_WEB_DEPLOY.md."

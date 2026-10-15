@@ -1,7 +1,9 @@
 import 'app/config/environment.dart';
 import 'main.dart';
 
-/// Development environment entry point.
+/// Local Docker Supabase entry point (Stage 1).
+///
+/// Prefer `./scripts/run_web_local.sh`. See [docs/ENVIRONMENTS.md].
 void main() {
   bootstrap(config: EnvironmentConfig.development);
 }
