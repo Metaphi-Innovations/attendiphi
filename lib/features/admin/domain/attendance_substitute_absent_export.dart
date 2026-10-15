@@ -20,15 +20,37 @@ String attendanceExportTxtFilename(DateTime date) {
   return '$y-$m-$d.txt';
 }
 
-/// Soft-wraps substitute attendee name from a dashboard (mapped) row.
-String? substitutePresentName(CheckInSubmission record) {
+/// Covered member display name for a substitute row (never invents).
+String? _coveredMemberName(CheckInSubmission record) {
   if (!record.type.isSubstitute) return null;
-  final fromSub = record.substituteName?.trim() ?? '';
-  if (fromSub.isNotEmpty) return firstAndLastName(fromSub);
-  return null;
+  final fromField = record.substituteForMember?.trim() ?? '';
+  if (fromField.isNotEmpty) return firstAndLastName(fromField);
+  final fromUser = record.userName.trim();
+  if (fromUser.isEmpty) return null;
+  final sub = record.substituteName?.trim() ?? '';
+  // Mapped rows set userName to the member; skip if it equals the attendee.
+  if (sub.isNotEmpty &&
+      fromUser.toLowerCase() == sub.toLowerCase()) {
+    return null;
+  }
+  return firstAndLastName(fromUser);
 }
 
-/// Soft-wraps absent member name from a dashboard row.
+/// One Substitute export line: `Sub (for Member)` when both names exist.
+String? substituteExportLine(CheckInSubmission record) {
+  if (!record.type.isSubstitute) return null;
+  final fromSub = record.substituteName?.trim() ?? '';
+  if (fromSub.isEmpty) return null;
+  final subName = firstAndLastName(fromSub);
+  if (subName.isEmpty) return null;
+
+  final memberName = _coveredMemberName(record);
+  if (memberName == null || memberName.isEmpty) return subName;
+  if (memberName.toLowerCase() == subName.toLowerCase()) return subName;
+  return '$subName (for $memberName)';
+}
+
+/// Absent member name from a dashboard row (first + last).
 String? absentMemberName(CheckInSubmission record) {
   if (!record.type.isAbsent) return null;
   final name = record.userName.trim();
@@ -41,7 +63,7 @@ String? absentMemberName(CheckInSubmission record) {
 /// Format:
 /// ```
 /// Substitute
-/// First Last
+/// First Last (for Member Name)
 /// ...
 ///
 /// Absent
@@ -53,7 +75,7 @@ String buildSubstituteAbsentAttendanceTxt({
 }) {
   final substitutes =
       records
-          .map(substitutePresentName)
+          .map(substituteExportLine)
           .whereType<String>()
           .where((name) => name.isNotEmpty)
           .toSet()

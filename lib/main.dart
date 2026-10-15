@@ -82,7 +82,16 @@ Future<void> bootstrap({required EnvironmentConfig config}) async {
   );
 }
 
-/// Default entry point configured for live production.
+/// Default entry point.
+///
+/// - **Local** (`flutter run` / debug & profile): attendiphi-test (demo data).
+/// - **Release** (`flutter build` / [scripts/build_web_release.sh]): production.
+///
+/// Intentional live local: `flutter run -t lib/main_prod.dart`.
 void main() {
-  bootstrap(config: EnvironmentConfig.production);
+  bootstrap(
+    config: kReleaseMode
+        ? EnvironmentConfig.production
+        : EnvironmentConfig.staging,
+  );
 }

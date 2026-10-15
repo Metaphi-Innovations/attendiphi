@@ -62,25 +62,24 @@ class SupabaseAppConfig {
 
   static Environment get environment => _environment;
 
+  static bool get _useStagingBackend =>
+      _environment == Environment.staging ||
+      _environment == Environment.development;
+
   static String get url {
-    if (_environment == Environment.staging) {
+    if (_useStagingBackend) {
       final stagingUrl = dartDefinedStagingUrl.trim();
       if (stagingUrl.isNotEmpty) return stagingUrl;
-      // Zero-friction local staging — never used for production entrypoints.
+      // Local / staging — never used for production entrypoints.
       return defaultStagingUrl;
     }
     final fromEnv = dartDefinedUrl.trim();
     if (fromEnv.isNotEmpty) return fromEnv;
-    // Release builds must not silently ship an accidental empty key — fall
-    // back to the known prod project only when a default is allowed.
-    if (kReleaseMode && _environment != Environment.development) {
-      return defaultUrl;
-    }
     return defaultUrl;
   }
 
   static String get anonKey {
-    if (_environment == Environment.staging) {
+    if (_useStagingBackend) {
       final stagingKey = dartDefinedStagingAnonKey.trim();
       if (stagingKey.isNotEmpty) return stagingKey;
       return defaultStagingAnonKey;

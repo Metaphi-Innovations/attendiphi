@@ -4,7 +4,7 @@
 
 | | Staging | Production |
 |---|---|---|
-| **Entrypoint** | `lib/main_staging.dart` | `lib/main.dart` |
+| **Entrypoint** | `lib/main_staging.dart` or local `flutter run` (`main.dart` debug → staging) | Release `main.dart` / `main_prod.dart` / `build_web_release.sh` |
 | **Supabase project** | **Attendiphi-test** (`ofieqhdkvofsjnpxkmee`) | **Attendiphi** (`fzghxzybyygslfjyfewu`) |
 | **Region** | `ap-northeast-2` | `ap-northeast-1` |
 | **Data** | Demo / safe to break | Real members & check-ins |
@@ -13,17 +13,26 @@
 
 Never put **service_role** keys in the Flutter app or git.
 
-## Run staging app locally (web)
+## Run locally (always demo DB)
+
+Local debug/profile defaults to **attendiphi-test** so day-to-day work never
+touches live data:
 
 ```bash
+flutter run -d chrome          # uses demo DB
+# or explicitly:
 ./scripts/run_web_staging.sh
 ```
 
 Smoke-check: Network / logs should show host `ofieqhdkvofsjnpxkmee.supabase.co`,
 not `fzghxzybyygslfjyfewu.supabase.co`.
 
+**Live data** only after you merge to `main` and build/deploy with
+`./scripts/build_web_release.sh` (release mode → production).  
+Rare intentional live local: `flutter run -t lib/main_prod.dart`.
+
 `CHECKIN_SESSION_TOKEN_SECRET` for staging Flutter defaults to `staging-dev-secret-16`
-(must match `public.app_secrets` on **test**).
+(must match `public.app_secrets` on **test**) when using `./scripts/run_web_staging.sh`.
 
 ### Local keys (optional)
 
@@ -115,14 +124,12 @@ Edge Function is **deployed** on test. SMTP secrets are **not** configured by de
 git checkout staging
 # make changes
 flutter test
-./scripts/run_web_staging.sh   # main_staging.dart + test defines
+flutter run -d chrome          # demo DB (default local)
+# or: ./scripts/run_web_staging.sh
 git add …
 git commit -m "…"
 git push origin staging
 ```
-
-Prefer `lib/main_staging.dart` for “staging = test DB”. `lib/main_dev.dart` is a
-separate local/dev entrypoint.
 
 ## 7. Promote to production only when staging is good
 

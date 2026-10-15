@@ -7,6 +7,7 @@ CheckInSubmission _record({
   required String name,
   required CheckInType type,
   String? substituteName,
+  String? substituteForMember,
 }) {
   return CheckInSubmission(
     id: 'id_$name',
@@ -21,6 +22,7 @@ CheckInSubmission _record({
     distanceMeters: 0,
     timestamp: DateTime(2026, 10, 9),
     substituteName: substituteName,
+    substituteForMember: substituteForMember,
   );
 }
 
@@ -44,18 +46,20 @@ void main() {
   });
 
   group('buildSubstituteAbsentAttendanceTxt', () {
-    test('lists substitute attendees then absents, A–Z', () {
+    test('lists substitute with covered member then absents, A–Z', () {
       final txt = buildSubstituteAbsentAttendanceTxt(
         records: [
           _record(
-            name: 'Covered Member',
+            name: 'Covered Member One',
             type: CheckInType.substitute,
             substituteName: 'Zara Ali Khan',
+            substituteForMember: 'Covered Member One',
           ),
           _record(
             name: 'Covered Two',
             type: CheckInType.substitute,
             substituteName: 'amit shah',
+            substituteForMember: 'Covered Two',
           ),
           _record(name: 'Meera Joshi Patel', type: CheckInType.absent),
           _record(name: 'Present Member', type: CheckInType.member),
@@ -66,11 +70,82 @@ void main() {
       expect(
         txt,
         'Substitute\n'
-        'amit shah\n'
-        'Zara Khan\n'
+        'amit shah (for Covered Two)\n'
+        'Zara Khan (for Covered One)\n'
         '\n'
         'Absent\n'
         'Meera Patel\n',
+      );
+    });
+
+    test('falls back to userName for member when substituteForMember is empty',
+        () {
+      final txt = buildSubstituteAbsentAttendanceTxt(
+        records: [
+          _record(
+            name: 'Rohan Mehta',
+            type: CheckInType.substitute,
+            substituteName: 'Pooja Nair',
+          ),
+        ],
+      );
+
+      expect(
+        txt,
+        'Substitute\n'
+        'Pooja Nair (for Rohan Mehta)\n'
+        '\n'
+        'Absent\n'
+        '(none)\n',
+      );
+    });
+
+    test('omits member clause when covered name is missing', () {
+      final txt = buildSubstituteAbsentAttendanceTxt(
+        records: [
+          _record(
+            name: '',
+            type: CheckInType.substitute,
+            substituteName: 'Solo Sub',
+          ),
+        ],
+      );
+
+      expect(
+        txt,
+        'Substitute\n'
+        'Solo Sub\n'
+        '\n'
+        'Absent\n'
+        '(none)\n',
+      );
+    });
+
+    test('dedupes identical substitute+member lines', () {
+      final txt = buildSubstituteAbsentAttendanceTxt(
+        records: [
+          _record(
+            name: 'Member A',
+            type: CheckInType.substitute,
+            substituteName: 'Sub One',
+            substituteForMember: 'Member A',
+          ),
+          _record(
+            name: 'Member A',
+            type: CheckInType.substitute,
+            substituteName: 'Sub One',
+            substituteForMember: 'Member A',
+          ),
+        ],
+      );
+
+      expect(
+        txt,
+        'Substitute\n'
+        'Sub One (for Member A)\n'
+        '\n'
+        'Absent\n'
+        '(none)\n',
       );
     });
 
