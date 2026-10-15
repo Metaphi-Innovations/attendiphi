@@ -33,7 +33,7 @@ Hand **`build/web.zip`** to devops. Do **not** deploy Firebase Hosting.
 - [ ] Opaque standee QR only (legacy `/checkin/<locationId>?date=` rejected in release)
 - [ ] Welcome email: “Set your password” link, no plaintext password
 - [ ] Optional: `SENTRY_DSN` dart-define when crash reporting is approved
-- [ ] Staging builds prefer `main_staging.dart` + `SUPABASE_URL_STAGING` when available
+- [ ] Staging: `lib/main_staging.dart` + attendiphi-test (see [STAGING.md](./STAGING.md) / `./scripts/run_web_staging.sh`)
 
 ## Nginx (SPA)
 

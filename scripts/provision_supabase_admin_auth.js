@@ -22,6 +22,16 @@ if (!SERVICE_ROLE) {
   process.exit(1);
 }
 
+// Staging safety: refuse prod when ATTENDIPHI_STAGING_ONLY=1.
+if (process.env.ATTENDIPHI_STAGING_ONLY === '1') {
+  if (String(SUPABASE_URL).includes('fzghxzybyygslfjyfewu')) {
+    console.error(
+      'ATTENDIPHI_STAGING_ONLY=1 — refusing production URL. Use attendiphi-test.',
+    );
+    process.exit(1);
+  }
+}
+
 const headers = {
   apikey: SERVICE_ROLE,
   Authorization: `Bearer ${SERVICE_ROLE}`,

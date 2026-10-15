@@ -9,6 +9,10 @@ import '../../app/config/environment.dart';
 /// [scripts/build_web_release.sh] injects the same values into Dart and
 /// `web/index.html` meta tags so they cannot drift.
 ///
+/// Staging (`Environment.staging` / [main_staging.dart]) uses
+/// `SUPABASE_URL_STAGING` / `SUPABASE_ANON_KEY_STAGING`, with fallbacks to the
+/// attendiphi-test project. Production defaults are never overridden by staging.
+///
 /// Do not put service-role keys here.
 class SupabaseAppConfig {
   SupabaseAppConfig._();
@@ -19,6 +23,14 @@ class SupabaseAppConfig {
   /// Publishable anon / gateway key (safe for client; not a service-role secret).
   static const defaultAnonKey =
       'sb_publishable_sxoF5zOkdBhDJOm3EH6PjA_uSswNowX';
+
+  /// Staging / attendiphi-test project (publishable anon only).
+  static const defaultStagingUrl =
+      'https://ofieqhdkvofsjnpxkmee.supabase.co';
+
+  /// Staging publishable anon key (client-safe; not service-role).
+  static const defaultStagingAnonKey =
+      'sb_publishable_S3HgjDPER8qwglSX1HIrLg_IyFh6X2_';
 
   static const dartDefinedUrl = String.fromEnvironment(
     'SUPABASE_URL',
@@ -51,9 +63,11 @@ class SupabaseAppConfig {
   static Environment get environment => _environment;
 
   static String get url {
-    final stagingUrl = dartDefinedStagingUrl.trim();
-    if (_environment == Environment.staging && stagingUrl.isNotEmpty) {
-      return stagingUrl;
+    if (_environment == Environment.staging) {
+      final stagingUrl = dartDefinedStagingUrl.trim();
+      if (stagingUrl.isNotEmpty) return stagingUrl;
+      // Zero-friction local staging — never used for production entrypoints.
+      return defaultStagingUrl;
     }
     final fromEnv = dartDefinedUrl.trim();
     if (fromEnv.isNotEmpty) return fromEnv;
@@ -66,9 +80,10 @@ class SupabaseAppConfig {
   }
 
   static String get anonKey {
-    final stagingKey = dartDefinedStagingAnonKey.trim();
-    if (_environment == Environment.staging && stagingKey.isNotEmpty) {
-      return stagingKey;
+    if (_environment == Environment.staging) {
+      final stagingKey = dartDefinedStagingAnonKey.trim();
+      if (stagingKey.isNotEmpty) return stagingKey;
+      return defaultStagingAnonKey;
     }
     final fromEnv = dartDefinedAnonKey.trim();
     if (fromEnv.isNotEmpty) return fromEnv;

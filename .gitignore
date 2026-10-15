@@ -58,6 +58,7 @@ node_modules/
 *.key
 *.pem
 .env*
+*.local.env
 .secrets/
 assets/data/
 
