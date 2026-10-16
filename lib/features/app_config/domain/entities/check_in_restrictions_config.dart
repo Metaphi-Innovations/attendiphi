@@ -1,35 +1,63 @@
-/// Live configuration for production check-in restrictions.
+/// Live configuration for check-in restrictions.
 ///
 /// Stored at `appConfig/checkInRestrictions`. When the document is missing,
-/// clients treat [restrictionsEnabled] as `true` (safe default).
+/// clients treat both granular flags as `true` (safe default).
+///
+/// Staging Super Admin can toggle [locationRestrictionEnabled] and
+/// [dateRestrictionEnabled] independently. Production keeps a single master
+/// switch that sets both together via [restrictionsEnabled].
 class CheckInRestrictionsConfig {
   const CheckInRestrictionsConfig({
-    required this.restrictionsEnabled,
+    required this.locationRestrictionEnabled,
+    required this.dateRestrictionEnabled,
     this.updatedAt,
     this.updatedBy,
     this.updatedByEmail,
   });
 
-  /// When true: Thursday-only, QR date must match today, one device = one check-in.
-  /// When false: test mode — any day, any QR date, multi check-in per device.
-  final bool restrictionsEnabled;
+  /// When true: GPS permission + proximity/radius may block check-in.
+  /// When false: do not block on deny / outside radius, but still fetch GPS
+  /// coordinates for audit when the browser allows.
+  final bool locationRestrictionEnabled;
+
+  /// When true: Thursday-only QR + session-day gate (QR must match today).
+  /// When false: everyday QR / check-in and daily attendance for any day.
+  final bool dateRestrictionEnabled;
 
   final DateTime? updatedAt;
   final String? updatedBy;
   final String? updatedByEmail;
 
+  /// Legacy combined flag: true when either restriction is enabled.
+  /// Prefer the granular fields at new call sites.
+  bool get restrictionsEnabled =>
+      locationRestrictionEnabled || dateRestrictionEnabled;
+
   static const CheckInRestrictionsConfig defaults = CheckInRestrictionsConfig(
-    restrictionsEnabled: true,
+    locationRestrictionEnabled: true,
+    dateRestrictionEnabled: true,
   );
 
+  /// Maps a legacy single-boolean document into both flags.
+  factory CheckInRestrictionsConfig.fromLegacyMaster(bool enabled) {
+    return CheckInRestrictionsConfig(
+      locationRestrictionEnabled: enabled,
+      dateRestrictionEnabled: enabled,
+    );
+  }
+
   CheckInRestrictionsConfig copyWith({
-    bool? restrictionsEnabled,
+    bool? locationRestrictionEnabled,
+    bool? dateRestrictionEnabled,
     DateTime? updatedAt,
     String? updatedBy,
     String? updatedByEmail,
   }) {
     return CheckInRestrictionsConfig(
-      restrictionsEnabled: restrictionsEnabled ?? this.restrictionsEnabled,
+      locationRestrictionEnabled:
+          locationRestrictionEnabled ?? this.locationRestrictionEnabled,
+      dateRestrictionEnabled:
+          dateRestrictionEnabled ?? this.dateRestrictionEnabled,
       updatedAt: updatedAt ?? this.updatedAt,
       updatedBy: updatedBy ?? this.updatedBy,
       updatedByEmail: updatedByEmail ?? this.updatedByEmail,

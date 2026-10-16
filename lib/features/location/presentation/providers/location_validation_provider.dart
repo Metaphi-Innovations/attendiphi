@@ -63,8 +63,10 @@ class LocationValidationNotifier extends Notifier<LocationValidationState> {
   Future<void> validateLocation() async {
     // Match QR form: wait for config. While loading, do not treat as ON (M5).
     final configReady = ref.read(restrictionsConfigReadyProvider);
+    // Enforce radius/permission only when location restriction is ON.
+    // When OFF we still attempt GPS fetch for audit; failures do not block.
     final enforceProximity =
-        configReady && ref.read(restrictionsEnabledProvider);
+        configReady && ref.read(locationRestrictionEnabledProvider);
 
     AppLogger.info(
       'Validating location for venue: ${location.name} (${location.id}) '

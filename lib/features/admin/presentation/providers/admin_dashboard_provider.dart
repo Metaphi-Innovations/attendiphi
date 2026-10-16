@@ -14,27 +14,25 @@ import 'admin_auth_provider.dart';
 
 /// Default session day for Daily Attendance.
 ///
-/// Restrictions ON: current or previous Thursday (session stays open until the
-/// next Thursday starts).
-/// Restrictions OFF: current or next Thursday so QR-session check-ins (stamped
-/// with the upcoming meeting date) appear on Daily Attendance without changing
-/// the date picker.
+/// Date restriction ON: current or previous Thursday (session stays open until
+/// the next Thursday starts).
+/// Date restriction OFF: today (everyday check-ins).
 DateTime defaultAttendanceSessionDate(
   DateTime now, {
-  required bool restrictionsEnabled,
+  bool? dateRestrictionEnabled,
+
+  /// Legacy alias — prefer [dateRestrictionEnabled].
+  bool? restrictionsEnabled,
 }) {
+  final dateOn = dateRestrictionEnabled ?? restrictionsEnabled ?? true;
   final today = DateTime(now.year, now.month, now.day);
+
+  if (!dateOn) return today;
   if (today.weekday == DateTime.thursday) return today;
 
-  if (restrictionsEnabled) {
-    var daysSinceThursday = (today.weekday - DateTime.thursday) % 7;
-    if (daysSinceThursday <= 0) daysSinceThursday += 7;
-    return today.subtract(Duration(days: daysSinceThursday));
-  }
-
-  var daysUntilThursday = (DateTime.thursday - today.weekday) % 7;
-  if (daysUntilThursday <= 0) daysUntilThursday += 7;
-  return today.add(Duration(days: daysUntilThursday));
+  var daysSinceThursday = (today.weekday - DateTime.thursday) % 7;
+  if (daysSinceThursday <= 0) daysSinceThursday += 7;
+  return today.subtract(Duration(days: daysSinceThursday));
 }
 
 /// Filter selection for the admin dashboard.
@@ -75,12 +73,12 @@ final checkInsStreamProvider = StreamProvider<List<CheckInSubmission>>((ref) {
     return Stream.value(const <CheckInSubmission>[]);
   }
   final filters = ref.watch(adminDashboardFilterProvider);
-  final restrictionsEnabled = ref.watch(restrictionsEnabledProvider);
+  final dateRestrictionEnabled = ref.watch(dateRestrictionEnabledProvider);
   final target =
       filters.selectedDate ??
       defaultAttendanceSessionDate(
         DateTime.now(),
-        restrictionsEnabled: restrictionsEnabled,
+        dateRestrictionEnabled: dateRestrictionEnabled,
       );
   final repository = ref.watch(checkInRepositoryProvider);
   final assigned = auth.currentAdmin?.assignedLocationIds ?? const <String>[];
@@ -362,14 +360,14 @@ final baseDashboardRecordsProvider = Provider<AsyncValue<List<CheckInSubmission>
   final records = checkInsAsync.value ?? [];
   final employees = employeesAsync.value ?? [];
   final activeEmployees = employees.where((e) => e.isActive).toList();
-  final restrictionsEnabled = ref.watch(restrictionsEnabledProvider);
+  final dateRestrictionEnabled = ref.watch(dateRestrictionEnabledProvider);
 
   final now = DateTime.now();
   final DateTime targetDate =
       filters.selectedDate ??
       defaultAttendanceSessionDate(
         now,
-        restrictionsEnabled: restrictionsEnabled,
+        dateRestrictionEnabled: dateRestrictionEnabled,
       );
 
   final daySubmissions = records.where((r) {

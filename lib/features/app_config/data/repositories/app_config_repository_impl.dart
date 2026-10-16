@@ -3,8 +3,11 @@ import '../datasources/app_config_remote_data_source.dart';
 
 abstract class AppConfigRepository {
   Stream<CheckInRestrictionsConfig> watchCheckInRestrictions();
+
   Future<void> setCheckInRestrictions({
-    required bool restrictionsEnabled,
+    bool? restrictionsEnabled,
+    bool? locationRestrictionEnabled,
+    bool? dateRestrictionEnabled,
     required String updatedBy,
     String? updatedByEmail,
   });
@@ -22,12 +25,16 @@ class AppConfigRepositoryImpl implements AppConfigRepository {
 
   @override
   Future<void> setCheckInRestrictions({
-    required bool restrictionsEnabled,
+    bool? restrictionsEnabled,
+    bool? locationRestrictionEnabled,
+    bool? dateRestrictionEnabled,
     required String updatedBy,
     String? updatedByEmail,
   }) {
     return _remote.setCheckInRestrictions(
       restrictionsEnabled: restrictionsEnabled,
+      locationRestrictionEnabled: locationRestrictionEnabled,
+      dateRestrictionEnabled: dateRestrictionEnabled,
       updatedBy: updatedBy,
       updatedByEmail: updatedByEmail,
     );

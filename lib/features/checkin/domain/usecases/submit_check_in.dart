@@ -46,10 +46,19 @@ class SubmitCheckIn {
     /// Member id being substituted for (locks that member for the session day).
     String? substituteForMemberId,
 
-    /// When false, skips Thursday / QR-date / one-device / GPS enforcement.
-    /// Phone uniqueness and required fields still apply.
+    /// When false, skips Thursday / QR-date client gates.
+    /// Prefer [dateRestrictionEnabled]; this alias remains for older callers.
     bool restrictionsEnabled = true,
+
+    /// Thursday + QR session-date client validation.
+    bool? dateRestrictionEnabled,
+
+    /// When true, server also enforces GPS radius (via combined RPC flag).
+    bool? locationRestrictionEnabled,
   }) async {
+    final dateOn = dateRestrictionEnabled ?? restrictionsEnabled;
+    final locationOn = locationRestrictionEnabled ?? restrictionsEnabled;
+    final enforceServerRestrictions = dateOn || locationOn;
     // 1. Validate Form Fields
     final nameError = Validators.validateName(name);
     if (nameError != null) {
@@ -107,7 +116,7 @@ class SubmitCheckIn {
       }
     }
 
-    // 4. Strict Thursday-Only + QR session date (when restrictions ON)
+    // 4. Strict Thursday-Only + QR session date (when date restriction ON)
     final now = nowProvider != null ? nowProvider!() : DateTime.now();
 
     final parsedSessionDate = () {
@@ -116,7 +125,7 @@ class SubmitCheckIn {
       return DateTime.tryParse(raw);
     }();
 
-    if (restrictionsEnabled) {
+    if (dateOn) {
       if (now.weekday != DateTime.thursday) {
         throw const CheckInSubmissionFailedException(
           userMessage: 'Check-in is available on Thursday only.',
@@ -248,7 +257,8 @@ class SubmitCheckIn {
         : submission;
     await _repository.submitCheckIn(
       stored,
-      enforceThursday: restrictionsEnabled,
+      // Server reads granular flags from app_config; this opts into enforcement.
+      enforceThursday: enforceServerRestrictions,
       sessionDateYmd: sessionDateYmd,
       claimDeviceId: null,
       claimMemberId: claimMemberId,

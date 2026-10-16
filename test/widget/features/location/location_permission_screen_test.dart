@@ -30,7 +30,10 @@ void main() {
       overrides: [
         checkInRestrictionsConfigProvider.overrideWith(
           (ref) => Stream.value(
-            CheckInRestrictionsConfig(restrictionsEnabled: restrictionsEnabled),
+            CheckInRestrictionsConfig(
+              locationRestrictionEnabled: restrictionsEnabled,
+              dateRestrictionEnabled: restrictionsEnabled,
+            ),
           ),
         ),
       ],

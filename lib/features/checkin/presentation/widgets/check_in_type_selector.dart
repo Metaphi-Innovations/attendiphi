@@ -4,51 +4,81 @@ import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_radius.dart';
 import '../../domain/entities/check_in_type.dart';
 
+/// UI tabs on the public check-in form (includes Face Verification).
+///
+/// Face Verification still submits as [CheckInType.member] after a match.
+enum CheckInFormTab {
+  member,
+  substitute,
+  visitor,
+  faceVerification,
+}
+
+extension CheckInFormTabX on CheckInFormTab {
+  /// Persisted check-in type used on submit.
+  CheckInType get checkInType => switch (this) {
+    CheckInFormTab.member || CheckInFormTab.faceVerification =>
+      CheckInType.member,
+    CheckInFormTab.substitute => CheckInType.substitute,
+    CheckInFormTab.visitor => CheckInType.visitor,
+  };
+
+  static CheckInFormTab fromCheckInType(CheckInType? type) {
+    return switch (type) {
+      CheckInType.substitute => CheckInFormTab.substitute,
+      CheckInType.visitor => CheckInFormTab.visitor,
+      _ => CheckInFormTab.member,
+    };
+  }
+}
+
 class CheckInTypeSelector extends StatelessWidget {
   const CheckInTypeSelector({
     super.key,
-    required this.selectedType,
+    required this.selectedTab,
     required this.onChanged,
   });
 
-  final CheckInType? selectedType;
-  final ValueChanged<CheckInType> onChanged;
+  final CheckInFormTab? selectedTab;
+  final ValueChanged<CheckInFormTab> onChanged;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        // 1. Member Option
         Expanded(
           child: _buildTypeCard(
-            type: CheckInType.member,
+            tab: CheckInFormTab.member,
             title: 'Member',
             icon: Icons.person_rounded,
-            isSelected: selectedType == CheckInType.member,
+            isSelected: selectedTab == CheckInFormTab.member,
           ),
         ),
-
-        const SizedBox(width: 8),
-
-        // 2. Substitute Option
+        const SizedBox(width: 6),
         Expanded(
           child: _buildTypeCard(
-            type: CheckInType.substitute,
+            tab: CheckInFormTab.substitute,
             title: 'Substitute',
             icon: Icons.swap_horiz_rounded,
-            isSelected: selectedType == CheckInType.substitute,
+            isSelected: selectedTab == CheckInFormTab.substitute,
           ),
         ),
-
-        const SizedBox(width: 8),
-
-        // 3. Visitor Option
+        const SizedBox(width: 6),
         Expanded(
           child: _buildTypeCard(
-            type: CheckInType.visitor,
+            tab: CheckInFormTab.visitor,
             title: 'Visitor',
             icon: Icons.card_membership_rounded,
-            isSelected: selectedType == CheckInType.visitor,
+            isSelected: selectedTab == CheckInFormTab.visitor,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: _buildTypeCard(
+            tab: CheckInFormTab.faceVerification,
+            title: 'Face',
+            icon: Icons.face_retouching_natural_rounded,
+            isSelected: selectedTab == CheckInFormTab.faceVerification,
           ),
         ),
       ],
@@ -56,7 +86,7 @@ class CheckInTypeSelector extends StatelessWidget {
   }
 
   Widget _buildTypeCard({
-    required CheckInType type,
+    required CheckInFormTab tab,
     required String title,
     required IconData icon,
     required bool isSelected,
@@ -65,11 +95,11 @@ class CheckInTypeSelector extends StatelessWidget {
     const activeBgColor = Color(0xFFFEF2F2);
 
     return InkWell(
-      onTap: () => onChanged(type),
+      onTap: () => onChanged(tab),
       borderRadius: AppRadius.mdAll,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
         decoration: BoxDecoration(
           color: isSelected ? activeBgColor : Colors.white,
           borderRadius: AppRadius.mdAll,
@@ -92,18 +122,19 @@ class CheckInTypeSelector extends StatelessWidget {
           children: [
             Icon(
               isSelected ? Icons.check_circle_rounded : icon,
-              size: 20,
+              size: 18,
               color: isSelected ? activeColor : const Color(0xFF64748B),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             Text(
               title,
               style: TextStyle(
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
                 color: isSelected ? activeColor : const Color(0xFF475569),
-                fontSize: 13,
+                fontSize: 11,
               ),
               overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
             ),
           ],
         ),
@@ -111,5 +142,3 @@ class CheckInTypeSelector extends StatelessWidget {
     );
   }
 }
-
-/// Substitute photo verification card.

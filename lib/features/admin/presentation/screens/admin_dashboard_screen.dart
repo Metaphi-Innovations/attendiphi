@@ -8,7 +8,6 @@ import 'package:uuid/uuid.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_radius.dart';
 import '../../../../app/theme/app_shadows.dart';
-import '../../../../core/extensions/date_extensions.dart';
 import '../../../../core/responsive/responsive_breakpoints.dart';
 import '../../../../core/utils/file_download_helper.dart';
 import '../../../../core/utils/image_utils.dart';
@@ -27,6 +26,7 @@ import '../../../checkin/presentation/providers/checkin_providers.dart';
 import '../../../employee/domain/employee_lookup.dart';
 import '../../../employee/domain/entities/employee.dart';
 import '../../../employee/presentation/providers/employee_providers.dart';
+import '../../domain/attendance_edit_display.dart';
 import '../../domain/attendance_substitute_absent_export.dart';
 import '../../domain/substitute_check_in_mapping.dart';
 import '../providers/admin_dashboard_provider.dart';
@@ -1187,11 +1187,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
           ),
           _DetailItem(
             label: 'Timestamp',
-            value: record.type.isNotCheckedIn
-                ? '-'
-                : (record.isEdited
-                      ? '${record.timestamp.formattedDateTime} (Edited by Admin)'
-                      : record.timestamp.formattedDateTime),
+            value: attendanceDetailTimestampLabel(record),
           ),
           _DetailItem(label: 'Submission ID', value: record.id),
           _DetailItem(
@@ -1612,7 +1608,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   DateTime _defaultSessionDate(DateTime now) {
     return defaultAttendanceSessionDate(
       now,
-      restrictionsEnabled: ref.watch(restrictionsEnabledProvider),
+      dateRestrictionEnabled: ref.watch(dateRestrictionEnabledProvider),
     );
   }
 
@@ -1626,16 +1622,17 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   ) {
     final viewingDate = filterState.selectedDate ?? _defaultSessionDate(now);
     final viewingDateStr = DateFormat('EEEE, d MMM yyyy').format(viewingDate);
-    final restrictionsEnabled = ref.watch(restrictionsEnabledProvider);
-    final isDefaultNextSession =
-        !restrictionsEnabled &&
-        filterState.selectedDate == null &&
-        now.weekday != DateTime.thursday;
+    final dateRestrictionEnabled = ref.watch(dateRestrictionEnabledProvider);
     final isLiveToday =
-        now.weekday == DateTime.thursday && filterState.selectedDate == null;
-    final dateSubtitle = isDefaultNextSession
-        ? 'Showing next session: $viewingDateStr. Use the date picker for stamped QR days.'
-        : isLiveToday
+        filterState.selectedDate == null &&
+        viewingDate.year == now.year &&
+        viewingDate.month == now.month &&
+        viewingDate.day == now.day;
+    final dateSubtitle = !dateRestrictionEnabled
+        ? (isLiveToday
+              ? 'Live attendance for today, $viewingDateStr.'
+              : 'Attendance records for $viewingDateStr.')
+        : isLiveToday && now.weekday == DateTime.thursday
         ? 'Live attendance for today, $viewingDateStr.'
         : 'Attendance records for $viewingDateStr.';
 
@@ -1740,7 +1737,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
         filterState.selectedDate ??
         defaultAttendanceSessionDate(
           DateTime.now(),
-          restrictionsEnabled: ref.read(restrictionsEnabledProvider),
+          dateRestrictionEnabled: ref.read(dateRestrictionEnabledProvider),
         );
     final records = ref.read(baseDashboardRecordsProvider).value ?? [];
     final filename = attendanceExportTxtFilename(sessionDate);
@@ -1857,24 +1854,23 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   }
 
   Widget _buildThursdayNotice(DateTime now) {
-    final restrictionsEnabled = ref.watch(restrictionsEnabledProvider);
-    // When restrictions are OFF, check-in is allowed any day for the upcoming
-    // session — do not show the Thursday-only banner.
-    if (!restrictionsEnabled) return const SizedBox.shrink();
+    final dateRestrictionEnabled = ref.watch(dateRestrictionEnabledProvider);
+    // When date restriction is OFF, everyday check-in is allowed — no banner.
+    if (!dateRestrictionEnabled) return const SizedBox.shrink();
 
     final isThursday = now.weekday == DateTime.thursday;
     if (isThursday) return const SizedBox.shrink();
 
     final activeThursday = defaultAttendanceSessionDate(
       now,
-      restrictionsEnabled: true,
+      dateRestrictionEnabled: true,
     );
     final activeDateStr = DateFormat('EEEE, d MMM yyyy').format(activeThursday);
 
-    final nextThursday = defaultAttendanceSessionDate(
-      now,
-      restrictionsEnabled: false,
-    );
+    final today = DateTime(now.year, now.month, now.day);
+    var daysUntilThursday = (DateTime.thursday - today.weekday) % 7;
+    if (daysUntilThursday <= 0) daysUntilThursday += 7;
+    final nextThursday = today.add(Duration(days: daysUntilThursday));
     final nextDateStr = DateFormat('EEEE, d MMM yyyy').format(nextThursday);
 
     return Container(
@@ -2747,7 +2743,7 @@ class _MobileCheckInRow extends StatelessWidget {
                       ),
                       const SizedBox(width: 3),
                       Text(
-                        _formatTime(record.timestamp),
+                        _formatTime(attendanceDisplayClock(record)),
                         style: TextStyle(
                           fontSize: 11,
                           color: record.isEdited
@@ -3319,7 +3315,7 @@ class _CheckInTableView extends ConsumerWidget {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                _formatDate(record.timestamp),
+                                _formatDate(attendanceDisplayDate(record)),
                                 style: TextStyle(
                                   fontSize: 12.5,
                                   fontWeight: FontWeight.w600,
@@ -3345,7 +3341,7 @@ class _CheckInTableView extends ConsumerWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            _formatTime(record.timestamp),
+                            _formatTime(attendanceDisplayClock(record)),
                             style: TextStyle(
                               fontSize: 11,
                               color: record.isEdited

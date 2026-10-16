@@ -84,14 +84,20 @@ Future<void> bootstrap({required EnvironmentConfig config}) async {
 
 /// Default entry point.
 ///
-/// - **Local** (`flutter run` / debug & profile): attendiphi-test (demo data).
+/// - **Debug / profile** (`flutter run`): local Docker Supabase (development).
 /// - **Release** (`flutter build` / [scripts/build_web_release.sh]): production.
+///
+/// Prefer explicit scripts:
+/// - Local: `./scripts/run_web_local.sh` (`main_dev.dart`)
+/// - Cloud staging: `./scripts/run_web_staging.sh` (`main_staging.dart`)
+/// - Staging zip: `./scripts/build_web_staging.sh`
+/// - Production zip: `./scripts/build_web_release.sh`
 ///
 /// Intentional live local: `flutter run -t lib/main_prod.dart`.
 void main() {
   bootstrap(
     config: kReleaseMode
         ? EnvironmentConfig.production
-        : EnvironmentConfig.staging,
+        : EnvironmentConfig.development,
   );
 }

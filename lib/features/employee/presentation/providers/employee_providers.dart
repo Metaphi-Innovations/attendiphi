@@ -49,6 +49,14 @@ final publicMembersStreamProvider = StreamProvider<List<Employee>>((ref) {
   return repository.streamPublicMembers();
 });
 
+/// Face check-in candidates (active members with SFace templates). Works on public QR.
+final faceVerificationCandidatesProvider = StreamProvider<List<Employee>>((
+  ref,
+) {
+  final repository = ref.watch(employeeRepositoryProvider);
+  return repository.streamFaceVerificationCandidates();
+});
+
 /// Server-first fetch of one member document by id.
 final employeeByIdProvider = FutureProvider.family<Employee?, String>((
   ref,

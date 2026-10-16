@@ -74,6 +74,50 @@ class SupabaseEmployeeRemoteDataSource implements EmployeeRemoteDataSource {
     return list;
   }
 
+  /// Active members with SFace templates for public Face check-in.
+  Future<List<Employee>> _fetchFaceVerificationCandidates() async {
+    final rows = await _client
+        .from('public_face_candidates')
+        .select(
+          'member_id,name,phone,is_active,model,model_version,embedding,raw,updated_at',
+        )
+        .order('name');
+    final list =
+        rows
+            .map(
+              (r) => SupabaseEmployeeMapper.fromFaceCandidateRow(
+                Map<String, dynamic>.from(r),
+              ),
+            )
+            .where((e) => e.hasSfaceTemplates)
+            .toList()
+          ..sort(
+            (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+          );
+    return list;
+  }
+
+  Future<Employee?> _attachFaceTemplates(Employee member) async {
+    try {
+      final row = await _client
+          .from('face_templates')
+          .select('member_id,model,model_version,embedding,raw')
+          .eq('member_id', member.id)
+          .maybeSingle();
+      if (row == null) return member;
+      return SupabaseEmployeeMapper.withFaceTemplates(
+        member,
+        Map<String, dynamic>.from(row),
+      );
+    } on PostgrestException catch (e, st) {
+      AppLogger.warning(
+        'Supabase attachFaceTemplates failed: ${e.message}\n$st',
+        tag: 'SupabaseEmployeeRemoteDataSource',
+      );
+      return member;
+    }
+  }
+
   @override
   Stream<List<Employee>> streamEmployees() {
     return supabaseRealtimeOrPollStream<List<Employee>>(
@@ -97,6 +141,16 @@ class SupabaseEmployeeRemoteDataSource implements EmployeeRemoteDataSource {
         value: true,
       ),
       tag: 'SupabasePublicMembersStream',
+    );
+  }
+
+  @override
+  Stream<List<Employee>> streamFaceVerificationCandidates() {
+    return supabaseRealtimeOrPollStream<List<Employee>>(
+      client: _client,
+      table: 'face_templates',
+      fetch: _fetchFaceVerificationCandidates,
+      tag: 'SupabaseFaceVerificationCandidates',
     );
   }
 
@@ -359,7 +413,10 @@ class SupabaseEmployeeRemoteDataSource implements EmployeeRemoteDataSource {
           .eq('id', id)
           .maybeSingle();
       if (row == null) return null;
-      return SupabaseEmployeeMapper.fromRow(Map<String, dynamic>.from(row));
+      final member = SupabaseEmployeeMapper.fromRow(
+        Map<String, dynamic>.from(row),
+      );
+      return await _attachFaceTemplates(member);
     } on PostgrestException catch (e, st) {
       AppLogger.warning(
         'Supabase getEmployee failed: ${e.message}\n$st',

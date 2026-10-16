@@ -63,7 +63,10 @@ void main() {
   List<Override> baseOverrides({bool restrictionsEnabled = true}) => [
     checkInRestrictionsConfigProvider.overrideWith(
       (ref) => Stream.value(
-        CheckInRestrictionsConfig(restrictionsEnabled: restrictionsEnabled),
+        CheckInRestrictionsConfig(
+          locationRestrictionEnabled: restrictionsEnabled,
+          dateRestrictionEnabled: restrictionsEnabled,
+        ),
       ),
     ),
     locationConfigFamilyProvider('test_venue')
@@ -121,13 +124,15 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
 
-        // Verify top 3 type options
+        // Verify top 4 type options
         expect(find.text('Member'), findsWidgets);
         expect(find.text('Substitute'), findsOneWidget);
         expect(find.text('Visitor'), findsOneWidget);
+        expect(find.text('Face'), findsOneWidget);
 
         // Member is selected by default — dropdown UI, no face camera.
         expect(find.text('Member Face Verification'), findsNothing);
+        expect(find.text('Face Verification'), findsNothing);
         expect(find.text('Take Live Selfie'), findsNothing);
         expect(find.text('Start Camera'), findsNothing);
         expect(find.text('Verify Face'), findsNothing);

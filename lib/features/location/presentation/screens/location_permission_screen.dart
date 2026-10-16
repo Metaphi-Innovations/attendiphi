@@ -208,10 +208,11 @@ class _LocationPermissionScreenState
   }
 
   Future<void> _applyRestrictionsGate({
-    required bool restrictionsEnabled,
+    required bool dateRestrictionEnabled,
   }) async {
-    if (!restrictionsEnabled) {
-      // Test mode: any QR date, multi check-in, no GPS/location gate.
+    if (!dateRestrictionEnabled) {
+      // Date gates off: any QR date / any weekday. Still fetch GPS (enforce
+      // is controlled separately by locationRestrictionEnabledProvider).
       if (_hasCheckedIn || _existingSubmission != null) {
         setState(() {
           _hasCheckedIn = false;
@@ -225,17 +226,16 @@ class _LocationPermissionScreenState
           _gateApplied = true;
         });
       }
-      // Still attempt GPS for audit; radius/permission never block when OFF.
       _startLocationIfNeeded();
       return;
     }
 
     if (_gateApplied && !_isCheckingDevice) {
-      // Already applied production gates for this visit.
+      // Already applied date gates for this visit.
       return;
     }
 
-    // Production restrictions ON.
+    // Date restriction ON: Thursday + session-day gates.
     // Venue phones/tablets are shared: never redirect to "Attendance Recorded"
     // based on this device's previous member. Phone + member locks enforce
     // one check-in per person on submit.
@@ -269,10 +269,10 @@ class _LocationPermissionScreenState
     // Wait for live Super Admin toggle before enforcing date/device gates.
     ref.listen(checkInRestrictionsConfigProvider, (prev, next) {
       next.whenData((config) {
-        // Always re-apply when OFF so multi-check-in / any-date unlocks.
-        if (!config.restrictionsEnabled || !_gateApplied) {
+        // Always re-apply when date gates OFF so any-date unlocks.
+        if (!config.dateRestrictionEnabled || !_gateApplied) {
           _applyRestrictionsGate(
-            restrictionsEnabled: config.restrictionsEnabled,
+            dateRestrictionEnabled: config.dateRestrictionEnabled,
           );
         }
       });
@@ -282,8 +282,8 @@ class _LocationPermissionScreenState
       return const Scaffold(body: Center(child: MetaPhiLoadingIndicator()));
     }
 
-    final restrictionsEnabled = configAsync.maybeWhen(
-      data: (config) => config.restrictionsEnabled,
+    final dateRestrictionEnabled = configAsync.maybeWhen(
+      data: (config) => config.dateRestrictionEnabled,
       orElse: () => true,
     );
 
@@ -291,7 +291,9 @@ class _LocationPermissionScreenState
     if (!_gateApplied && configAsync.hasValue) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || _gateApplied) return;
-        _applyRestrictionsGate(restrictionsEnabled: restrictionsEnabled);
+        _applyRestrictionsGate(
+          dateRestrictionEnabled: dateRestrictionEnabled,
+        );
       });
     }
 
@@ -337,10 +339,10 @@ class _LocationPermissionScreenState
         validationState is LocationValidationRequestingPermission ||
         validationState is LocationValidationFetchingPosition;
 
-    // When restrictions OFF: PAST / UPCOMING / any weekday QR is allowed.
-    final showNotThursday = restrictionsEnabled && !_isTodayThursday;
-    final showExpired = restrictionsEnabled && _isSessionExpired;
-    final showFuture = restrictionsEnabled && _isSessionFuture;
+    // When date restriction OFF: PAST / UPCOMING / any weekday QR is allowed.
+    final showNotThursday = dateRestrictionEnabled && !_isTodayThursday;
+    final showExpired = dateRestrictionEnabled && _isSessionExpired;
+    final showFuture = dateRestrictionEnabled && _isSessionFuture;
 
     return AppScaffold(
       title: AppStrings.locationPermissionTitle,
@@ -956,34 +958,12 @@ class _LocationPermissionScreenState
     LocationValidationState state,
     bool isBusy,
   ) {
+    // Web cannot re-open the browser location prompt or site settings after
+    // Deny — hide dead Allow Location / Open Settings actions.
     if (state is LocationValidationError &&
         (state.exception is LocationPermissionDeniedException ||
             state.exception is LocationPermissionPermanentlyDeniedException)) {
-      final errorState = state;
-      return Column(
-        children: [
-          AppButton.primary(
-            label: AppStrings.locationPermissionAllow,
-            icon: Icons.my_location_rounded,
-            onPressed: _retryLocationPermission,
-          ),
-          if (errorState.requiresSettings) ...[
-            const SizedBox(height: 12),
-            AppButton.secondary(
-              label: AppStrings.locationPermissionOpenSettings,
-              icon: Icons.settings_rounded,
-              onPressed: () {
-                ref
-                    .read(
-                      locationValidationFamilyProvider(widget.location)
-                          .notifier,
-                    )
-                    .openSettings();
-              },
-            ),
-          ],
-        ],
-      );
+      return const SizedBox.shrink();
     }
 
     if (state is LocationValidationOutsideRadius ||

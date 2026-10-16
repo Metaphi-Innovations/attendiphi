@@ -31,7 +31,8 @@ sealed class AppException implements Exception {
 /// Location permission was denied by the user.
 class LocationPermissionDeniedException extends AppException {
   const LocationPermissionDeniedException({
-    super.userMessage = 'Location was denied. Tap Allow Location to try again — you need it to verify you are at the venue.',
+    super.userMessage =
+        'Location was denied. Enable location for this site to verify you are at the venue.',
     super.technicalMessage = 'Location permission denied by user.',
     super.originalError,
     super.stackTrace,
@@ -41,7 +42,8 @@ class LocationPermissionDeniedException extends AppException {
 /// Location permission was permanently denied (requires settings).
 class LocationPermissionPermanentlyDeniedException extends AppException {
   const LocationPermissionPermanentlyDeniedException({
-    super.userMessage = 'Location is blocked for this site/app. Enable it, then tap Allow Location to continue check-in.',
+    super.userMessage =
+        'Location is blocked for this site. Enable it in the browser, then reload or scan the QR again to continue check-in.',
     super.technicalMessage =
         'Location permission permanently denied. Requires settings change.',
     super.originalError,

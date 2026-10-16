@@ -5,13 +5,10 @@ import '../../app/config/environment.dart';
 
 /// Attendiphi Supabase project (data + Auth) — sole backend for the app.
 ///
-/// Prefer `--dart-define=SUPABASE_URL=...` and `SUPABASE_ANON_KEY=...`.
-/// [scripts/build_web_release.sh] injects the same values into Dart and
-/// `web/index.html` meta tags so they cannot drift.
-///
-/// Staging (`Environment.staging` / [main_staging.dart]) uses
-/// `SUPABASE_URL_STAGING` / `SUPABASE_ANON_KEY_STAGING`, with fallbacks to the
-/// attendiphi-test project. Production defaults are never overridden by staging.
+/// Resolution by [Environment]:
+/// - **development** → local Docker (`SUPABASE_URL_LOCAL` / `127.0.0.1:54321`)
+/// - **staging** → attendiphi-test (`SUPABASE_URL_STAGING` / cloud defaults)
+/// - **production** → live Attendiphi (`SUPABASE_URL` / production defaults)
 ///
 /// Do not put service-role keys here.
 class SupabaseAppConfig {
@@ -31,6 +28,13 @@ class SupabaseAppConfig {
   /// Staging publishable anon key (client-safe; not service-role).
   static const defaultStagingAnonKey =
       'sb_publishable_S3HgjDPER8qwglSX1HIrLg_IyFh6X2_';
+
+  /// Local Supabase CLI default API URL (`supabase start`).
+  static const defaultLocalUrl = 'http://127.0.0.1:54321';
+
+  /// Well-known local anon JWT from Supabase CLI demo project (not a cloud secret).
+  static const defaultLocalAnonKey =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
 
   static const dartDefinedUrl = String.fromEnvironment(
     'SUPABASE_URL',
@@ -53,6 +57,17 @@ class SupabaseAppConfig {
     defaultValue: '',
   );
 
+  /// Optional local Docker overrides (used when [Environment.development]).
+  static const dartDefinedLocalUrl = String.fromEnvironment(
+    'SUPABASE_URL_LOCAL',
+    defaultValue: '',
+  );
+
+  static const dartDefinedLocalAnonKey = String.fromEnvironment(
+    'SUPABASE_ANON_KEY_LOCAL',
+    defaultValue: '',
+  );
+
   static Environment _environment = Environment.production;
 
   /// Called from [bootstrap] so staging/dev can resolve different defines.
@@ -62,31 +77,38 @@ class SupabaseAppConfig {
 
   static Environment get environment => _environment;
 
-  static bool get _useStagingBackend =>
-      _environment == Environment.staging ||
-      _environment == Environment.development;
-
   static String get url {
-    if (_useStagingBackend) {
-      final stagingUrl = dartDefinedStagingUrl.trim();
-      if (stagingUrl.isNotEmpty) return stagingUrl;
-      // Local / staging — never used for production entrypoints.
-      return defaultStagingUrl;
+    switch (_environment) {
+      case Environment.development:
+        final localUrl = dartDefinedLocalUrl.trim();
+        if (localUrl.isNotEmpty) return localUrl;
+        return defaultLocalUrl;
+      case Environment.staging:
+        final stagingUrl = dartDefinedStagingUrl.trim();
+        if (stagingUrl.isNotEmpty) return stagingUrl;
+        return defaultStagingUrl;
+      case Environment.production:
+        final fromEnv = dartDefinedUrl.trim();
+        if (fromEnv.isNotEmpty) return fromEnv;
+        return defaultUrl;
     }
-    final fromEnv = dartDefinedUrl.trim();
-    if (fromEnv.isNotEmpty) return fromEnv;
-    return defaultUrl;
   }
 
   static String get anonKey {
-    if (_useStagingBackend) {
-      final stagingKey = dartDefinedStagingAnonKey.trim();
-      if (stagingKey.isNotEmpty) return stagingKey;
-      return defaultStagingAnonKey;
+    switch (_environment) {
+      case Environment.development:
+        final localKey = dartDefinedLocalAnonKey.trim();
+        if (localKey.isNotEmpty) return localKey;
+        return defaultLocalAnonKey;
+      case Environment.staging:
+        final stagingKey = dartDefinedStagingAnonKey.trim();
+        if (stagingKey.isNotEmpty) return stagingKey;
+        return defaultStagingAnonKey;
+      case Environment.production:
+        final fromEnv = dartDefinedAnonKey.trim();
+        if (fromEnv.isNotEmpty) return fromEnv;
+        return defaultAnonKey;
     }
-    final fromEnv = dartDefinedAnonKey.trim();
-    if (fromEnv.isNotEmpty) return fromEnv;
-    return defaultAnonKey;
   }
 
   static bool get isConfigured => url.isNotEmpty && anonKey.isNotEmpty;

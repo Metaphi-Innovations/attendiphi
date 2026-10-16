@@ -4,6 +4,10 @@ import '../../domain/entities/employee.dart';
 abstract class EmployeeRemoteDataSource {
   Stream<List<Employee>> streamEmployees();
   Stream<List<Employee>> streamPublicMembers();
+
+  /// Active members with SFace templates for Face check-in (public QR safe).
+  Stream<List<Employee>> streamFaceVerificationCandidates();
+
   Future<void> addEmployee(
     String name, {
     String email = '',
