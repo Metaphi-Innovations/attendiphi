@@ -256,38 +256,80 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
     required String sessionDateYmd,
     required String photoBase64,
   }) async {
-    final bytes = ImageUtils.base64ToBytes(photoBase64);
-    if (bytes == null || bytes.isEmpty) {
+    final decoded = ImageUtils.base64ToBytes(photoBase64);
+    if (decoded == null || decoded.isEmpty) {
       throw const CheckInSubmissionFailedException(
         userMessage: 'Photo could not be processed. Please retake your selfie.',
         technicalMessage: 'check-in photo base64 decode failed',
       );
     }
-    final path = '$sessionDateYmd/${checkInId.trim()}.jpg';
+    // Prefer a lean JPEG for storage; keep original if compress is unavailable
+    // (e.g. some web builds).
+    final compressed = await ImageUtils.compressImageBytes(decoded);
+    final bytes = compressed ?? decoded;
+    final contentType = _imageContentType(bytes);
+    final ext = contentType == 'image/png'
+        ? 'png'
+        : contentType == 'image/webp'
+        ? 'webp'
+        : 'jpg';
+    // New check-in UUIDs → unique path; INSERT-only is enough (no upsert).
+    final path = '$sessionDateYmd/${checkInId.trim()}.$ext';
     try {
       await _client.storage
           .from(photoBucket)
           .uploadBinary(
             path,
-            Uint8List.fromList(bytes),
-            fileOptions: const FileOptions(
-              contentType: 'image/jpeg',
-              upsert: true,
+            bytes,
+            fileOptions: FileOptions(
+              contentType: contentType,
+              upsert: false,
             ),
           );
       return path;
     } on StorageException catch (e, st) {
       AppLogger.error(
-        'Storage upload failed for check-in photo',
+        'Storage upload failed for check-in photo'
+        ' (${e.statusCode}: ${e.message})',
         error: e,
         stackTrace: st,
         tag: 'SupabaseCheckInRemoteDataSource',
       );
       throw CheckInSubmissionFailedException(
         userMessage: 'Photo upload failed. Please try again.',
-        technicalMessage: 'storage upload: ${e.message}',
+        technicalMessage:
+            'storage upload: ${e.statusCode} ${e.message}',
       );
     }
+  }
+
+  /// Sniff image MIME from magic bytes (ImagePicker / web camera may not be JPEG).
+  static String _imageContentType(Uint8List bytes) {
+    if (bytes.length >= 3 &&
+        bytes[0] == 0xFF &&
+        bytes[1] == 0xD8 &&
+        bytes[2] == 0xFF) {
+      return 'image/jpeg';
+    }
+    if (bytes.length >= 8 &&
+        bytes[0] == 0x89 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x4E &&
+        bytes[3] == 0x47) {
+      return 'image/png';
+    }
+    if (bytes.length >= 12 &&
+        bytes[0] == 0x52 &&
+        bytes[1] == 0x49 &&
+        bytes[2] == 0x46 &&
+        bytes[3] == 0x46 &&
+        bytes[8] == 0x57 &&
+        bytes[9] == 0x45 &&
+        bytes[10] == 0x42 &&
+        bytes[11] == 0x50) {
+      return 'image/webp';
+    }
+    return 'image/jpeg';
   }
 
   Future<List<CheckInSubmission>> _fetchCheckIns({

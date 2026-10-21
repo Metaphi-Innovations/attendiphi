@@ -74,12 +74,29 @@ class _PhotoCaptureScreenState extends ConsumerState<PhotoCaptureScreen> {
     }
   }
 
-  void _confirmPhoto() {
-    if (_capturedBytes == null) return;
+  Future<void> _confirmPhoto() async {
+    final captured = _capturedBytes;
+    if (captured == null) return;
 
-    final base64 = ImageUtils.bytesToBase64(_capturedBytes!);
-    ref.read(checkInFormProvider.notifier).setPhotoBase64(base64);
-    context.pop();
+    setState(() {
+      _isProcessing = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final compressed = await ImageUtils.compressImageBytes(captured);
+      final bytes = compressed ?? captured;
+      final base64 = ImageUtils.bytesToBase64(bytes);
+      if (!mounted) return;
+      ref.read(checkInFormProvider.notifier).setPhotoBase64(base64);
+      context.pop();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isProcessing = false;
+        _errorMessage = 'Could not process photo. Please retake your selfie.';
+      });
+    }
   }
 
   @override
