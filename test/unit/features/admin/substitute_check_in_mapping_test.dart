@@ -173,6 +173,28 @@ void main() {
     });
 
     test(
+      'memberId substitute does not cover another member with same phone',
+      () {
+        const duplicatePhone = Employee(
+          id: 'emp_other',
+          name: 'Other Member',
+          phone: '9919055132',
+        );
+        final raw = _raw(
+          userName: 'Amit Patel',
+          phone: '9919055132',
+          substituteForMember: 'Wrong Name',
+          memberId: 'emp_member',
+        );
+        expect(substituteCheckInCoversMember(raw: raw, member: member), isTrue);
+        expect(
+          substituteCheckInCoversMember(raw: raw, member: duplicatePhone),
+          isFalse,
+        );
+      },
+    );
+
+    test(
       'matches admin-converted substitute with empty substituteForMember',
       () {
         final raw = _raw(

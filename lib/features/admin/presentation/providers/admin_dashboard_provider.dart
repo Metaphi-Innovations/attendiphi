@@ -103,7 +103,7 @@ class AdminDashboardFilterState {
   const AdminDashboardFilterState({
     this.searchQuery = '',
     this.filterType = AdminFilterType.all,
-    this.sortMode = AdminDashboardSortMode.recent,
+    this.sortMode = AdminDashboardSortMode.alphabetical,
     this.selectedLocationId,
     this.selectedDate,
   });

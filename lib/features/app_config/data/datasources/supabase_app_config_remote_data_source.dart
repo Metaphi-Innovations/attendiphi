@@ -16,10 +16,11 @@ class SupabaseAppConfigRemoteDataSource implements AppConfigRemoteDataSource {
     : _clientOverride = client;
 
   final SupabaseClient? _clientOverride;
-  static const _pollInterval = Duration(seconds: 60);
+  static const _pollInterval = Duration(seconds: 20);
 
   static const _rawLocationKey = 'location_restriction_enabled';
   static const _rawDateKey = 'date_restriction_enabled';
+  static const _rawDeviceKey = 'device_restriction_enabled';
 
   SupabaseClient get _client {
     final override = _clientOverride;
@@ -43,10 +44,12 @@ class SupabaseAppConfigRemoteDataSource implements AppConfigRemoteDataSource {
 
     final location = _readBool(raw[_rawLocationKey]) ?? master;
     final date = _readBool(raw[_rawDateKey]) ?? master;
+    final device = _readBool(raw[_rawDeviceKey]) ?? master;
 
     return CheckInRestrictionsConfig(
       locationRestrictionEnabled: location,
       dateRestrictionEnabled: date,
+      deviceRestrictionEnabled: device,
       updatedAt: DateTime.tryParse(row['updated_at']?.toString() ?? ''),
       updatedBy: (row['updated_by'] as String?)?.trim(),
       updatedByEmail: (row['updated_by_email'] as String?)?.trim(),
@@ -93,6 +96,7 @@ class SupabaseAppConfigRemoteDataSource implements AppConfigRemoteDataSource {
     bool? restrictionsEnabled,
     bool? locationRestrictionEnabled,
     bool? dateRestrictionEnabled,
+    bool? deviceRestrictionEnabled,
     required String updatedBy,
     String? updatedByEmail,
   }) async {
@@ -106,15 +110,20 @@ class SupabaseAppConfigRemoteDataSource implements AppConfigRemoteDataSource {
         dateRestrictionEnabled ??
         restrictionsEnabled ??
         existing.dateRestrictionEnabled;
+    final device =
+        deviceRestrictionEnabled ??
+        restrictionsEnabled ??
+        existing.deviceRestrictionEnabled;
 
     // Keep legacy column in sync for older readers / dashboards.
-    final master = location || date;
+    final master = location || date || device;
 
     final previousRaw = await _fetchRawMap();
     final nextRaw = <String, dynamic>{
       ...previousRaw,
       _rawLocationKey: location,
       _rawDateKey: date,
+      _rawDeviceKey: device,
     };
 
     await _client.from('app_config').upsert({

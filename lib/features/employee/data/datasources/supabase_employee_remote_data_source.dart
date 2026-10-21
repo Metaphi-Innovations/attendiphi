@@ -4,6 +4,8 @@ import 'package:uuid/uuid.dart';
 import '../../../../app/config/supabase_bootstrap.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/logger/app_logger.dart';
+import '../../../../core/supabase/realtime_list_patch.dart';
+import '../../../../core/supabase/realtime_snapshot_equals.dart';
 import '../../../../core/supabase/supabase_realtime_or_poll_stream.dart';
 import '../../../../core/utils/validators.dart';
 import '../../domain/entities/employee.dart';
@@ -124,6 +126,23 @@ class SupabaseEmployeeRemoteDataSource implements EmployeeRemoteDataSource {
       client: _client,
       table: 'members',
       fetch: () => _fetchMembers(activeOnly: false),
+      applyRealtimeEvent: (current, payload) {
+        return patchRealtimeListById<Employee>(
+          current: current,
+          payload: payload,
+          idOf: (e) => e.id,
+          fromRow: (row) {
+            try {
+              return SupabaseEmployeeMapper.fromRow(row);
+            } catch (_) {
+              return null;
+            }
+          },
+        );
+      },
+      // Slow backup only; Realtime + resubscribe/tab-visible are primary.
+      reconcileInterval: const Duration(minutes: 5),
+      isUnchanged: employeesSnapshotUnchanged,
       tag: 'SupabaseEmployeeRemoteDataSource',
     );
   }
@@ -140,6 +159,8 @@ class SupabaseEmployeeRemoteDataSource implements EmployeeRemoteDataSource {
         column: 'is_active',
         value: true,
       ),
+      reconcileInterval: const Duration(minutes: 5),
+      isUnchanged: employeesSnapshotUnchanged,
       tag: 'SupabasePublicMembersStream',
     );
   }
@@ -150,6 +171,8 @@ class SupabaseEmployeeRemoteDataSource implements EmployeeRemoteDataSource {
       client: _client,
       table: 'face_templates',
       fetch: _fetchFaceVerificationCandidates,
+      reconcileInterval: const Duration(minutes: 5),
+      isUnchanged: faceCandidatesSnapshotUnchanged,
       tag: 'SupabaseFaceVerificationCandidates',
     );
   }
@@ -159,6 +182,63 @@ class SupabaseEmployeeRemoteDataSource implements EmployeeRemoteDataSource {
     return (cleanPhone.startsWith('91') && cleanPhone.length == 12)
         ? cleanPhone.substring(2)
         : cleanPhone;
+  }
+
+  /// Rejects when another **active** member already uses [phoneDigits].
+  Future<void> _assertActivePhoneAvailable(
+    String phoneDigits, {
+    String? excludingMemberId,
+    required bool willBeActive,
+  }) async {
+    if (!willBeActive || phoneDigits.isEmpty) return;
+
+    var query = _client
+        .from('members')
+        .select('id,name')
+        .eq('is_active', true)
+        .eq('phone', phoneDigits);
+    final exclude = excludingMemberId?.trim() ?? '';
+    if (exclude.isNotEmpty) {
+      query = query.neq('id', exclude);
+    }
+    final rows = await query.limit(1);
+    if (rows.isEmpty) return;
+
+    final otherName = rows.first['name']?.toString().trim() ?? '';
+    final who = otherName.isEmpty ? 'Another active member' : otherName;
+    throw ServerException(
+      userMessage:
+          '$who already uses this phone number. '
+          'Use a different phone, or deactivate that member first.',
+      technicalMessage:
+          'Duplicate active member phone: $phoneDigits'
+          '${exclude.isEmpty ? '' : ' (excluding $exclude)'}',
+    );
+  }
+
+  ServerException _mapMemberWriteError(
+    PostgrestException e,
+    StackTrace st, {
+    required String action,
+  }) {
+    final isUnique =
+        e.code == '23505' ||
+        e.message.toLowerCase().contains('members_active_phone_unique');
+    if (isUnique) {
+      return ServerException(
+        userMessage:
+            'Another active member already uses this phone number. '
+            'Use a different phone, or deactivate that member first.',
+        technicalMessage: 'Failed to $action employee (unique phone): ${e.message}',
+        originalError: e,
+        stackTrace: st,
+      );
+    }
+    return ServerException(
+      technicalMessage: 'Failed to $action employee: ${e.message}',
+      originalError: e,
+      stackTrace: st,
+    );
   }
 
   Future<void> _upsertFaceTemplates({
@@ -225,6 +305,11 @@ class SupabaseEmployeeRemoteDataSource implements EmployeeRemoteDataSource {
         );
       }
 
+      await _assertActivePhoneAvailable(
+        phoneDigits,
+        willBeActive: isActive,
+      );
+
       final id = _uuid.v4();
       await _client
           .from('members')
@@ -267,10 +352,10 @@ class SupabaseEmployeeRemoteDataSource implements EmployeeRemoteDataSource {
         stackTrace: st,
         tag: 'SupabaseEmployeeRemoteDataSource',
       );
-      throw ServerException(
-        technicalMessage: 'Failed to add employee: ${e.message}',
-        originalError: e,
-        stackTrace: st,
+      throw _mapMemberWriteError(
+        e,
+        st,
+        action: 'add',
       );
     }
   }
@@ -305,6 +390,14 @@ class SupabaseEmployeeRemoteDataSource implements EmployeeRemoteDataSource {
           : Validators.normalizePhone(phone).length >= 10
           ? _normalizePhone(phone)
           : phone.trim();
+
+      if (phoneDigits.length == 10) {
+        await _assertActivePhoneAvailable(
+          phoneDigits,
+          excludingMemberId: id,
+          willBeActive: isActive,
+        );
+      }
 
       await _client
           .from('members')
@@ -347,17 +440,28 @@ class SupabaseEmployeeRemoteDataSource implements EmployeeRemoteDataSource {
         stackTrace: st,
         tag: 'SupabaseEmployeeRemoteDataSource',
       );
-      throw ServerException(
-        technicalMessage: 'Failed to update employee: ${e.message}',
-        originalError: e,
-        stackTrace: st,
-      );
+      throw _mapMemberWriteError(e, st, action: 'update');
     }
   }
 
   @override
   Future<void> toggleEmployeeStatus(String id, bool isActive) async {
     try {
+      if (isActive) {
+        final row = await _client
+            .from('members')
+            .select('phone')
+            .eq('id', id)
+            .maybeSingle();
+        final phoneDigits = _normalizePhone(row?['phone']?.toString() ?? '');
+        if (phoneDigits.length == 10) {
+          await _assertActivePhoneAvailable(
+            phoneDigits,
+            excludingMemberId: id,
+            willBeActive: true,
+          );
+        }
+      }
       await _client
           .from('members')
           .update({
@@ -365,6 +469,8 @@ class SupabaseEmployeeRemoteDataSource implements EmployeeRemoteDataSource {
             'updated_at': DateTime.now().toUtc().toIso8601String(),
           })
           .eq('id', id);
+    } on AppException {
+      rethrow;
     } on PostgrestException catch (e, st) {
       throw ServerException(
         technicalMessage: 'Failed to toggle employee: ${e.message}',

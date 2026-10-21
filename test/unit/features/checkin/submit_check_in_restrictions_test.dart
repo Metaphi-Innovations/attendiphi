@@ -137,7 +137,7 @@ void main() {
       ).called(1);
     });
 
-    test('ON does not claim device lock (shared venue tablets)', () async {
+    test('device restriction ON claims device id on submit', () async {
       final usecase = SubmitCheckIn(
         mockRepository,
         notificationDispatchService: mockDispatchService,
@@ -153,17 +153,43 @@ void main() {
         sessionDateStr: '2026-09-24',
         deviceId: 'device-a',
         recognizedMemberId: 'emp_rahul',
-        restrictionsEnabled: true,
+        dateRestrictionEnabled: true,
+        locationRestrictionEnabled: true,
+        deviceRestrictionEnabled: true,
       );
 
-      // Shared venue devices must not block other members — claimDeviceId is
-      // always null; uniqueness is phone + member locks only.
-      verifyNever(
-        () => mockRepository.claimDeviceSessionLock(
-          deviceId: any(named: 'deviceId'),
-          sessionDateYmd: any(named: 'sessionDateYmd'),
+      verify(
+        () => mockRepository.submitCheckIn(
+          any(),
+          enforceThursday: true,
+          sessionDateYmd: '2026-09-24',
+          claimDeviceId: 'device-a',
+          claimMemberId: 'emp_rahul',
         ),
+      ).called(1);
+    });
+
+    test('device restriction OFF skips device claim (standee mode)', () async {
+      final usecase = SubmitCheckIn(
+        mockRepository,
+        notificationDispatchService: mockDispatchService,
+        nowProvider: () => DateTime(2026, 9, 24, 10, 0), // Thursday
       );
+
+      await usecase(
+        name: 'Rahul Sharma',
+        phone: '9876543210',
+        type: CheckInType.member,
+        location: testLocation,
+        proximityResult: testProximity,
+        sessionDateStr: '2026-09-24',
+        deviceId: 'device-a',
+        recognizedMemberId: 'emp_rahul',
+        dateRestrictionEnabled: true,
+        locationRestrictionEnabled: true,
+        deviceRestrictionEnabled: false,
+      );
+
       verify(
         () => mockRepository.submitCheckIn(
           any(),

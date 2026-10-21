@@ -149,7 +149,7 @@ void main() {
               restrictionsEnabledProvider.overrideWithValue(true),
               checkInRestrictionsConfigProvider.overrideWith(
                 (ref) => Stream.value(
-                  const CheckInRestrictionsConfig(locationRestrictionEnabled: true, dateRestrictionEnabled: true),
+                  const CheckInRestrictionsConfig(locationRestrictionEnabled: true, dateRestrictionEnabled: true, deviceRestrictionEnabled: true),
                 ),
               ),
             ],

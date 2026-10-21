@@ -53,6 +53,41 @@ void main() {
     expect(EmployeeLookup.forCheckIn(employees, record)?.id, 'emp_1');
   });
 
+  test(
+    'memberId check-in does not attach to another roster member with same phone',
+    () {
+      const rinku = Employee(
+        id: 'emp_rinku',
+        name: 'Rinku Saroj',
+        phone: '9876543215',
+      );
+      const nupun = Employee(
+        id: 'emp_nupun',
+        name: 'Nupun Sawant',
+        phone: '9876543215',
+      );
+      final record = _checkIn(
+        name: 'Rinku Saroj',
+        phone: '9876543215',
+        memberId: 'emp_rinku',
+      );
+
+      expect(EmployeeLookup.forCheckIn([rinku], record)?.id, 'emp_rinku');
+      expect(EmployeeLookup.forCheckIn([nupun], record), isNull);
+      expect(EmployeeLookup.forCheckIn([nupun, rinku], record)?.id, 'emp_rinku');
+    },
+  );
+
+  test('legacy check-in without memberId still matches by phone', () {
+    const rinku = Employee(
+      id: 'emp_rinku',
+      name: 'Rinku Saroj',
+      phone: '9876543215',
+    );
+    final record = _checkIn(name: 'Someone', phone: '9876543215');
+    expect(EmployeeLookup.forCheckIn([rinku], record)?.id, 'emp_rinku');
+  });
+
   test('resolves substitute target by current member name', () {
     final record = _checkIn(
       name: 'Temp Sub',
@@ -105,6 +140,13 @@ void main() {
     );
     expect(url, contains('v=123'));
     expect(url, startsWith('https://cdn.example.com/photo.jpg'));
+  });
+
+  test('cache-bust without version stays stable across calls', () {
+    final a = ImageUtils.cacheBustedUrl('https://cdn.example.com/photo.jpg');
+    final b = ImageUtils.cacheBustedUrl('https://cdn.example.com/photo.jpg');
+    expect(a, b);
+    expect(a, contains('v=0'));
   });
 
   test('success display uses submitted memberId, not a similar name', () {

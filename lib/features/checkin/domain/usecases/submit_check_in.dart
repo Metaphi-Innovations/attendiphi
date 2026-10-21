@@ -55,9 +55,14 @@ class SubmitCheckIn {
 
     /// When true, server also enforces GPS radius (via combined RPC flag).
     bool? locationRestrictionEnabled,
+
+    /// When true, claim one device lock per session day.
+    /// Prefer this over legacy [restrictionsEnabled] for device policy.
+    bool? deviceRestrictionEnabled,
   }) async {
     final dateOn = dateRestrictionEnabled ?? restrictionsEnabled;
     final locationOn = locationRestrictionEnabled ?? restrictionsEnabled;
+    final deviceOn = deviceRestrictionEnabled ?? restrictionsEnabled;
     final enforceServerRestrictions = dateOn || locationOn;
     // 1. Validate Form Fields
     final nameError = Validators.validateName(name);
@@ -213,7 +218,7 @@ class SubmitCheckIn {
     // claimed atomically with the check-in write below.
     final formattedPhone = Validators.formatPhoneWithCountryCode(phone);
 
-    // Phone uniqueness only — devices/tablets are shared across members.
+    // Phone uniqueness — always. Device uniqueness only when device restriction ON.
     // Member uniqueness is enforced via member_session_locks on write.
     try {
       final existingPhoneSubmission = await _repository.getIdentitySubmission(
@@ -233,6 +238,29 @@ class SubmitCheckIn {
       // Unauthenticated QR clients cannot read checkIns after rules lock-down.
     }
 
+    final trimmedDeviceId = deviceId?.trim() ?? '';
+    if (deviceOn && trimmedDeviceId.isNotEmpty) {
+      try {
+        final existingDeviceSubmission = await _repository.getDeviceSubmission(
+          trimmedDeviceId,
+          submissionTimestamp,
+        );
+        if (existingDeviceSubmission != null) {
+          throw DuplicateCheckInException(
+            userMessage:
+                'This device has already recorded attendance for today. '
+                'Use another device, or ask an admin to turn off '
+                '"One device = one check-in".',
+            existingSubmissionData: existingDeviceSubmission.toMap(),
+          );
+        }
+      } on DuplicateCheckInException {
+        rethrow;
+      } catch (_) {
+        // Public QR may not read checkIns; server device lock still enforces.
+      }
+    }
+
     final sessionDateYmd = SessionLockIds.sessionDateYmd(
       sessionDateStr: sessionDateStr,
       fallbackTimestamp: submissionTimestamp,
@@ -250,8 +278,11 @@ class SubmitCheckIn {
       return null;
     }();
 
-    // 6. Atomic write: phone (+ member) locks + checkIns.
-    // Device locks are not used — venue phones are shared across members.
+    // When device restriction is OFF, do not claim device locks (standee mode).
+    final claimDeviceId =
+        deviceOn && trimmedDeviceId.isNotEmpty ? trimmedDeviceId : null;
+
+    // 6. Atomic write: phone (+ member) (+ optional device) locks + checkIns.
     final stored = type.isMember
         ? submission.copyWith(photoBase64: '')
         : submission;
@@ -260,7 +291,7 @@ class SubmitCheckIn {
       // Server reads granular flags from app_config; this opts into enforcement.
       enforceThursday: enforceServerRestrictions,
       sessionDateYmd: sessionDateYmd,
-      claimDeviceId: null,
+      claimDeviceId: claimDeviceId,
       claimMemberId: claimMemberId,
       sessionToken: sessionToken,
     );

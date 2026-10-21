@@ -40,6 +40,7 @@ void main() {
               const CheckInRestrictionsConfig(
                 locationRestrictionEnabled: true,
                 dateRestrictionEnabled: true,
+        deviceRestrictionEnabled: true,
               ),
             ),
           ),
@@ -56,7 +57,9 @@ void main() {
     expect(find.byIcon(Icons.menu), findsOneWidget);
   });
 
-  testWidgets('Super Admin menu opens Location and Date toggles', (tester) async {
+  testWidgets('Super Admin menu opens Location, Date, and Device toggles', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -67,6 +70,7 @@ void main() {
               const CheckInRestrictionsConfig(
                 locationRestrictionEnabled: true,
                 dateRestrictionEnabled: true,
+                deviceRestrictionEnabled: true,
               ),
             ),
           ),
@@ -83,6 +87,7 @@ void main() {
 
     expect(find.text('Location restriction'), findsOneWidget);
     expect(find.text('Date restriction'), findsOneWidget);
+    expect(find.text('One device = one check-in'), findsOneWidget);
   });
 
   testWidgets('Regular Admin does not see Restrictions control', (tester) async {
@@ -96,6 +101,7 @@ void main() {
               const CheckInRestrictionsConfig(
                 locationRestrictionEnabled: true,
                 dateRestrictionEnabled: true,
+        deviceRestrictionEnabled: true,
               ),
             ),
           ),

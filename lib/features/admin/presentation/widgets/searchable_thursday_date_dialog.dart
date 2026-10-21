@@ -98,30 +98,83 @@ class SearchableThursdayDateDialog extends StatefulWidget {
 class _SearchableThursdayDateDialogState
     extends State<SearchableThursdayDateDialog> {
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   String _searchQuery = '';
+
+  /// Matches [_buildOption] vertical padding + one text line.
+  static const double _itemExtent = 38.0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollSelectedToTop();
+    });
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final isDark = widget.isDark;
-    final query = _searchQuery.trim().toLowerCase();
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
 
-    final filteredList = widget.allThursdays.where((date) {
+  /// Anchor date for scroll: selected session, else today.
+  DateTime _anchorDate() {
+    final selected = widget.selectedDate;
+    if (selected != null) {
+      return DateTime(selected.year, selected.month, selected.day);
+    }
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day);
+  }
+
+  int _indexOfAnchor(List<DateTime> dates) {
+    final anchor = _anchorDate();
+    final exact = dates.indexWhere((d) => _isSameDay(d, anchor));
+    if (exact >= 0) return exact;
+    // Nearest upcoming day if anchor is missing from the list.
+    final upcoming = dates.indexWhere((d) => !d.isBefore(anchor));
+    return upcoming >= 0 ? upcoming : dates.length - 1;
+  }
+
+  void _scrollSelectedToTop() {
+    if (!mounted || !_scrollController.hasClients) return;
+    if (_searchQuery.trim().isNotEmpty) return;
+
+    final dates = widget.allThursdays;
+    if (dates.isEmpty) return;
+
+    final index = _indexOfAnchor(dates);
+    if (index < 0) return;
+
+    final max = _scrollController.position.maxScrollExtent;
+    final offset = (index * _itemExtent).clamp(0.0, max);
+    _scrollController.jumpTo(offset);
+  }
+
+  List<DateTime> _filteredDates() {
+    final query = _searchQuery.trim().toLowerCase();
+    return widget.allThursdays.where((date) {
       if (query.isEmpty) return true;
-      final fullText = DateFormat('EEEE, dd MMM yyyy')
-          .format(date)
-          .toLowerCase();
+      final fullText = DateFormat(
+        'EEEE, dd MMM yyyy',
+      ).format(date).toLowerCase();
       final shortText = DateFormat('dd MMM yyyy').format(date).toLowerCase();
       final numeric = DateFormat('dd/MM/yyyy').format(date).toLowerCase();
       return fullText.contains(query) ||
           shortText.contains(query) ||
           numeric.contains(query);
     }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = widget.isDark;
+    final filteredList = _filteredDates();
 
     return Container(
       decoration: BoxDecoration(
@@ -237,7 +290,14 @@ class _SearchableThursdayDateDialogState
                       ),
                     ),
                   ),
-                  onChanged: (val) => setState(() => _searchQuery = val),
+                  onChanged: (val) {
+                    setState(() => _searchQuery = val);
+                    if (val.trim().isEmpty) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        _scrollSelectedToTop();
+                      });
+                    }
+                  },
                 ),
               ],
             ),
@@ -245,11 +305,8 @@ class _SearchableThursdayDateDialogState
           const Divider(height: 1),
           // Scrollable List of Dates
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              children: [
-                if (filteredList.isEmpty)
-                  Padding(
+            child: filteredList.isEmpty
+                ? Padding(
                     padding: const EdgeInsets.symmetric(vertical: 24),
                     child: Center(
                       child: Text(
@@ -263,28 +320,32 @@ class _SearchableThursdayDateDialogState
                       ),
                     ),
                   )
-                else
-                  ...filteredList.map((d) {
-                    final isSel =
-                        widget.selectedDate != null &&
-                        widget.selectedDate!.year == d.year &&
-                        widget.selectedDate!.month == d.month &&
-                        widget.selectedDate!.day == d.day;
-                    final label = DateFormat('EEEE, dd MMM yyyy').format(d);
-                    return _buildOption(
-                      context,
-                      isDark: isDark,
-                      label: label,
-                      isSelected: isSel,
-                      icon: Icons.calendar_today_outlined,
-                      onTap: () {
-                        widget.onDateSelected(d);
-                        Navigator.of(context).pop();
-                      },
-                    );
-                  }),
-              ],
-            ),
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    itemExtent: _itemExtent,
+                    itemCount: filteredList.length,
+                    itemBuilder: (context, index) {
+                      final d = filteredList[index];
+                      final isSel =
+                          widget.selectedDate != null &&
+                          _isSameDay(widget.selectedDate!, d);
+                      final label = DateFormat(
+                        'EEEE, dd MMM yyyy',
+                      ).format(d);
+                      return _buildOption(
+                        context,
+                        isDark: isDark,
+                        label: label,
+                        isSelected: isSel,
+                        icon: Icons.calendar_today_outlined,
+                        onTap: () {
+                          widget.onDateSelected(d);
+                          Navigator.of(context).pop();
+                        },
+                      );
+                    },
+                  ),
           ),
         ],
       ),

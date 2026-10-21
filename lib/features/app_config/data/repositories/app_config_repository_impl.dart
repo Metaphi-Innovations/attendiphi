@@ -8,6 +8,7 @@ abstract class AppConfigRepository {
     bool? restrictionsEnabled,
     bool? locationRestrictionEnabled,
     bool? dateRestrictionEnabled,
+    bool? deviceRestrictionEnabled,
     required String updatedBy,
     String? updatedByEmail,
   });
@@ -28,6 +29,7 @@ class AppConfigRepositoryImpl implements AppConfigRepository {
     bool? restrictionsEnabled,
     bool? locationRestrictionEnabled,
     bool? dateRestrictionEnabled,
+    bool? deviceRestrictionEnabled,
     required String updatedBy,
     String? updatedByEmail,
   }) {
@@ -35,6 +37,7 @@ class AppConfigRepositoryImpl implements AppConfigRepository {
       restrictionsEnabled: restrictionsEnabled,
       locationRestrictionEnabled: locationRestrictionEnabled,
       dateRestrictionEnabled: dateRestrictionEnabled,
+      deviceRestrictionEnabled: deviceRestrictionEnabled,
       updatedBy: updatedBy,
       updatedByEmail: updatedByEmail,
     );

@@ -46,6 +46,13 @@ void main() {
     ),
   ];
 
+  test('default filter sort is Name A–Z', () {
+    expect(
+      const AdminDashboardFilterState().sortMode,
+      AdminDashboardSortMode.alphabetical,
+    );
+  });
+
   test('alphabetical sort orders by name case-insensitively', () {
     final sorted = filterAndSortDashboardRecords(
       records: records,

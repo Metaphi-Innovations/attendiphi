@@ -87,13 +87,16 @@ class ImageUtils {
   }
 
   /// Appends a version query so browsers do not keep serving a stale photo.
+  ///
+  /// When [version] is null, uses `0` (not wall-clock time) so live roster
+  /// rebuilds do not change the URL and flash the image every few seconds.
   static String cacheBustedUrl(String url, {DateTime? version}) {
     final trimmed = url.trim();
     if (trimmed.isEmpty) return trimmed;
     if (!(trimmed.startsWith('http://') || trimmed.startsWith('https://'))) {
       return trimmed;
     }
-    final stamp = (version ?? DateTime.now()).millisecondsSinceEpoch;
+    final stamp = version?.millisecondsSinceEpoch ?? 0;
     final uri = Uri.tryParse(trimmed);
     if (uri == null || !uri.hasScheme) {
       final separator = trimmed.contains('?') ? '&' : '?';
@@ -122,11 +125,6 @@ class ImageUtils {
       AppLogger.error('Failed to decode base64 image: $e', tag: 'ImageUtils');
       return null;
     }
-  }
-
-  /// Checks whether a file size is within the allowed limit.
-  static bool isWithinSizeLimit(int sizeInBytes) {
-    return sizeInBytes <= AppConstants.maxPhotoSizeBytes;
   }
 
   /// Returns a human-readable file size string.

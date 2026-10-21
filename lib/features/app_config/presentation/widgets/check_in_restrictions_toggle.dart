@@ -23,11 +23,14 @@ class CheckInRestrictionsToggle extends ConsumerWidget {
     final granularUi = ref.watch(granularRestrictionsUiEnabledProvider);
     final locationOn = ref.watch(locationRestrictionEnabledProvider);
     final dateOn = ref.watch(dateRestrictionEnabledProvider);
+    final deviceOn = ref.watch(deviceRestrictionEnabledProvider);
     final isSaving = writeAsync.isLoading;
 
     if (granularUi) {
       final tooltip =
-          'Location ${locationOn ? 'ON' : 'OFF'} · Date ${dateOn ? 'ON' : 'OFF'}';
+          'Location ${locationOn ? 'ON' : 'OFF'} · '
+          'Date ${dateOn ? 'ON' : 'OFF'} · '
+          'Device ${deviceOn ? 'ON' : 'OFF'}';
       return configAsync.when(
         loading: () => const SizedBox(
           width: 18,
@@ -212,12 +215,14 @@ class CheckInRestrictionsToggle extends ConsumerWidget {
 
     final locationOn = ref.read(locationRestrictionEnabledProvider);
     final dateOn = ref.read(dateRestrictionEnabledProvider);
+    final deviceOn = ref.read(deviceRestrictionEnabledProvider);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
           successMessage ??
               'Updated — Location ${locationOn ? 'ON' : 'OFF'}, '
-                  'Date ${dateOn ? 'ON' : 'OFF'}',
+                  'Date ${dateOn ? 'ON' : 'OFF'}, '
+                  'Device ${deviceOn ? 'ON' : 'OFF'}',
         ),
       ),
     );
@@ -237,9 +242,12 @@ class _GranularRestrictionsDialogState
     extends ConsumerState<_GranularRestrictionsDialog> {
   bool _savingLocation = false;
   bool _savingDate = false;
+  bool _savingDevice = false;
+
+  bool get _busy => _savingLocation || _savingDate || _savingDevice;
 
   Future<void> _onLocationChanged(bool next) async {
-    if (_savingLocation || _savingDate) return;
+    if (_busy) return;
     if (!next) {
       final confirmed = await _confirmTurnOff(
         title: 'Turn off location restriction?',
@@ -264,7 +272,7 @@ class _GranularRestrictionsDialogState
   }
 
   Future<void> _onDateChanged(bool next) async {
-    if (_savingLocation || _savingDate) return;
+    if (_busy) return;
     if (!next) {
       final confirmed = await _confirmTurnOff(
         title: 'Turn off date restriction?',
@@ -285,6 +293,30 @@ class _GranularRestrictionsDialogState
       CheckInRestrictionsToggle._showWriteResult(context, ref);
     } finally {
       if (mounted) setState(() => _savingDate = false);
+    }
+  }
+
+  Future<void> _onDeviceChanged(bool next) async {
+    if (_busy) return;
+    if (!next) {
+      final confirmed = await _confirmTurnOff(
+        title: 'Turn off one device = one check-in?',
+        body:
+            'Shared phones and tablets will be able to check in multiple '
+            'members on the same session day (venue standee mode).',
+      );
+      if (confirmed != true || !mounted) return;
+    }
+
+    setState(() => _savingDevice = true);
+    try {
+      await ref
+          .read(checkInRestrictionsNotifierProvider.notifier)
+          .setGranular(deviceRestrictionEnabled: next);
+      if (!mounted) return;
+      CheckInRestrictionsToggle._showWriteResult(context, ref);
+    } finally {
+      if (mounted) setState(() => _savingDevice = false);
     }
   }
 
@@ -318,7 +350,8 @@ class _GranularRestrictionsDialogState
   Widget build(BuildContext context) {
     final locationOn = ref.watch(locationRestrictionEnabledProvider);
     final dateOn = ref.watch(dateRestrictionEnabledProvider);
-    final busy = _savingLocation || _savingDate;
+    final deviceOn = ref.watch(deviceRestrictionEnabledProvider);
+    final busy = _busy;
 
     return AlertDialog(
       title: const Text('Check-in restrictions'),
@@ -330,7 +363,7 @@ class _GranularRestrictionsDialogState
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Staging only — toggle Location and Date independently.',
+                'Staging only — toggle Location, Date, and Device independently.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
@@ -363,6 +396,24 @@ class _GranularRestrictionsDialogState
                 value: dateOn,
                 onChanged: busy ? null : _onDateChanged,
                 secondary: _savingDate
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : null,
+              ),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('One device = one check-in'),
+                subtitle: const Text(
+                  'ON: each device may submit only one check-in per session '
+                  'day. OFF: shared phones/tablets can check in multiple '
+                  'members (venue standee mode).',
+                ),
+                value: deviceOn,
+                onChanged: busy ? null : _onDeviceChanged,
+                secondary: _savingDevice
                     ? const SizedBox(
                         width: 20,
                         height: 20,

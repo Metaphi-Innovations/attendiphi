@@ -52,13 +52,20 @@ class EmployeeLookup {
   /// Resolves the registered member represented by a check-in row.
   ///
   /// For substitutes this is the member being covered (not the attending
-  /// substitute). Prefer [CheckInSubmission.memberId] when present.
+  /// substitute).
+  ///
+  /// When [CheckInSubmission.memberId] is set, matching is **exclusive** to
+  /// that id — never fall back to phone/name. That prevents one check-in from
+  /// attaching to every roster member who shares the same phone.
+  /// Phone/name fallback is only for legacy rows with an empty member id.
   static Employee? forCheckIn(
     Iterable<Employee> employees,
     CheckInSubmission record,
   ) {
-    final byMemberId = byId(employees, record.memberId);
-    if (byMemberId != null) return byMemberId;
+    final memberId = (record.memberId ?? '').trim();
+    if (memberId.isNotEmpty) {
+      return byId(employees, memberId);
+    }
 
     if (record.type.isSubstitute) {
       return forNamedMember(employees, record.substituteForMember);

@@ -33,6 +33,7 @@ void main() {
             CheckInRestrictionsConfig(
               locationRestrictionEnabled: restrictionsEnabled,
               dateRestrictionEnabled: restrictionsEnabled,
+              deviceRestrictionEnabled: restrictionsEnabled,
             ),
           ),
         ),

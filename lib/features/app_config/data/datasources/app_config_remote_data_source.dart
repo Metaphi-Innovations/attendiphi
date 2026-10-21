@@ -6,13 +6,15 @@ abstract class AppConfigRemoteDataSource {
 
   /// Persists restriction flags.
   ///
-  /// Prefer granular [locationRestrictionEnabled] / [dateRestrictionEnabled].
-  /// If only [restrictionsEnabled] is passed, both granular flags are set to
+  /// Prefer granular [locationRestrictionEnabled] /
+  /// [dateRestrictionEnabled] / [deviceRestrictionEnabled].
+  /// If only [restrictionsEnabled] is passed, all granular flags are set to
   /// that value (production master toggle).
   Future<void> setCheckInRestrictions({
     bool? restrictionsEnabled,
     bool? locationRestrictionEnabled,
     bool? dateRestrictionEnabled,
+    bool? deviceRestrictionEnabled,
     required String updatedBy,
     String? updatedByEmail,
   });

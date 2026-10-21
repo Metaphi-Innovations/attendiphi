@@ -8,6 +8,7 @@ import '../../../checkin/presentation/providers/checkin_providers.dart';
 import '../../../employee/domain/employee_lookup.dart';
 import '../../../employee/domain/entities/employee.dart';
 import '../../../employee/presentation/providers/employee_providers.dart';
+import '../../domain/substitute_check_in_mapping.dart';
 import 'admin_auth_provider.dart';
 
 /// Represents the attendance status of a member on a specific Thursday meeting.
@@ -279,10 +280,7 @@ final attendanceMatrixProvider = Provider<AsyncValue<List<MemberAttendanceRow>>>
       final daySubs = byDate[key] ?? const <CheckInSubmission>[];
       final matchingSubmissions = daySubs.where((sub) {
         if (sub.type.isSubstitute) {
-          return EmployeeLookup.forNamedMember([
-                member,
-              ], sub.substituteForMember) !=
-              null;
+          return substituteCheckInCoversMember(raw: sub, member: member);
         }
         return EmployeeLookup.forCheckIn([member], sub) != null;
       }).toList();

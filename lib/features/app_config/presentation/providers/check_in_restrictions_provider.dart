@@ -28,14 +28,14 @@ final appConfigRepositoryProvider = Provider<AppConfigRepository>((ref) {
 
 /// Live stream of check-in restriction config. Missing doc ⇒ defaults (ON).
 ///
-/// Polls slowly (60s); keepAlive so QR + admin share one subscription.
+/// Polls every ~20s; keepAlive so QR + admin share one subscription.
 final checkInRestrictionsConfigProvider =
     StreamProvider<CheckInRestrictionsConfig>((ref) {
       ref.keepAlive();
       return ref.watch(appConfigRepositoryProvider).watchCheckInRestrictions();
     });
 
-/// True when either location or date restriction is enabled (legacy combined).
+/// True when any restriction is enabled (legacy combined).
 final restrictionsEnabledProvider = Provider<bool>((ref) {
   final async = ref.watch(checkInRestrictionsConfigProvider);
   return async.maybeWhen(
@@ -62,12 +62,21 @@ final dateRestrictionEnabledProvider = Provider<bool>((ref) {
   );
 });
 
+/// One device = one check-in per session day; OFF ⇒ shared venue tablets OK.
+final deviceRestrictionEnabledProvider = Provider<bool>((ref) {
+  final async = ref.watch(checkInRestrictionsConfigProvider);
+  return async.maybeWhen(
+    data: (config) => config.deviceRestrictionEnabled,
+    orElse: () => true,
+  );
+});
+
 /// True once the restrictions config stream has emitted (doc or default).
 final restrictionsConfigReadyProvider = Provider<bool>((ref) {
   return ref.watch(checkInRestrictionsConfigProvider).hasValue;
 });
 
-/// Staging (and local dev) get granular Location / Date toggles.
+/// Staging (and local dev) get granular Location / Date / Device toggles.
 /// Production keeps the single master switch until explicitly promoted.
 final granularRestrictionsUiEnabledProvider = Provider<bool>((ref) {
   final env = ref.watch(appConfigProvider).environment;
@@ -88,12 +97,11 @@ class CheckInRestrictionsNotifier extends AsyncNotifier<void> {
   }
 
   Future<void> _refreshConfig() async {
-    // Force an immediate re-fetch; the poll stream only ticks every 60s.
     ref.invalidate(checkInRestrictionsConfigProvider);
     await ref.read(checkInRestrictionsConfigProvider.future);
   }
 
-  /// Production-style master toggle: sets location + date together.
+  /// Production-style master toggle: sets location + date + device together.
   Future<void> setEnabled(bool enabled) async {
     await _ensureSuperAdmin();
     final auth = ref.read(adminAuthProvider);
@@ -112,10 +120,11 @@ class CheckInRestrictionsNotifier extends AsyncNotifier<void> {
     });
   }
 
-  /// Staging granular: update location and/or date independently.
+  /// Staging granular: update location / date / device independently.
   Future<void> setGranular({
     bool? locationRestrictionEnabled,
     bool? dateRestrictionEnabled,
+    bool? deviceRestrictionEnabled,
   }) async {
     await _ensureSuperAdmin();
     final auth = ref.read(adminAuthProvider);
@@ -128,6 +137,7 @@ class CheckInRestrictionsNotifier extends AsyncNotifier<void> {
           .setCheckInRestrictions(
             locationRestrictionEnabled: locationRestrictionEnabled,
             dateRestrictionEnabled: dateRestrictionEnabled,
+            deviceRestrictionEnabled: deviceRestrictionEnabled,
             updatedBy: admin.id,
             updatedByEmail: admin.email,
           );
