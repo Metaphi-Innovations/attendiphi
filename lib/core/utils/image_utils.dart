@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:image/image.dart' as img;
 
 import '../constants/app_constants.dart';
 import '../logger/app_logger.dart';
@@ -110,6 +111,49 @@ class ImageUtils {
   /// Converts bytes to a Base64 string.
   static String bytesToBase64(Uint8List bytes) {
     return base64Encode(bytes);
+  }
+
+  /// Re-encodes any common image bytes as JPEG for Storage uploads.
+  ///
+  /// Gallery / web captures are often PNG/WebP; the `check-in-photos` bucket
+  /// rejects `application/octet-stream` with HTTP 400, so we normalize here.
+  static Uint8List toJpegBytes(
+    Uint8List bytes, {
+    int quality = AppConstants.photoCompressionQuality,
+    int maxSide = AppConstants.maxPhotoPixels,
+  }) {
+    if (bytes.isEmpty) return bytes;
+    final isJpeg = bytes.length >= 3 &&
+        bytes[0] == 0xFF &&
+        bytes[1] == 0xD8 &&
+        bytes[2] == 0xFF;
+    try {
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null) {
+        return isJpeg ? bytes : Uint8List(0);
+      }
+      var frame = decoded;
+      final longest = frame.width > frame.height ? frame.width : frame.height;
+      if (longest > maxSide && maxSide > 0) {
+        frame = img.copyResize(
+          frame,
+          width: frame.width >= frame.height ? maxSide : null,
+          height: frame.height > frame.width ? maxSide : null,
+          interpolation: img.Interpolation.linear,
+        );
+      }
+      return Uint8List.fromList(
+        img.encodeJpg(frame, quality: quality.clamp(1, 100)),
+      );
+    } catch (e, st) {
+      AppLogger.error(
+        'toJpegBytes failed',
+        error: e,
+        stackTrace: st,
+        tag: 'ImageUtils',
+      );
+      return isJpeg ? bytes : Uint8List(0);
+    }
   }
 
   /// Converts a Base64 string back to bytes for image rendering.
