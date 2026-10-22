@@ -6,6 +6,8 @@ import 'package:qr_checkin/features/admin/presentation/providers/admin_auth_prov
 import 'package:qr_checkin/features/admin/presentation/providers/admin_management_provider.dart';
 import 'package:qr_checkin/features/admin/presentation/screens/admin_management_screen.dart';
 
+import 'admin_widget_auth_mocks.dart';
+
 void main() {
   group('AdminManagementScreen Widget Tests', () {
     final mockAdmins = [
@@ -61,8 +63,9 @@ void main() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
-              isSuperAdminProvider.overrideWithValue(false),
-              currentAdminUserProvider.overrideWithValue(currentAdminUser),
+              adminAuthProvider.overrideWith(
+                () => MockAuthenticatedAdminAuthNotifier(currentAdminUser),
+              ),
               allAdminsStreamProvider.overrideWith(
                 (ref) => Stream.value(adminsList),
               ),
@@ -90,7 +93,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            isSuperAdminProvider.overrideWithValue(true),
+            adminAuthProvider.overrideWith(
+              () => MockAuthenticatedAdminAuthNotifier(kWidgetTestSuperAdmin),
+            ),
             allAdminsStreamProvider.overrideWith(
               (ref) => Stream.value(mockAdmins),
             ),
@@ -112,7 +117,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            isSuperAdminProvider.overrideWithValue(true),
+            adminAuthProvider.overrideWith(
+              () => MockAuthenticatedAdminAuthNotifier(kWidgetTestSuperAdmin),
+            ),
             allAdminsStreamProvider.overrideWith(
               (ref) => Stream.value(mockAdmins),
             ),
@@ -145,7 +152,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            isSuperAdminProvider.overrideWithValue(true),
+            adminAuthProvider.overrideWith(
+              () => MockAuthenticatedAdminAuthNotifier(kWidgetTestSuperAdmin),
+            ),
             allAdminsStreamProvider.overrideWith(
               (ref) => Stream.value(mockAdmins),
             ),
@@ -166,7 +175,9 @@ void main() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
-              isSuperAdminProvider.overrideWithValue(true),
+              adminAuthProvider.overrideWith(
+                () => MockAuthenticatedAdminAuthNotifier(kWidgetTestSuperAdmin),
+              ),
               allAdminsStreamProvider.overrideWith(
                 (ref) => Stream.value(mockAdmins),
               ),
@@ -210,8 +221,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            isSuperAdminProvider.overrideWithValue(true),
-            currentAdminUserProvider.overrideWithValue(superAdmin),
+            adminAuthProvider.overrideWith(
+              () => MockAuthenticatedAdminAuthNotifier(superAdmin),
+            ),
             allAdminsStreamProvider.overrideWith(
               (ref) => Stream.value(listWithSuper),
             ),

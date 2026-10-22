@@ -76,6 +76,9 @@ class SupabaseEmployeeRemoteDataSource implements EmployeeRemoteDataSource {
     return list;
   }
 
+  @override
+  Future<List<Employee>> getPublicMembers() => _fetchPublicMembers();
+
   /// Active members with SFace templates for public Face check-in.
   Future<List<Employee>> _fetchFaceVerificationCandidates() async {
     final rows = await _client

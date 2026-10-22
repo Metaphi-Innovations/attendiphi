@@ -13,6 +13,8 @@ import 'package:qr_checkin/features/admin/presentation/screens/admin_forgot_pass
 import 'package:qr_checkin/features/admin/presentation/screens/admin_login_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'admin_widget_auth_mocks.dart';
+
 Session _recoverySession({String email = 'admin@example.com'}) {
   return Session(
     accessToken: 'access-token',
@@ -38,6 +40,9 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
+        overrides: [
+          adminAuthProvider.overrideWith(MockLoggedOutAdminAuthNotifier.new),
+        ],
         child: MaterialApp.router(
           routerConfig: GoRouter(
             initialLocation: RouteNames.adminLogin,
@@ -274,6 +279,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          adminAuthProvider.overrideWith(MockLoggedOutAdminAuthNotifier.new),
           adminPasswordResetServiceProvider.overrideWith(
             (ref) => AdminPasswordResetService(
               currentSessionFn: _recoverySession,

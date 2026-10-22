@@ -75,6 +75,9 @@ void main() {
     publicMembersStreamProvider.overrideWith(
       (ref) => Stream.value(testEmployees),
     ),
+    publicMembersOnceProvider.overrideWith(
+      (ref) async => testEmployees,
+    ),
     liveCheckInsStreamProvider.overrideWith(
       (ref) => Stream.value(const <CheckInSubmission>[]),
     ),
@@ -125,11 +128,11 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
 
-        // Verify top 4 type options
+        // Production QR: Member / Substitute / Visitor only (Face detached).
         expect(find.text('Member'), findsWidgets);
         expect(find.text('Substitute'), findsOneWidget);
         expect(find.text('Visitor'), findsOneWidget);
-        expect(find.text('Face'), findsOneWidget);
+        expect(find.text('Face'), findsNothing);
 
         // Member is selected by default — dropdown UI, no face camera.
         expect(find.text('Member Face Verification'), findsNothing);

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:qr_checkin/features/admin/presentation/providers/admin_dashboard_provider.dart';
+import 'package:qr_checkin/features/admin/presentation/providers/admin_auth_provider.dart';
+import 'package:qr_checkin/features/admin/presentation/providers/visitor_management_provider.dart';
 import 'package:qr_checkin/features/admin/presentation/screens/visitor_management_screen.dart';
 import 'package:qr_checkin/features/checkin/domain/entities/check_in_submission.dart';
 import 'package:qr_checkin/features/checkin/domain/entities/check_in_type.dart';
+
+import 'admin_widget_auth_mocks.dart';
 
 void main() {
   final testVisitors = [
@@ -65,7 +68,10 @@ void main() {
   Widget createWidgetUnderTest() {
     return ProviderScope(
       overrides: [
-        checkInsStreamProvider.overrideWith(
+        adminAuthProvider.overrideWith(
+          () => MockAuthenticatedAdminAuthNotifier(kWidgetTestSuperAdmin),
+        ),
+        visitorsCheckInsStreamProvider.overrideWith(
           (ref) => Stream.value(testVisitors),
         ),
       ],

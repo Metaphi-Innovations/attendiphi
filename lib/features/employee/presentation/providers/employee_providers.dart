@@ -49,6 +49,14 @@ final publicMembersStreamProvider = StreamProvider<List<Employee>>((ref) {
   return repository.streamPublicMembers();
 });
 
+/// REST-only public members fetch for QR check-in (avoids Realtime/WebSocket
+/// flakiness on iOS Camera → Safari, which previously left the roster empty
+/// and showed a false “all members checked in” banner).
+final publicMembersOnceProvider = FutureProvider<List<Employee>>((ref) async {
+  final repository = ref.watch(employeeRepositoryProvider);
+  return repository.getPublicMembers();
+});
+
 /// Face check-in candidates (active members with SFace templates). Works on public QR.
 final faceVerificationCandidatesProvider = StreamProvider<List<Employee>>((
   ref,

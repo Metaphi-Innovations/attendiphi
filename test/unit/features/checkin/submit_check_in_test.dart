@@ -428,7 +428,7 @@ void main() {
         nowProvider: () => DateTime(2026, 9, 24, 10, 0),
       );
 
-      // Prior device history must not block another member (venue tablets).
+      // Venue standee: device restriction OFF — same tablet, many members.
       when(() => mockRepository.getDeviceSubmission(any(), any())).thenAnswer(
         (_) async => CheckInSubmission(
           id: 'device-existing',
@@ -458,8 +458,12 @@ void main() {
         sessionDateStr: '2026-09-24',
         deviceId: 'device-a',
         recognizedMemberId: 'emp_rahul',
+        dateRestrictionEnabled: true,
+        locationRestrictionEnabled: true,
+        deviceRestrictionEnabled: false,
       );
 
+      verifyNever(() => mockRepository.getDeviceSubmission(any(), any()));
       verify(
         () => mockRepository.submitCheckIn(
           any(),

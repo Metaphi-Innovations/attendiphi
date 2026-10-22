@@ -1,7 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
-import 'package:qr_checkin/core/errors/app_exception.dart';
 import 'package:qr_checkin/features/app_config/presentation/providers/check_in_restrictions_provider.dart';
 import 'package:qr_checkin/features/checkin/data/datasources/device_checkin_service.dart';
 import 'package:qr_checkin/features/checkin/domain/entities/check_in_submission.dart';

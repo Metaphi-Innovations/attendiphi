@@ -4,9 +4,14 @@ import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_radius.dart';
 import '../../domain/entities/check_in_type.dart';
 
-/// UI tabs on the public check-in form (includes Face Verification).
+/// When `true`, the QR check-in form shows a Face tab (SFace live verify).
+/// Kept off for production — Member / Substitute / Visitor only.
+const bool kQrFaceVerificationTabEnabled = false;
+
+/// UI tabs on the public check-in form.
 ///
-/// Face Verification still submits as [CheckInType.member] after a match.
+/// [faceVerification] remains in the enum for the detached face-scan path;
+/// it is not offered in the selector unless [kQrFaceVerificationTabEnabled].
 enum CheckInFormTab {
   member,
   substitute,
@@ -72,15 +77,17 @@ class CheckInTypeSelector extends StatelessWidget {
             isSelected: selectedTab == CheckInFormTab.visitor,
           ),
         ),
-        const SizedBox(width: 6),
-        Expanded(
-          child: _buildTypeCard(
-            tab: CheckInFormTab.faceVerification,
-            title: 'Face',
-            icon: Icons.face_retouching_natural_rounded,
-            isSelected: selectedTab == CheckInFormTab.faceVerification,
+        if (kQrFaceVerificationTabEnabled) ...[
+          const SizedBox(width: 6),
+          Expanded(
+            child: _buildTypeCard(
+              tab: CheckInFormTab.faceVerification,
+              title: 'Face',
+              icon: Icons.face_retouching_natural_rounded,
+              isSelected: selectedTab == CheckInFormTab.faceVerification,
+            ),
           ),
-        ),
+        ],
       ],
     );
   }

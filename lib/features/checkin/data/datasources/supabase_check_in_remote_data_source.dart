@@ -248,14 +248,18 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
       await _client.from('check_ins').delete().eq('id', id);
 
       final sessionDate = existing?['session_date']?.toString().trim() ?? '';
-      final date = sessionDate.length >= 10
-          ? sessionDate.substring(0, 10)
-          : SessionLockIds.sessionDateYmd(
-              fallbackTimestamp: existing?['timestamp'] != null
-                  ? DateTime.tryParse(existing!['timestamp'].toString())
-                  : null,
-            );
-      if (date.length == 10) {
+      String? date;
+      if (sessionDate.length >= 10) {
+        date = sessionDate.substring(0, 10);
+      } else {
+        final parsed = existing?['timestamp'] != null
+            ? DateTime.tryParse(existing!['timestamp'].toString())
+            : null;
+        if (parsed != null) {
+          date = SessionLockIds.sessionDateYmd(fallbackTimestamp: parsed);
+        }
+      }
+      if (date != null && date.length == 10) {
         await _rebuildSessionAttendanceForDate(date);
       }
     } on PostgrestException catch (e, st) {

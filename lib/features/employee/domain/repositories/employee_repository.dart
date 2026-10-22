@@ -7,6 +7,9 @@ abstract class EmployeeRepository {
   /// Public QR directory: id, name, phone, isActive only (no email/photos/biometrics).
   Stream<List<Employee>> streamPublicMembers();
 
+  /// One-shot public QR directory (REST only — preferred on mobile Safari).
+  Future<List<Employee>> getPublicMembers();
+
   /// Active members with SFace templates for Face check-in (public QR safe).
   Stream<List<Employee>> streamFaceVerificationCandidates();
 

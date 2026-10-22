@@ -5,6 +5,9 @@ abstract class EmployeeRemoteDataSource {
   Stream<List<Employee>> streamEmployees();
   Stream<List<Employee>> streamPublicMembers();
 
+  /// One-shot public QR directory (no Realtime) — more reliable on mobile Safari.
+  Future<List<Employee>> getPublicMembers();
+
   /// Active members with SFace templates for Face check-in (public QR safe).
   Stream<List<Employee>> streamFaceVerificationCandidates();
 

@@ -370,7 +370,11 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   @override
   void initState() {
     super.initState();
-    // Warm up employee / member list in memory so dropdown opens instantly
+    // Prefer REST one-shot on mobile Safari (Camera → in-app browser); Realtime
+    // streams sometimes never emit and left the roster empty → false
+    // "all members checked in" banner on production.
+    ref.invalidate(publicMembersOnceProvider);
+    ref.read(publicMembersOnceProvider);
     ref.read(publicMembersStreamProvider);
 
     // Always start this QR scan with empty identity fields so the previous
@@ -466,6 +470,12 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   }
 
   void _onTabChanged(CheckInFormTab newTab) {
+    // Face tab is detached from production QR check-in.
+    if (!kQrFaceVerificationTabEnabled &&
+        newTab == CheckInFormTab.faceVerification) {
+      newTab = CheckInFormTab.member;
+    }
+
     // 1. Clear all local text controllers
     _nameController.clear();
     _phoneController.clear();
@@ -610,9 +620,13 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   }
 
   Future<Employee> _authoritativeMember(Employee selected) async {
-    final employees =
+    final once =
+        ref.read(publicMembersOnceProvider).asData?.value ??
+        const <Employee>[];
+    final streamed =
         ref.read(publicMembersStreamProvider).asData?.value ??
         const <Employee>[];
+    final employees = once.isNotEmpty ? once : streamed;
     return EmployeeLookup.byId(employees, selected.id) ?? selected;
   }
 
@@ -1047,7 +1061,9 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       locationConfigFamilyProvider(widget.locationId),
     );
     final employeesAsync = ref.watch(employeesStreamProvider);
-    final faceCandidatesAsync = ref.watch(faceVerificationCandidatesProvider);
+    final faceCandidatesAsync = kQrFaceVerificationTabEnabled
+        ? ref.watch(faceVerificationCandidatesProvider)
+        : null;
     final isCompact = context.isCompactMobile;
     final currentType = formState.type;
     final scopedEmployees = EmployeeLookup.scoped(
@@ -1055,12 +1071,15 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       adminId: widget.adminId,
       activeOnly: true,
     );
-    final faceCandidates = EmployeeLookup.scoped(
-      employees: faceCandidatesAsync.asData?.value ?? const <Employee>[],
-      adminId: widget.adminId,
-      activeOnly: true,
-    );
-    final liveRecognized = _recognizedMember == null
+    final faceCandidates = kQrFaceVerificationTabEnabled
+        ? EmployeeLookup.scoped(
+            employees: faceCandidatesAsync?.asData?.value ?? const <Employee>[],
+            adminId: widget.adminId,
+            activeOnly: true,
+          )
+        : const <Employee>[];
+    final liveRecognized = !kQrFaceVerificationTabEnabled ||
+            _recognizedMember == null
         ? null
         : EmployeeLookup.byId(faceCandidates, _recognizedMember!.id) ??
               EmployeeLookup.byId(scopedEmployees, _recognizedMember!.id) ??
@@ -1168,8 +1187,8 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                         // 3. Dynamic Form Fields based on Tab
                         if (_activeTab == CheckInFormTab.member) ...[
                           _buildMemberFormFields(),
-                        ] else if (_activeTab ==
-                            CheckInFormTab.faceVerification) ...[
+                        ] else if (kQrFaceVerificationTabEnabled &&
+                            _activeTab == CheckInFormTab.faceVerification) ...[
                           _buildFaceVerificationSection(
                             scopedEmployees: faceCandidates,
                             liveRecognized: liveRecognized,
@@ -1226,7 +1245,8 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
           // typeahead suggestions are open on mobile web.
           if (currentType != null &&
               !_anyMemberTypeaheadOpen &&
-              (_activeTab != CheckInFormTab.faceVerification ||
+              (!kQrFaceVerificationTabEnabled ||
+                  _activeTab != CheckInFormTab.faceVerification ||
                   _memberAutoSubmitFailed ||
                   _manuallySelectedMember != null ||
                   _isUnrecognized)) ...[
@@ -1494,7 +1514,8 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
             constraints: BoxConstraints(maxHeight: maxHeight),
             child: Consumer(
               builder: (context, ref, _) {
-                final employeesAsync = ref.watch(publicMembersStreamProvider);
+                final onceAsync = ref.watch(publicMembersOnceProvider);
+                final streamAsync = ref.watch(publicMembersStreamProvider);
                 final checkedInAsync = excludeSessionCheckedIn
                     ? ref.watch(
                         sessionCheckedInMemberIdsProvider(
@@ -1503,9 +1524,22 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                       )
                     : null;
 
+                final onceList = onceAsync.asData?.value;
+                final streamList = streamAsync.asData?.value;
+                // Prefer REST snapshot; fall back to Realtime stream if needed.
+                final allEmployees =
+                    (onceList != null && onceList.isNotEmpty)
+                    ? onceList
+                    : (streamList ?? onceList ?? const <Employee>[]);
+
+                final rosterLoading =
+                    allEmployees.isEmpty &&
+                    ((onceAsync.isLoading && !onceAsync.hasValue) ||
+                        (streamAsync.isLoading && !streamAsync.hasValue));
+
                 // Wait for both roster + session attendance before deciding
                 // "everyone checked in" (avoids a false empty banner).
-                if (employeesAsync.isLoading ||
+                if (rosterLoading ||
                     (excludeSessionCheckedIn &&
                         checkedInAsync != null &&
                         checkedInAsync.isLoading &&
@@ -1522,23 +1556,36 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                   );
                 }
 
-                if (employeesAsync.hasError && !employeesAsync.hasValue) {
+                if (allEmployees.isEmpty &&
+                    onceAsync.hasError &&
+                    streamAsync.hasError) {
                   return Padding(
                     padding: const EdgeInsets.all(16),
                     child: Center(
-                      child: Text(
-                        'Error loading names: ${employeesAsync.error}',
-                        style: const TextStyle(
-                          color: AppColors.error,
-                          fontSize: 12,
-                        ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Error loading names: ${onceAsync.error ?? streamAsync.error}',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: AppColors.error,
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          TextButton(
+                            onPressed: () {
+                              ref.invalidate(publicMembersOnceProvider);
+                            },
+                            child: const Text('Retry'),
+                          ),
+                        ],
                       ),
                     ),
                   );
                 }
 
-                final allEmployees =
-                    employeesAsync.value ?? const <Employee>[];
                 // Fail open if session attendance cannot load — never hide the
                 // whole roster behind a false "all checked in" message.
                 final checkedInIds =
@@ -1561,13 +1608,28 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                   return Padding(
                     padding: const EdgeInsets.all(16),
                     child: Center(
-                      child: Text(
-                        typeahead.emptyMessage ?? 'No matching members found',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.grey,
-                          fontSize: 13,
-                        ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            typeahead.emptyMessage ??
+                                'No matching members found',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 13,
+                            ),
+                          ),
+                          if (allEmployees.isEmpty) ...[
+                            const SizedBox(height: 8),
+                            TextButton(
+                              onPressed: () {
+                                ref.invalidate(publicMembersOnceProvider);
+                              },
+                              child: const Text('Retry'),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                   );

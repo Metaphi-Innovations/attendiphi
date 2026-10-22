@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:qr_checkin/features/admin/presentation/providers/admin_dashboard_provider.dart';
+import 'package:qr_checkin/features/admin/presentation/providers/attendance_overview_provider.dart';
+import 'package:qr_checkin/features/admin/presentation/providers/admin_auth_provider.dart';
 import 'package:qr_checkin/features/admin/presentation/screens/attendance_overview_screen.dart';
 import 'package:qr_checkin/features/checkin/domain/entities/check_in_submission.dart';
 import 'package:qr_checkin/features/checkin/domain/entities/check_in_type.dart';
 import 'package:qr_checkin/features/employee/domain/entities/employee.dart';
 import 'package:qr_checkin/features/employee/presentation/providers/employee_providers.dart';
+
+import 'admin_widget_auth_mocks.dart';
 
 void main() {
   final testMembers = [
@@ -59,10 +62,13 @@ void main() {
   Widget createWidgetUnderTest() {
     return ProviderScope(
       overrides: [
+        adminAuthProvider.overrideWith(
+          () => MockAuthenticatedAdminAuthNotifier(kWidgetTestSuperAdmin),
+        ),
         employeesStreamProvider.overrideWith(
           (ref) => Stream.value(testMembers),
         ),
-        checkInsStreamProvider.overrideWith(
+        overviewCheckInsStreamProvider.overrideWith(
           (ref) => Stream.value(testSubmissions),
         ),
       ],
