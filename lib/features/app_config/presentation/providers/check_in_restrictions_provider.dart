@@ -76,11 +76,11 @@ final restrictionsConfigReadyProvider = Provider<bool>((ref) {
   return ref.watch(checkInRestrictionsConfigProvider).hasValue;
 });
 
-/// Staging (and local dev) get granular Location / Date / Device toggles.
-/// Production keeps the single master switch until explicitly promoted.
+/// Granular Location / Date / Device menu for Super Admin (all environments).
 final granularRestrictionsUiEnabledProvider = Provider<bool>((ref) {
-  final env = ref.watch(appConfigProvider).environment;
-  return env.isStaging || env.isDevelopment;
+  // Keep watching appConfig so tests can override environment if needed.
+  ref.watch(appConfigProvider);
+  return true;
 });
 
 /// Super Admin writes restriction flags.

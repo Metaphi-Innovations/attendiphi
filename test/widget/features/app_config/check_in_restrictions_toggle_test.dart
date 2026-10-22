@@ -27,7 +27,7 @@ void main() {
     createdBy: 'uid-super',
   );
 
-  testWidgets('Super Admin sees menu icon only (no master switch) on staging/dev', (
+  testWidgets('Super Admin sees menu icon only (no master switch)', (
     tester,
   ) async {
     await tester.pumpWidget(
