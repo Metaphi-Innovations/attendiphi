@@ -7,8 +7,8 @@ import '../providers/check_in_restrictions_provider.dart';
 
 /// Super-Admin check-in restriction control.
 ///
-/// Staging / dev: hamburger menu with independent Location + Date toggles.
-/// Production: single master ON/OFF switch (unchanged until promoted).
+/// Hamburger menu with independent Location, Date, and Device toggles
+/// (all environments, including production).
 class CheckInRestrictionsToggle extends ConsumerWidget {
   const CheckInRestrictionsToggle({super.key});
 
@@ -76,7 +76,7 @@ class CheckInRestrictionsToggle extends ConsumerWidget {
       );
     }
 
-    // Production: keep legacy master switch.
+    // Legacy master switch (unused while granular UI is enabled).
     final tooltip = enabled
         ? 'Restrictions ON — Thursday + QR date + one device + GPS'
         : 'Restrictions OFF — test mode (any day / multi check-in / no GPS)';
@@ -363,7 +363,7 @@ class _GranularRestrictionsDialogState
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Staging only — toggle Location, Date, and Device independently.',
+                'Toggle Location, Date, and Device independently.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
