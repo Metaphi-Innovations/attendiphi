@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../app/config/supabase_bootstrap.dart';
@@ -204,6 +202,21 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
       final row = SupabaseCheckInMapper.toRow(submission);
       await _client.from('check_ins').upsert(row);
 
+      // Keep QR typeahead projection in sync (admin upsert bypasses the RPC).
+      final memberId = submission.memberId?.trim() ?? '';
+      if (memberId.isNotEmpty &&
+          (submission.type.isMember ||
+              submission.type.isSubstitute ||
+              submission.type.isAbsent)) {
+        final date = SessionLockIds.sessionDateYmd(
+          fallbackTimestamp: submission.timestamp,
+        );
+        await _mergeSessionAttendanceMember(
+          sessionDateYmd: date,
+          memberId: memberId,
+        );
+      }
+
       AppLogger.info(
         'Check-in updated (Supabase): ${submission.id}',
         tag: 'SupabaseCheckInRemoteDataSource',
@@ -222,7 +235,29 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
   @override
   Future<void> deleteCheckIn(String checkInId) async {
     try {
-      await _client.from('check_ins').delete().eq('id', checkInId);
+      final id = checkInId.trim();
+      if (id.isEmpty) return;
+
+      // Capture session date before delete so QR projection can be rebuilt.
+      final existing = await _client
+          .from('check_ins')
+          .select('session_date,timestamp')
+          .eq('id', id)
+          .maybeSingle();
+
+      await _client.from('check_ins').delete().eq('id', id);
+
+      final sessionDate = existing?['session_date']?.toString().trim() ?? '';
+      final date = sessionDate.length >= 10
+          ? sessionDate.substring(0, 10)
+          : SessionLockIds.sessionDateYmd(
+              fallbackTimestamp: existing?['timestamp'] != null
+                  ? DateTime.tryParse(existing!['timestamp'].toString())
+                  : null,
+            );
+      if (date.length == 10) {
+        await _rebuildSessionAttendanceForDate(date);
+      }
     } on PostgrestException catch (e, st) {
       throw ServerException(
         technicalMessage: 'Supabase delete error: ${e.code} - ${e.message}',
@@ -393,6 +428,60 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
         if (mid != null && mid.toString().trim().isNotEmpty)
           mid.toString().trim(),
     };
+  }
+
+  /// Adds [memberId] to the public session attendance projection (idempotent).
+  Future<void> _mergeSessionAttendanceMember({
+    required String sessionDateYmd,
+    required String memberId,
+  }) async {
+    final date = sessionDateYmd.trim();
+    final mid = memberId.trim();
+    if (date.length != 10 || mid.isEmpty) return;
+    try {
+      final existing = await _fetchSessionMemberIds(date);
+      if (existing.contains(mid)) return;
+      final next = [...existing, mid];
+      await _client.from('session_attendance').upsert({
+        'id': date,
+        'session_date': date,
+        'checked_in_member_ids': next,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }, onConflict: 'session_date');
+    } catch (e, st) {
+      AppLogger.warning(
+        'session_attendance merge failed for $date/$mid: $e\n$st',
+        tag: 'SupabaseCheckInRemoteDataSource',
+      );
+    }
+  }
+
+  /// Rebuilds QR projection for one day from remaining `check_ins` rows.
+  Future<void> _rebuildSessionAttendanceForDate(String sessionDateYmd) async {
+    final date = sessionDateYmd.trim();
+    if (date.length != 10) return;
+    try {
+      final rows = await _client
+          .from('check_ins')
+          .select('member_id')
+          .eq('session_date', date);
+      final ids = <String>{
+        for (final row in rows)
+          if ((row['member_id']?.toString().trim() ?? '').isNotEmpty)
+            row['member_id'].toString().trim(),
+      };
+      await _client.from('session_attendance').upsert({
+        'id': date,
+        'session_date': date,
+        'checked_in_member_ids': ids.toList(),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }, onConflict: 'session_date');
+    } catch (e, st) {
+      AppLogger.warning(
+        'session_attendance rebuild failed for $date: $e\n$st',
+        tag: 'SupabaseCheckInRemoteDataSource',
+      );
+    }
   }
 
   @override

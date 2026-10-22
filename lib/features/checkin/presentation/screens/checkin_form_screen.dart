@@ -29,6 +29,7 @@ import '../../../location/presentation/providers/location_providers.dart';
 import '../../data/datasources/device_checkin_service.dart';
 import '../../domain/entities/check_in_submission.dart';
 import '../../domain/entities/check_in_type.dart';
+import '../../domain/session_member_typeahead.dart';
 import '../providers/checkin_form_provider.dart';
 import '../providers/checkin_form_state.dart';
 import '../providers/checkin_providers.dart';
@@ -1502,8 +1503,14 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                       )
                     : null;
 
-                return employeesAsync.when(
-                  loading: () => const Padding(
+                // Wait for both roster + session attendance before deciding
+                // "everyone checked in" (avoids a false empty banner).
+                if (employeesAsync.isLoading ||
+                    (excludeSessionCheckedIn &&
+                        checkedInAsync != null &&
+                        checkedInAsync.isLoading &&
+                        !checkedInAsync.hasValue)) {
+                  return const Padding(
                     padding: EdgeInsets.all(20),
                     child: Center(
                       child: SizedBox(
@@ -1512,116 +1519,113 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       ),
                     ),
-                  ),
-                  error: (e, _) => Padding(
+                  );
+                }
+
+                if (employeesAsync.hasError && !employeesAsync.hasValue) {
+                  return Padding(
                     padding: const EdgeInsets.all(16),
                     child: Center(
                       child: Text(
-                        'Error loading names: $e',
+                        'Error loading names: ${employeesAsync.error}',
                         style: const TextStyle(
                           color: AppColors.error,
                           fontSize: 12,
                         ),
                       ),
                     ),
-                  ),
-                  data: (allEmployees) {
-                    final scopedEmployees = EmployeeLookup.scoped(
-                      employees: allEmployees,
-                      adminId: widget.adminId,
-                      activeOnly: true,
-                    );
-                    final checkedInIds = excludeSessionCheckedIn
-                        ? (checkedInAsync?.value ?? const <String>{})
-                        : const <String>{};
-                    final availableEmployees = scopedEmployees
-                        .where((emp) => !checkedInIds.contains(emp.id))
-                        .toList();
+                  );
+                }
 
-                    final q = query.toLowerCase();
-                    final filtered = q.isEmpty
-                        ? availableEmployees
-                        : availableEmployees.where((emp) {
-                            final name = emp.name.toLowerCase();
-                            final phone = emp.phone.toLowerCase();
-                            return name.contains(q) || phone.contains(q);
-                          }).toList();
+                final allEmployees =
+                    employeesAsync.value ?? const <Employee>[];
+                // Fail open if session attendance cannot load — never hide the
+                // whole roster behind a false "all checked in" message.
+                final checkedInIds =
+                    excludeSessionCheckedIn &&
+                        checkedInAsync != null &&
+                        checkedInAsync.hasValue
+                    ? (checkedInAsync.value ?? const <String>{})
+                    : const <String>{};
+                final typeahead = buildSessionMemberTypeahead(
+                  allEmployees: allEmployees,
+                  checkedInMemberIds: checkedInIds,
+                  adminId: widget.adminId,
+                  query: query,
+                  excludeCheckedIn: excludeSessionCheckedIn,
+                  sessionDateYmd: _sessionDateYmdForAttendance,
+                );
+                final filtered = typeahead.filteredEmployees;
 
-                    if (filtered.isEmpty) {
-                      final emptyMessage =
-                          excludeSessionCheckedIn && availableEmployees.isEmpty
-                          ? 'All members have already checked in for this session'
-                          : 'No matching members found';
-                      return Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Center(
-                          child: Text(
-                            emptyMessage,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: Colors.grey,
-                              fontSize: 13,
-                            ),
+                if (filtered.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Center(
+                      child: Text(
+                        typeahead.emptyMessage ?? 'No matching members found',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
+                return NotificationListener<ScrollNotification>(
+                  onNotification: (_) => true,
+                  child: ListView.separated(
+                    primary: false,
+                    shrinkWrap: true,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    itemCount: filtered.length,
+                    separatorBuilder: (context, index) =>
+                        const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                    itemBuilder: (context, index) {
+                      final emp = filtered[index];
+                      return ListTile(
+                        dense: true,
+                        visualDensity: VisualDensity.compact,
+                        leading: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withAlpha(25),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.person_rounded,
+                            size: 16,
+                            color: AppColors.primary,
                           ),
                         ),
+                        title: Text(
+                          emp.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                        subtitle: emp.phone.isNotEmpty
+                            ? Text(
+                                emp.phone,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF64748B),
+                                ),
+                              )
+                            : null,
+                        trailing: const Icon(
+                          Icons.north_west_rounded,
+                          size: 14,
+                          color: Color(0xFF94A3B8),
+                        ),
+                        onTap: () => onSelectEmployee(emp),
                       );
-                    }
-
-                    return NotificationListener<ScrollNotification>(
-                      onNotification: (_) => true,
-                      child: ListView.separated(
-                        primary: false,
-                        shrinkWrap: true,
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        itemCount: filtered.length,
-                        separatorBuilder: (context, index) =>
-                            const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                        itemBuilder: (context, index) {
-                          final emp = filtered[index];
-                          return ListTile(
-                            dense: true,
-                            visualDensity: VisualDensity.compact,
-                            leading: Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: AppColors.primary.withAlpha(25),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.person_rounded,
-                                size: 16,
-                                color: AppColors.primary,
-                              ),
-                            ),
-                            title: Text(
-                              emp.name,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                                color: Color(0xFF0F172A),
-                              ),
-                            ),
-                            subtitle: emp.phone.isNotEmpty
-                                ? Text(
-                                    emp.phone,
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: Color(0xFF64748B),
-                                    ),
-                                  )
-                                : null,
-                            trailing: const Icon(
-                              Icons.north_west_rounded,
-                              size: 14,
-                              color: Color(0xFF94A3B8),
-                            ),
-                            onTap: () => onSelectEmployee(emp),
-                          );
-                        },
-                      ),
-                    );
-                  },
+                    },
+                  ),
                 );
               },
             ),
