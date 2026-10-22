@@ -19,6 +19,16 @@ class EmployeeRepositoryImpl implements EmployeeRepository {
   }
 
   @override
+  Future<List<Employee>> getPublicMembers() {
+    return _remoteDataSource.getPublicMembers();
+  }
+
+  @override
+  Stream<List<Employee>> streamFaceVerificationCandidates() {
+    return _remoteDataSource.streamFaceVerificationCandidates();
+  }
+
+  @override
   Future<void> addEmployee(
     String name, {
     String email = '',

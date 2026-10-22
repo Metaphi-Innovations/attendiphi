@@ -63,13 +63,20 @@ void main() {
   List<Override> baseOverrides({bool restrictionsEnabled = true}) => [
     checkInRestrictionsConfigProvider.overrideWith(
       (ref) => Stream.value(
-        CheckInRestrictionsConfig(restrictionsEnabled: restrictionsEnabled),
+        CheckInRestrictionsConfig(
+          locationRestrictionEnabled: restrictionsEnabled,
+          dateRestrictionEnabled: restrictionsEnabled,
+          deviceRestrictionEnabled: restrictionsEnabled,
+        ),
       ),
     ),
     locationConfigFamilyProvider('test_venue')
         .overrideWith((ref) => Future.value(testLocation)),
     publicMembersStreamProvider.overrideWith(
       (ref) => Stream.value(testEmployees),
+    ),
+    publicMembersOnceProvider.overrideWith(
+      (ref) async => testEmployees,
     ),
     liveCheckInsStreamProvider.overrideWith(
       (ref) => Stream.value(const <CheckInSubmission>[]),
@@ -121,13 +128,15 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
 
-        // Verify top 3 type options
+        // Production QR: Member / Substitute / Visitor only (Face detached).
         expect(find.text('Member'), findsWidgets);
         expect(find.text('Substitute'), findsOneWidget);
         expect(find.text('Visitor'), findsOneWidget);
+        expect(find.text('Face'), findsNothing);
 
         // Member is selected by default — dropdown UI, no face camera.
         expect(find.text('Member Face Verification'), findsNothing);
+        expect(find.text('Face Verification'), findsNothing);
         expect(find.text('Take Live Selfie'), findsNothing);
         expect(find.text('Start Camera'), findsNothing);
         expect(find.text('Verify Face'), findsNothing);

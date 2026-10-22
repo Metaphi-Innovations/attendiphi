@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:image/image.dart' as img;
 
 import '../constants/app_constants.dart';
 import '../logger/app_logger.dart';
@@ -87,13 +88,16 @@ class ImageUtils {
   }
 
   /// Appends a version query so browsers do not keep serving a stale photo.
+  ///
+  /// When [version] is null, uses `0` (not wall-clock time) so live roster
+  /// rebuilds do not change the URL and flash the image every few seconds.
   static String cacheBustedUrl(String url, {DateTime? version}) {
     final trimmed = url.trim();
     if (trimmed.isEmpty) return trimmed;
     if (!(trimmed.startsWith('http://') || trimmed.startsWith('https://'))) {
       return trimmed;
     }
-    final stamp = (version ?? DateTime.now()).millisecondsSinceEpoch;
+    final stamp = version?.millisecondsSinceEpoch ?? 0;
     final uri = Uri.tryParse(trimmed);
     if (uri == null || !uri.hasScheme) {
       final separator = trimmed.contains('?') ? '&' : '?';
@@ -109,6 +113,49 @@ class ImageUtils {
     return base64Encode(bytes);
   }
 
+  /// Re-encodes any common image bytes as JPEG for Storage uploads.
+  ///
+  /// Gallery / web captures are often PNG/WebP; the `check-in-photos` bucket
+  /// rejects `application/octet-stream` with HTTP 400, so we normalize here.
+  static Uint8List toJpegBytes(
+    Uint8List bytes, {
+    int quality = AppConstants.photoCompressionQuality,
+    int maxSide = AppConstants.maxPhotoPixels,
+  }) {
+    if (bytes.isEmpty) return bytes;
+    final isJpeg = bytes.length >= 3 &&
+        bytes[0] == 0xFF &&
+        bytes[1] == 0xD8 &&
+        bytes[2] == 0xFF;
+    try {
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null) {
+        return isJpeg ? bytes : Uint8List(0);
+      }
+      var frame = decoded;
+      final longest = frame.width > frame.height ? frame.width : frame.height;
+      if (longest > maxSide && maxSide > 0) {
+        frame = img.copyResize(
+          frame,
+          width: frame.width >= frame.height ? maxSide : null,
+          height: frame.height > frame.width ? maxSide : null,
+          interpolation: img.Interpolation.linear,
+        );
+      }
+      return Uint8List.fromList(
+        img.encodeJpg(frame, quality: quality.clamp(1, 100)),
+      );
+    } catch (e, st) {
+      AppLogger.error(
+        'toJpegBytes failed',
+        error: e,
+        stackTrace: st,
+        tag: 'ImageUtils',
+      );
+      return isJpeg ? bytes : Uint8List(0);
+    }
+  }
+
   /// Converts a Base64 string back to bytes for image rendering.
   static Uint8List? base64ToBytes(String? base64String) {
     if (base64String == null || base64String.isEmpty) return null;
@@ -122,11 +169,6 @@ class ImageUtils {
       AppLogger.error('Failed to decode base64 image: $e', tag: 'ImageUtils');
       return null;
     }
-  }
-
-  /// Checks whether a file size is within the allowed limit.
-  static bool isWithinSizeLimit(int sizeInBytes) {
-    return sizeInBytes <= AppConstants.maxPhotoSizeBytes;
   }
 
   /// Returns a human-readable file size string.

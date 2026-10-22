@@ -21,9 +21,6 @@ class AppConstants {
   /// JPEG compression quality (0-100).
   static const int photoCompressionQuality = 65;
 
-  /// Maximum file size for uploaded photos (5 MB).
-  static const int maxPhotoSizeBytes = 5 * 1024 * 1024;
-
   // ── Form Validation ───────────────────────────────────────────────────
   /// Minimum length for a valid name.
   static const int nameMinLength = 2;
@@ -72,9 +69,6 @@ class AppConstants {
   static const String appConfigCollection = 'appConfig';
   static const String checkInRestrictionsDocId = 'checkInRestrictions';
   static const String substitutePhotosPath = 'substitute_photos';
-
-  /// Max base64 photo payload accepted by public checkIns create rules (~150KB).
-  static const int maxCheckInPhotoBase64Chars = 150000;
 
   // ── Push Notifications ────────────────────────────────────────────────
   static const String notificationChannelId = 'admin_attendance_channel';

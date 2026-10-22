@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../features/employee/domain/entities/employee.dart';
 import '../utils/image_utils.dart';
+import 'stable_base64_image.dart';
 
 /// Renders a member's current profile photo from [Employee.photoUrl].
 ///
-/// HTTP photos are cache-busted with [Employee.updatedAt]. Base64 photos
-/// are keyed by member id + updatedAt so Flutter does not reuse a stale
-/// [MemoryImage] after an admin update.
+/// HTTP photos are cache-busted with [Employee.updatedAt] (stable when null).
+/// Base64 photos use [StableBase64Image] so live roster rebuilds do not flash.
 class MemberPhoto extends StatelessWidget {
   const MemberPhoto({
     super.key,
@@ -27,41 +27,39 @@ class MemberPhoto extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final photo = member.photoUrl?.trim() ?? '';
-    final version = member.updatedAt;
-    final imageKey = ValueKey(
-      '${member.id}_${version?.millisecondsSinceEpoch ?? 0}_${photo.length}',
-    );
-
     if (photo.isEmpty) {
       return errorBuilder?.call(context, 'missing-photo', StackTrace.empty) ??
           const SizedBox.shrink();
     }
 
     if (photo.startsWith('http://') || photo.startsWith('https://')) {
+      final version = member.updatedAt;
       return Image.network(
         ImageUtils.cacheBustedUrl(photo, version: version),
-        key: imageKey,
+        key: ValueKey(
+          '${member.id}_${version?.millisecondsSinceEpoch ?? 0}',
+        ),
         width: width,
         height: height,
         fit: fit,
-        gaplessPlayback: false,
+        // Keep the previous frame while LIVE SYNC rebuilds the roster.
+        gaplessPlayback: true,
+        filterQuality: FilterQuality.medium,
         errorBuilder: errorBuilder,
       );
     }
 
-    final bytes = ImageUtils.base64ToBytes(photo);
-    if (bytes == null) {
+    if (ImageUtils.base64ToBytes(photo) == null) {
       return errorBuilder?.call(context, 'invalid-photo', StackTrace.empty) ??
           const SizedBox.shrink();
     }
-    return Image.memory(
-      bytes,
-      key: imageKey,
+
+    return StableBase64Image(
+      key: ValueKey(member.id),
+      base64: photo,
       width: width,
       height: height,
       fit: fit,
-      gaplessPlayback: false,
-      errorBuilder: errorBuilder,
     );
   }
 }

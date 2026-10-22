@@ -166,8 +166,11 @@ bool substituteCheckInCoversMember({
 }) {
   if (!raw.type.isSubstitute) return false;
 
-  final byId = EmployeeLookup.byId([member], raw.memberId);
-  if (byId != null) return true;
+  final memberId = (raw.memberId ?? '').trim();
+  if (memberId.isNotEmpty) {
+    // Exclusive: never phone/name fan-out when member_id is set.
+    return EmployeeLookup.byId([member], memberId) != null;
+  }
 
   if (EmployeeLookup.forNamedMember([member], raw.substituteForMember) !=
       null) {
@@ -175,8 +178,8 @@ bool substituteCheckInCoversMember({
   }
 
   // Admin-converted / legacy rows: type flipped to substitute without
-  // substituteForMember. Still attach via name or phone so the member does
-  // not fall through to "Not Checked In".
+  // memberId or substituteForMember. Still attach via name or phone so the
+  // member does not fall through to "Not Checked In".
   if ((raw.substituteForMember ?? '').trim().isEmpty) {
     if (EmployeeLookup.phonesMatch(raw.userPhone, member.phone)) return true;
     if (EmployeeLookup.normalizeName(raw.userName) ==

@@ -188,7 +188,7 @@ class CloudFaceRecognitionService implements FaceVerificationService {
         totalFramesCount: photosBase64.length,
         statusMessage: nativeOnly
             ? 'This member needs a web face enrollment. Re-enroll from User Management in the browser.'
-            : 'No enrolled member face profiles found for this chapter.',
+            : 'No enrolled face biometrics found. Use Take Photo in User Management to enroll SFace templates.',
         shouldRetry: false,
       );
     }
@@ -302,7 +302,7 @@ class CloudFaceRecognitionService implements FaceVerificationService {
         isMatch: false,
         errorMessage: nativeOnly
             ? 'This member needs a web face enrollment. Re-enroll from User Management in the browser.'
-            : 'No enrolled member face profiles found for this chapter.',
+            : 'No enrolled face biometrics found. Use Take Photo in User Management to enroll SFace templates.',
       );
     }
 

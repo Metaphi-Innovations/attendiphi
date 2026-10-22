@@ -27,7 +27,9 @@ void main() {
     createdBy: 'uid-super',
   );
 
-  testWidgets('Super Admin sees compact Restrictions toggle', (tester) async {
+  testWidgets('Super Admin sees menu icon only (no master switch) on staging/dev', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -35,33 +37,11 @@ void main() {
           currentAdminUserProvider.overrideWithValue(superAdmin),
           checkInRestrictionsConfigProvider.overrideWith(
             (ref) => Stream.value(
-              const CheckInRestrictionsConfig(restrictionsEnabled: true),
-            ),
-          ),
-        ],
-        child: const MaterialApp(
-          home: Scaffold(body: CheckInRestrictionsToggle()),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Check-in Restrictions'), findsNothing);
-    expect(find.textContaining('Test mode'), findsNothing);
-    expect(find.textContaining('Last updated'), findsNothing);
-    expect(find.text('Restrictions'), findsOneWidget);
-    expect(find.byType(Switch), findsOneWidget);
-  });
-
-  testWidgets('Regular Admin does not see Restrictions toggle', (tester) async {
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          isSuperAdminProvider.overrideWithValue(false),
-          currentAdminUserProvider.overrideWithValue(regularAdmin),
-          checkInRestrictionsConfigProvider.overrideWith(
-            (ref) => Stream.value(
-              const CheckInRestrictionsConfig(restrictionsEnabled: true),
+              const CheckInRestrictionsConfig(
+                locationRestrictionEnabled: true,
+                dateRestrictionEnabled: true,
+        deviceRestrictionEnabled: true,
+              ),
             ),
           ),
         ],
@@ -74,5 +54,67 @@ void main() {
 
     expect(find.text('Restrictions'), findsNothing);
     expect(find.byType(Switch), findsNothing);
+    expect(find.byIcon(Icons.menu), findsOneWidget);
+  });
+
+  testWidgets('Super Admin menu opens Location, Date, and Device toggles', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          isSuperAdminProvider.overrideWithValue(true),
+          currentAdminUserProvider.overrideWithValue(superAdmin),
+          checkInRestrictionsConfigProvider.overrideWith(
+            (ref) => Stream.value(
+              const CheckInRestrictionsConfig(
+                locationRestrictionEnabled: true,
+                dateRestrictionEnabled: true,
+                deviceRestrictionEnabled: true,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(body: CheckInRestrictionsToggle()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.menu));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Location restriction'), findsOneWidget);
+    expect(find.text('Date restriction'), findsOneWidget);
+    expect(find.text('One device = one check-in'), findsOneWidget);
+  });
+
+  testWidgets('Regular Admin does not see Restrictions control', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          isSuperAdminProvider.overrideWithValue(false),
+          currentAdminUserProvider.overrideWithValue(regularAdmin),
+          checkInRestrictionsConfigProvider.overrideWith(
+            (ref) => Stream.value(
+              const CheckInRestrictionsConfig(
+                locationRestrictionEnabled: true,
+                dateRestrictionEnabled: true,
+        deviceRestrictionEnabled: true,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(body: CheckInRestrictionsToggle()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Restrictions'), findsNothing);
+    expect(find.byType(Switch), findsNothing);
+    expect(find.byIcon(Icons.menu), findsNothing);
   });
 }

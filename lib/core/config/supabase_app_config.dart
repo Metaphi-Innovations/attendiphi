@@ -5,13 +5,10 @@ import '../../app/config/environment.dart';
 
 /// Attendiphi Supabase project (data + Auth) — sole backend for the app.
 ///
-/// Resolution by [Environment] (see [docs/ENVIRONMENTS.md]):
-/// - **development** → local Docker (`SUPABASE_URL_LOCAL` / defaults `127.0.0.1:54321`)
+/// Resolution by [Environment]:
+/// - **development** → local Docker (`SUPABASE_URL_LOCAL` / `127.0.0.1:54321`)
 /// - **staging** → attendiphi-test (`SUPABASE_URL_STAGING` / cloud defaults)
 /// - **production** → live Attendiphi (`SUPABASE_URL` / production defaults)
-///
-/// Release staging builds must use [main_staging.dart] via
-/// `scripts/build_web_staging.sh` so they never pick production defaults.
 ///
 /// Do not put service-role keys here.
 class SupabaseAppConfig {

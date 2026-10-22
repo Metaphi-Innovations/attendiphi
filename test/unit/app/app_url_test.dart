@@ -1,8 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qr_checkin/app/config/environment.dart';
 import 'package:qr_checkin/app/router/app_url.dart';
 import 'package:qr_checkin/app/router/route_names.dart';
+import 'package:qr_checkin/core/config/supabase_app_config.dart';
 
 void main() {
+  tearDown(() {
+    SupabaseAppConfig.bindEnvironment(Environment.production);
+  });
+
   test('password reset action handler uses branded production origin', () {
     expect(
       AppUrl.passwordResetActionHandler,
@@ -39,16 +45,32 @@ void main() {
     expect(landing.contains('/__/auth/action'), isFalse);
   });
 
-  test('checkInPublic always uses production origin', () {
+  test('checkInPublic uses production origin in production environment', () {
+    SupabaseAppConfig.bindEnvironment(Environment.production);
     final url = AppUrl.checkInPublic(
       path: RouteNames.locationPermission,
       queryParameters: {'date': '2026-09-03', 'locationId': 'location_x'},
     );
-    expect(url.startsWith('https://attendiphi.metaphi.in'), isTrue);
+    expect(url.startsWith(AppUrl.productionOrigin), isTrue);
     expect(url.contains('#'), isFalse);
     expect(url, contains('/checkin-permission?'));
     expect(url, contains('date=2026-09-03'));
     expect(url, contains('locationId=location_x'));
+  });
+
+  test('checkInPublic uses staging origin in staging environment', () {
+    SupabaseAppConfig.bindEnvironment(Environment.staging);
+    final url = AppUrl.checkInPublic(
+      path: '/checkin/v1.testtoken',
+    );
+    expect(url, 'https://attendiphi.staging.metaphi.in/checkin/v1.testtoken');
+    expect(AppUrl.checkInOrigin, AppUrl.stagingOrigin);
+  });
+
+  test('staging host is allowed for portal / check-in origin selection', () {
+    expect(AppUrl.isAllowedHost('attendiphi.staging.metaphi.in'), isTrue);
+    expect(AppUrl.isAllowedHost('attendiphi_staging.metaphi.in'), isTrue);
+    expect(AppUrl.stagingOrigin, 'https://attendiphi.staging.metaphi.in');
   });
 
   test('builds public URLs without a hash fragment', () {

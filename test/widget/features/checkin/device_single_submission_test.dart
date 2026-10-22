@@ -44,6 +44,7 @@ void main() {
       publicMembersStreamProvider.overrideWith(
         (ref) => Stream<List<Employee>>.value(employees),
       ),
+      publicMembersOnceProvider.overrideWith((ref) async => employees),
       employeeByIdProvider.overrideWith((ref, id) async {
         for (final employee in employees) {
           if (employee.id == id) return employee;

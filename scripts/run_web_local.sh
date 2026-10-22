@@ -29,6 +29,11 @@ SESSION_SECRET="${CHECKIN_SESSION_TOKEN_SECRET:-local-dev-secret-16}"
 
 DEVICE="${1:-chrome}"
 
+if [[ ! -f lib/main_dev.dart ]]; then
+  echo "error: lib/main_dev.dart missing." >&2
+  exit 1
+fi
+
 echo "Local web → $LOCAL_URL (target: lib/main_dev.dart, device: $DEVICE)"
 echo "Ensure Docker Supabase is up: supabase start && supabase status"
 

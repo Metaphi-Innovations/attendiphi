@@ -66,7 +66,7 @@ void main() {
         expect(result.isMatch, isFalse);
         expect(
           result.errorMessage,
-          contains('No enrolled member face profiles found'),
+          contains('No enrolled face biometrics found'),
         );
       },
     );

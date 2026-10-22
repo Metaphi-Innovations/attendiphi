@@ -85,7 +85,8 @@ class SupabaseAdminDeviceService implements AdminDeviceRegistrar {
     _primed = false;
     _knownCheckInIds.clear();
     unawaited(_pollOnce());
-    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    // Keep alerts light — Daily Attendance already uses Realtime + reconcile.
+    _pollTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       unawaited(_pollOnce());
     });
   }

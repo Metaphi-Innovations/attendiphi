@@ -106,12 +106,15 @@ class CheckInFormNotifier extends Notifier<CheckInFormState> {
     state = state.copyWith(isSubmitting: true, clearError: true);
 
     final deviceService = ref.read(deviceCheckInServiceProvider);
-    final restrictionsEnabled = ref.read(restrictionsEnabledProvider);
+    final dateRestrictionEnabled = ref.read(dateRestrictionEnabledProvider);
+    final locationRestrictionEnabled =
+        ref.read(locationRestrictionEnabledProvider);
+    final deviceRestrictionEnabled =
+        ref.read(deviceRestrictionEnabledProvider);
 
     try {
-      // Never block submit because this browser/tablet already checked someone
-      // else in. Shared venue devices are expected; uniqueness is per phone /
-      // member on the server (DuplicateCheckInException from SubmitCheckIn).
+      // Device lock is enforced only when deviceRestrictionEnabled is ON.
+      // When OFF, shared venue tablets can check in multiple members.
 
       final deviceId = await deviceService.getOrCreateDeviceId();
       final submitUseCase = ref.read(submitCheckInUseCaseProvider);
@@ -134,7 +137,9 @@ class CheckInFormNotifier extends Notifier<CheckInFormState> {
             sessionToken: sessionToken,
             deviceId: deviceId,
             recognizedMemberId: state.recognizedMemberId,
-            restrictionsEnabled: restrictionsEnabled,
+            dateRestrictionEnabled: dateRestrictionEnabled,
+            locationRestrictionEnabled: locationRestrictionEnabled,
+            deviceRestrictionEnabled: deviceRestrictionEnabled,
           ).timeout(
             const Duration(seconds: 12),
             onTimeout: () {

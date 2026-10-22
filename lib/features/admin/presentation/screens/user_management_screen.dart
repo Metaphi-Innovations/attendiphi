@@ -45,6 +45,14 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
   MemberSortOption _sortOption = MemberSortOption.mostVisitors;
   MemberStatusFilter _statusFilter = MemberStatusFilter.all;
 
+  /// Force roster streams to refresh immediately after mutations (don't wait
+  /// for Realtime / reconcile poll).
+  void _invalidateMemberStreams() {
+    ref.invalidate(employeesStreamProvider);
+    ref.invalidate(publicMembersStreamProvider);
+    ref.invalidate(faceVerificationCandidatesProvider);
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -125,6 +133,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
 
   String _formatDate(DateTime? dt) {
     if (dt == null) return '—';
+    final local = dt.toLocal();
     final months = [
       'Jan',
       'Feb',
@@ -139,17 +148,20 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
       'Nov',
       'Dec',
     ];
-    final day = dt.day.toString().padLeft(2, '0');
-    final month = months[dt.month - 1];
-    final year = dt.year;
+    final day = local.day.toString().padLeft(2, '0');
+    final month = months[local.month - 1];
+    final year = local.year;
     return '$day $month $year';
   }
 
   String _formatTime(DateTime? dt) {
     if (dt == null) return '';
-    final hour = dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour);
-    final minute = dt.minute.toString().padLeft(2, '0');
-    final period = dt.hour >= 12 ? 'PM' : 'AM';
+    final local = dt.toLocal();
+    final hour = local.hour == 0
+        ? 12
+        : (local.hour > 12 ? local.hour - 12 : local.hour);
+    final minute = local.minute.toString().padLeft(2, '0');
+    final period = local.hour >= 12 ? 'PM' : 'AM';
     return '$hour:$minute $period';
   }
 
@@ -1049,6 +1061,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                                         .modelVersion
                                                   : null,
                                             );
+                                            _invalidateMemberStreams();
                                             if (ctx.mounted) {
                                               Navigator.pop(ctx);
                                             }
@@ -1093,6 +1106,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                                         .modelVersion
                                                   : null,
                                             );
+                                            _invalidateMemberStreams();
                                             if (ctx.mounted) {
                                               Navigator.pop(ctx);
                                             }
@@ -2527,6 +2541,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
       await ref
           .read(employeeRepositoryProvider)
           .toggleEmployeeStatus(member.id, newStatus);
+      _invalidateMemberStreams();
       if (mounted) {
         ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(

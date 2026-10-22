@@ -14,15 +14,16 @@ import '../../../../app/theme/app_radius.dart';
 import '../../../../core/responsive/responsive_breakpoints.dart';
 import '../../../../core/utils/file_download_helper.dart';
 import '../../../../core/widgets/app_card.dart';
+import '../../../app_config/presentation/providers/check_in_restrictions_provider.dart';
 import '../../../location/domain/entities/location_config.dart';
 import '../../domain/check_in_session_token.dart';
 
-/// Screen displaying Thursday-specific check-in QR standees from September 2026 to September 2027.
+/// Screen displaying check-in QR standees from September 2026 to September 2027.
 ///
 /// Features:
 /// - Filtered strictly by 1 month at a time (September 2026 – September 2027).
-/// - Displays all Thursdays for the selected month.
-/// - Generates a distinct, unique QR payload for every Thursday.
+/// - Date restriction ON: Thursdays only. OFF: every day of the month.
+/// - Generates a distinct, unique QR payload for each session date.
 /// - Full interactive Standee preview with "View QR" and "Download QR" options.
 /// - Bulk "Download All This Month" capability.
 class VenueQrDisplayScreen extends ConsumerStatefulWidget {
@@ -101,17 +102,24 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
     return false;
   }
 
-  /// Extracts all Thursdays (weekday == 4) for a given month.
-  List<DateTime> _getThursdaysForMonth(DateTime month) {
-    final thursdays = <DateTime>[];
+  /// Session dates for [month].
+  ///
+  /// Date restriction ON → Thursdays only. OFF → every calendar day.
+  List<DateTime> _getThursdaysForMonth(
+    DateTime month, {
+    bool? dateRestricted,
+  }) {
+    final bool restrictDates =
+        dateRestricted ?? ref.read(dateRestrictionEnabledProvider);
+    final dates = <DateTime>[];
     final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
     for (int day = 1; day <= daysInMonth; day++) {
       final date = DateTime(month.year, month.month, day);
-      if (date.weekday == DateTime.thursday) {
-        thursdays.add(date);
+      if (!restrictDates || date.weekday == DateTime.thursday) {
+        dates.add(date);
       }
     }
-    return thursdays;
+    return dates;
   }
 
   /// Builds the unique QR check-in payload for a given Thursday.
@@ -992,6 +1000,7 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final isCompact = context.isCompactMobile;
+    final dateRestricted = ref.watch(dateRestrictionEnabledProvider);
 
     final hPadding = context.responsiveValue<double>(
       compactMobile: 12.0,
@@ -1000,7 +1009,23 @@ class _VenueQrDisplayScreenState extends ConsumerState<VenueQrDisplayScreen> {
       desktop: 32.0,
     );
 
-    final thursdays = _getThursdaysForMonth(_selectedMonth);
+    final thursdays = _getThursdaysForMonth(
+      _selectedMonth,
+      dateRestricted: dateRestricted,
+    );
+    // Keep selection valid when switching Thursday-only ↔ everyday.
+    if (thursdays.isNotEmpty &&
+        !thursdays.any(
+          (d) =>
+              d.year == _selectedThursday.year &&
+              d.month == _selectedThursday.month &&
+              d.day == _selectedThursday.day,
+        )) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() => _selectedThursday = thursdays.first);
+      });
+    }
     final monthFormat = DateFormat('MMMM yyyy');
     final currentIndex = _availableMonths.indexWhere(
       (m) => m.year == _selectedMonth.year && m.month == _selectedMonth.month,

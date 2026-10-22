@@ -1,11 +1,11 @@
-import 'dart:typed_data';
-
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../app/config/supabase_bootstrap.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/logger/app_logger.dart';
+import '../../../../core/supabase/realtime_list_patch.dart';
+import '../../../../core/supabase/realtime_snapshot_equals.dart';
 import '../../../../core/supabase/supabase_realtime_or_poll_stream.dart';
 import '../../../../core/utils/image_utils.dart';
 import '../../../../core/utils/validators.dart';
@@ -52,10 +52,6 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
     String? claimMemberId,
     String? sessionToken,
   }) async {
-    // claimDeviceId intentionally unused — shared venue devices must not
-    // block other members. Uniqueness is phone + member via server RPC.
-    final _ = claimDeviceId;
-
     try {
       final date = SessionLockIds.sessionDateYmd(
         sessionDateStr: sessionDateYmd,
@@ -63,14 +59,6 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
       );
 
       final photo = submission.photoBase64;
-      if (photo != null &&
-          photo.length > AppConstants.maxCheckInPhotoBase64Chars) {
-        throw const CheckInSubmissionFailedException(
-          userMessage: 'Photo is too large. Please retake a clearer selfie.',
-          technicalMessage: 'photoBase64 exceeds maxCheckInPhotoBase64Chars',
-        );
-      }
-
       var photoPath = submission.photoPath?.trim();
       if ((photoPath == null || photoPath.isEmpty) &&
           photo != null &&
@@ -82,11 +70,17 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
         );
       }
 
+      // When device restriction is ON, SubmitCheckIn passes claimDeviceId.
+      // Ensure it lands on the row so the RPC can claim device_session_locks.
+      final effectiveDeviceId =
+          (claimDeviceId ?? submission.deviceId)?.trim() ?? '';
+
       final row = SupabaseCheckInMapper.toRow(
         submission.copyWith(
           photoPath: photoPath,
           hasPhoto: photoPath != null && photoPath.isNotEmpty,
           photoBase64: '',
+          deviceId: effectiveDeviceId.isEmpty ? submission.deviceId : effectiveDeviceId,
         ),
       );
       row.remove('photo_base64');
@@ -133,6 +127,15 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
           userMessage:
               'This member has already been checked in for this session.',
           technicalMessage: 'submit_public_check_in duplicate_member',
+        );
+      }
+      if (msg.contains('duplicate_device')) {
+        throw const DuplicateCheckInException(
+          userMessage:
+              'This device has already recorded attendance for today. '
+              'Use another device, or ask an admin to turn off '
+              '"One device = one check-in".',
+          technicalMessage: 'submit_public_check_in duplicate_device',
         );
       }
       if (msg.contains('thursday_only')) {
@@ -199,6 +202,21 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
       final row = SupabaseCheckInMapper.toRow(submission);
       await _client.from('check_ins').upsert(row);
 
+      // Keep QR typeahead projection in sync (admin upsert bypasses the RPC).
+      final memberId = submission.memberId?.trim() ?? '';
+      if (memberId.isNotEmpty &&
+          (submission.type.isMember ||
+              submission.type.isSubstitute ||
+              submission.type.isAbsent)) {
+        final date = SessionLockIds.sessionDateYmd(
+          fallbackTimestamp: submission.timestamp,
+        );
+        await _mergeSessionAttendanceMember(
+          sessionDateYmd: date,
+          memberId: memberId,
+        );
+      }
+
       AppLogger.info(
         'Check-in updated (Supabase): ${submission.id}',
         tag: 'SupabaseCheckInRemoteDataSource',
@@ -217,7 +235,33 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
   @override
   Future<void> deleteCheckIn(String checkInId) async {
     try {
-      await _client.from('check_ins').delete().eq('id', checkInId);
+      final id = checkInId.trim();
+      if (id.isEmpty) return;
+
+      // Capture session date before delete so QR projection can be rebuilt.
+      final existing = await _client
+          .from('check_ins')
+          .select('session_date,timestamp')
+          .eq('id', id)
+          .maybeSingle();
+
+      await _client.from('check_ins').delete().eq('id', id);
+
+      final sessionDate = existing?['session_date']?.toString().trim() ?? '';
+      String? date;
+      if (sessionDate.length >= 10) {
+        date = sessionDate.substring(0, 10);
+      } else {
+        final parsed = existing?['timestamp'] != null
+            ? DateTime.tryParse(existing!['timestamp'].toString())
+            : null;
+        if (parsed != null) {
+          date = SessionLockIds.sessionDateYmd(fallbackTimestamp: parsed);
+        }
+      }
+      if (date != null && date.length == 10) {
+        await _rebuildSessionAttendanceForDate(date);
+      }
     } on PostgrestException catch (e, st) {
       throw ServerException(
         technicalMessage: 'Supabase delete error: ${e.code} - ${e.message}',
@@ -251,11 +295,20 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
     required String sessionDateYmd,
     required String photoBase64,
   }) async {
-    final bytes = ImageUtils.base64ToBytes(photoBase64);
-    if (bytes == null || bytes.isEmpty) {
+    final decoded = ImageUtils.base64ToBytes(photoBase64);
+    if (decoded == null || decoded.isEmpty) {
       throw const CheckInSubmissionFailedException(
         userMessage: 'Photo could not be processed. Please retake your selfie.',
         technicalMessage: 'check-in photo base64 decode failed',
+      );
+    }
+    // Always store JPEG so bucket MIME allow-list never rejects gallery PNGs /
+    // webp / octet-stream multipart fallbacks (those return HTTP 400).
+    final bytes = ImageUtils.toJpegBytes(decoded);
+    if (bytes.isEmpty) {
+      throw const CheckInSubmissionFailedException(
+        userMessage: 'Photo could not be processed. Please retake your selfie.',
+        technicalMessage: 'check-in photo jpeg encode produced empty bytes',
       );
     }
     final path = '$sessionDateYmd/${checkInId.trim()}.jpg';
@@ -264,7 +317,7 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
           .from(photoBucket)
           .uploadBinary(
             path,
-            Uint8List.fromList(bytes),
+            bytes,
             fileOptions: const FileOptions(
               contentType: 'image/jpeg',
               upsert: true,
@@ -273,14 +326,16 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
       return path;
     } on StorageException catch (e, st) {
       AppLogger.error(
-        'Storage upload failed for check-in photo',
+        'Storage upload failed for check-in photo'
+        ' (${e.statusCode}: ${e.message})',
         error: e,
         stackTrace: st,
         tag: 'SupabaseCheckInRemoteDataSource',
       );
       throw CheckInSubmissionFailedException(
         userMessage: 'Photo upload failed. Please try again.',
-        technicalMessage: 'storage upload: ${e.message}',
+        technicalMessage:
+            'storage upload: ${e.statusCode} ${e.message}',
       );
     }
   }
@@ -379,6 +434,60 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
     };
   }
 
+  /// Adds [memberId] to the public session attendance projection (idempotent).
+  Future<void> _mergeSessionAttendanceMember({
+    required String sessionDateYmd,
+    required String memberId,
+  }) async {
+    final date = sessionDateYmd.trim();
+    final mid = memberId.trim();
+    if (date.length != 10 || mid.isEmpty) return;
+    try {
+      final existing = await _fetchSessionMemberIds(date);
+      if (existing.contains(mid)) return;
+      final next = [...existing, mid];
+      await _client.from('session_attendance').upsert({
+        'id': date,
+        'session_date': date,
+        'checked_in_member_ids': next,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }, onConflict: 'session_date');
+    } catch (e, st) {
+      AppLogger.warning(
+        'session_attendance merge failed for $date/$mid: $e\n$st',
+        tag: 'SupabaseCheckInRemoteDataSource',
+      );
+    }
+  }
+
+  /// Rebuilds QR projection for one day from remaining `check_ins` rows.
+  Future<void> _rebuildSessionAttendanceForDate(String sessionDateYmd) async {
+    final date = sessionDateYmd.trim();
+    if (date.length != 10) return;
+    try {
+      final rows = await _client
+          .from('check_ins')
+          .select('member_id')
+          .eq('session_date', date);
+      final ids = <String>{
+        for (final row in rows)
+          if ((row['member_id']?.toString().trim() ?? '').isNotEmpty)
+            row['member_id'].toString().trim(),
+      };
+      await _client.from('session_attendance').upsert({
+        'id': date,
+        'session_date': date,
+        'checked_in_member_ids': ids.toList(),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }, onConflict: 'session_date');
+    } catch (e, st) {
+      AppLogger.warning(
+        'session_attendance rebuild failed for $date: $e\n$st',
+        tag: 'SupabaseCheckInRemoteDataSource',
+      );
+    }
+  }
+
   @override
   Stream<List<CheckInSubmission>> streamCheckIns({
     String? locationId,
@@ -410,6 +519,27 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
               value: day,
             )
           : null,
+      // Patch local list from WS payload — no REST on each new check-in.
+      applyRealtimeEvent: (current, payload) {
+        return patchRealtimeListById<CheckInSubmission>(
+          current: current,
+          payload: payload,
+          idOf: (c) => c.id,
+          fromRow: (row) {
+            try {
+              return SupabaseCheckInMapper.fromRow(row);
+            } catch (_) {
+              return null;
+            }
+          },
+          include: (loc != null && loc.isNotEmpty)
+              ? (c) => c.locationId.trim() == loc
+              : null,
+        );
+      },
+      // Slow backup only; Realtime + resubscribe/tab-visible are primary.
+      reconcileInterval: const Duration(minutes: 5),
+      isUnchanged: checkInsSnapshotUnchanged,
       tag: 'SupabaseCheckInRemoteDataSource',
     );
   }
@@ -429,6 +559,8 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
         column: 'session_date',
         value: date,
       ),
+      reconcileInterval: const Duration(minutes: 5),
+      isUnchanged: stringSetSnapshotUnchanged,
       tag: 'SupabaseSessionAttendanceStream',
     );
   }

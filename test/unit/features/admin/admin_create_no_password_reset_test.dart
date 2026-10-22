@@ -56,6 +56,30 @@ class _FakeRemoteDataSource implements AdminRemoteDataSource {
       const Stream.empty();
 }
 
+class _FakeEmailForCreate extends EmailCredentialsService {
+  _FakeEmailForCreate()
+      : super(
+          sendFn:
+              ({required admin, required password, required portalUrl}) async {
+                fail('createAdmin must not send credentials mail');
+              },
+        );
+
+  @override
+  Future<({bool success, String userMessage, String authUserId})>
+  provisionAuthAdmin({
+    required String email,
+    required String password,
+    String? adminId,
+  }) async {
+    return (
+      success: true,
+      userMessage: '',
+      authUserId: '22222222-2222-4222-8222-222222222222',
+    );
+  }
+}
+
 void main() {
   test(
     'createAdmin persists Postgres row and never sends password-reset email',
@@ -63,12 +87,7 @@ void main() {
       final remote = _FakeRemoteDataSource();
       final repo = AdminRepositoryImpl(
         remoteDataSource: remote,
-        emailService: EmailCredentialsService(
-          sendFn:
-              ({required admin, required password, required portalUrl}) async {
-                fail('createAdmin must not send credentials mail');
-              },
-        ),
+        emailService: _FakeEmailForCreate(),
       );
 
       final admin = await repo.createAdmin(

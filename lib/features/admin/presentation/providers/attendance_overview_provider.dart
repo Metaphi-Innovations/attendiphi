@@ -1,12 +1,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/supabase/resilient_poll_stream.dart';
+import '../../../app_config/presentation/providers/check_in_restrictions_provider.dart';
 import '../../../checkin/domain/entities/check_in_submission.dart';
 import '../../../checkin/domain/entities/check_in_type.dart';
 import '../../../checkin/presentation/providers/checkin_providers.dart';
 import '../../../employee/domain/employee_lookup.dart';
 import '../../../employee/domain/entities/employee.dart';
 import '../../../employee/presentation/providers/employee_providers.dart';
+import '../../domain/substitute_check_in_mapping.dart';
 import 'admin_auth_provider.dart';
 
 /// Represents the attendance status of a member on a specific Thursday meeting.
@@ -125,11 +127,26 @@ final attendanceOverviewFilterProvider =
       AttendanceOverviewFilterState
     >(AttendanceOverviewFilterNotifier.new);
 
-/// Generates all Thursday dates from September 2026 to September 2027 inclusive.
+/// Session dates for admin pickers / overview matrix.
+///
+/// Date restriction ON → Thursdays only (Sep 2026 – Sep 2027).
+/// Date restriction OFF → every calendar day in that range.
 final allThursdayDatesProvider = Provider<List<DateTime>>((ref) {
+  final dateRestrictionEnabled = ref.watch(dateRestrictionEnabledProvider);
+  final end = DateTime(2027, 9, 30);
+
+  if (!dateRestrictionEnabled) {
+    final days = <DateTime>[];
+    var current = DateTime(2026, 9, 1);
+    while (!current.isAfter(end)) {
+      days.add(DateTime(current.year, current.month, current.day));
+      current = current.add(const Duration(days: 1));
+    }
+    return days;
+  }
+
   final thursdays = <DateTime>[];
   DateTime current = DateTime(2026, 9, 1);
-  final end = DateTime(2027, 9, 30);
 
   // Advance to first Thursday
   while (current.weekday != DateTime.thursday) {
@@ -263,10 +280,7 @@ final attendanceMatrixProvider = Provider<AsyncValue<List<MemberAttendanceRow>>>
       final daySubs = byDate[key] ?? const <CheckInSubmission>[];
       final matchingSubmissions = daySubs.where((sub) {
         if (sub.type.isSubstitute) {
-          return EmployeeLookup.forNamedMember([
-                member,
-              ], sub.substituteForMember) !=
-              null;
+          return substituteCheckInCoversMember(raw: sub, member: member);
         }
         return EmployeeLookup.forCheckIn([member], sub) != null;
       }).toList();

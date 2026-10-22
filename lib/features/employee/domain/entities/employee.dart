@@ -179,10 +179,10 @@ class Employee {
       faceModel: map['faceModel']?.toString(),
       faceModelVersion: map['faceModelVersion']?.toString(),
       createdAt: map['createdAt'] != null
-          ? DateTime.tryParse(map['createdAt'].toString())
+          ? DateTime.tryParse(map['createdAt'].toString())?.toLocal()
           : null,
       updatedAt: map['updatedAt'] != null
-          ? DateTime.tryParse(map['updatedAt'].toString())
+          ? DateTime.tryParse(map['updatedAt'].toString())?.toLocal()
           : null,
     );
   }

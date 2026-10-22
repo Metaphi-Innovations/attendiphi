@@ -426,8 +426,6 @@ class FaceMatchingService {
         .toList();
 
     if (matchFrames.length < minValidFrames) {
-      final retry =
-          ambiguousFrames.isNotEmpty || frameMatches.length < minValidFrames;
       return MultiFrameMatchDecision(
         verified: false,
         averageScore: 0.0,
@@ -438,7 +436,8 @@ class FaceMatchingService {
         statusMessage: ambiguousFrames.length > matchFrames.length
             ? 'Face match ambiguous. Please look directly at the camera and try again.'
             : 'Face not recognized. Please try again.',
-        shouldRetry: retry && ambiguousFrames.isNotEmpty,
+        // Allow in-camera retries for lighting / angle / unknown misses.
+        shouldRetry: true,
       );
     }
 

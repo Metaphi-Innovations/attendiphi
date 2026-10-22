@@ -54,6 +54,30 @@ class _FakeRemote implements AdminRemoteDataSource {
       const Stream.empty();
 }
 
+class _FakeEmailService extends EmailCredentialsService {
+  _FakeEmailService()
+      : super(
+          sendFn:
+              ({required admin, required password, required portalUrl}) async {
+                fail('create must not email');
+              },
+        );
+
+  @override
+  Future<({bool success, String userMessage, String authUserId})>
+  provisionAuthAdmin({
+    required String email,
+    required String password,
+    String? adminId,
+  }) async {
+    return (
+      success: true,
+      userMessage: '',
+      authUserId: '11111111-1111-4111-8111-111111111111',
+    );
+  }
+}
+
 void main() {
   test(
     'createAdmin cannot persist a Super Admin role from the client',
@@ -61,12 +85,7 @@ void main() {
       final remote = _FakeRemote();
       final repo = AdminRepositoryImpl(
         remoteDataSource: remote,
-        emailService: EmailCredentialsService(
-          sendFn:
-              ({required admin, required password, required portalUrl}) async {
-                fail('create must not email');
-              },
-        ),
+        emailService: _FakeEmailService(),
       );
 
       final admin = await repo.createAdmin(

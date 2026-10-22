@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Stage 2 — staging web RELEASE for devops → https://attendiphi_staging.metaphi.in
+# Stage 2 — staging web RELEASE for devops → https://attendiphi.staging.metaphi.in
 #
 # Uses lib/main_staging.dart + attendiphi-test keys (never production).
 # Output: build/web/ + build/web-staging.zip
 #
 # Do NOT use plain `flutter build web --release` for staging — that hits production.
+# See docs/ENVIRONMENTS.md / docs/STAGING.md.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -57,6 +58,19 @@ SUPABASE_URL="$SUPABASE_URL_STAGING"
 SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY_STAGING"
 export SUPABASE_URL SUPABASE_ANON_KEY
 
+# Refuse accidental production backend in a staging build.
+case "$SUPABASE_URL_STAGING" in
+  *fzghxzybyygslfjyfewu*)
+    echo "error: staging build refused production Supabase host." >&2
+    exit 1
+    ;;
+esac
+
+if [[ ! -f lib/main_staging.dart ]]; then
+  echo "error: lib/main_staging.dart missing." >&2
+  exit 1
+fi
+
 INDEX_HTML="$ROOT/web/index.html"
 if [[ -f "$INDEX_HTML" ]]; then
   python3 - <<PY
@@ -87,7 +101,7 @@ echo "Building Flutter web STAGING release…"
 echo "  entrypoint: lib/main_staging.dart"
 echo "  CHECKIN_SESSION_TOKEN_SECRET (${#CHECKIN_SESSION_TOKEN_SECRET} chars)"
 echo "  SUPABASE_URL_STAGING=$SUPABASE_URL_STAGING"
-echo "  → devops host: https://attendiphi_staging.metaphi.in"
+echo "  → devops host: https://attendiphi.staging.metaphi.in"
 
 flutter build web --release --base-href / \
   -t lib/main_staging.dart \
@@ -103,4 +117,5 @@ rm -f "$ZIP_PATH"
 )
 echo "Build complete: build/web"
 echo "Devops package: $ZIP_PATH"
+echo "→ https://attendiphi.staging.metaphi.in"
 echo "See docs/ENVIRONMENTS.md and docs/DEVOPS_WEB_DEPLOY.md"
