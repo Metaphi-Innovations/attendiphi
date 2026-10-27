@@ -18,6 +18,8 @@ jobs:
           # Syncs files from the repository workspace straight to your web folder
           # Excludes hidden git files and the github workflow directory itself
           rsync -avz --exclude='.git*' --exclude='.github' ./ /var/www/attendiphi.staging.metaphi.in/
+      - name: build flutter app
+        run: flutter build web --release
 
       - name: Reload Web Server
         run: |
