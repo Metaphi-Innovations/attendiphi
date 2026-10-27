@@ -1,0 +1,25 @@
+name: Deploy HTML to Local Linux Server
+
+on:
+  push:
+    branches:
+      - staging  # Triggers the pipeline when you push to the main branch
+
+jobs:
+  deploy:
+    runs-on: self-hosted  # Forces the job to execute on your self-hosted runner
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4  # Downloads your repository files to the runner workspace
+
+      - name: Deploy HTML files to Web Root
+        run: |
+          # Syncs files from the repository workspace straight to your web folder
+          # Excludes hidden git files and the github workflow directory itself
+          rsync -avz --exclude='.git*' --exclude='.github' ./ /var/www/attendiphi.staging.metaphi.in/
+
+      - name: Reload Web Server
+        run: |
+          # Reloads Nginx to safely serve the updated configuration/files without downtime
+          sudo systemctl reload nginx
