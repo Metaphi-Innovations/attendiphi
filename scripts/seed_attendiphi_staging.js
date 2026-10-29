@@ -187,16 +187,16 @@ async function main() {
   await upsert('members', members, 'id');
   console.log(`Upserted ${members.length} demo members`);
 
+  // Staging GPS pin (attendiphi.staging.metaphi.in) — not production Jade.
   await upsert(
     'locations',
     [
       {
         id: 'location_x',
-        name: 'Jade Luxury Banquets, Mumbai',
-        address:
-          'Jade Luxury Banquets, Nehru Centre, Dr Annie Besant Rd, Worli, Mumbai',
-        latitude: 18.9888622,
-        longitude: 72.8152475,
+        name: 'Attendiphi Staging Test Venue',
+        address: 'https://maps.app.goo.gl/oNVd6NJVhc5ZfSY99?g_st=ic',
+        latitude: 19.083304,
+        longitude: 72.913425,
         radius_meters: 500,
         is_active: true,
         updated_at: nowIso,
@@ -205,7 +205,7 @@ async function main() {
     ],
     'id',
   );
-  console.log('Upserted location_x');
+  console.log('Upserted location_x (staging test pin)');
 
   const authUserId = await createOrFindAuthUser(ADMIN_EMAIL, ADMIN_PASSWORD);
   await upsert(
@@ -232,10 +232,10 @@ async function main() {
   // Same keys on every row (PostgREST batch upsert requirement).
   const baseCheckIn = {
     location_id: 'location_x',
-    location_name: 'Jade Luxury Banquets, Mumbai',
+    location_name: 'Attendiphi Staging Test Venue',
     user_email: null,
-    user_latitude: 18.9889,
-    user_longitude: 72.8152,
+    user_latitude: 19.083304,
+    user_longitude: 72.913425,
     member_id: null,
     substitute_for_member: null,
     substitute_name: null,

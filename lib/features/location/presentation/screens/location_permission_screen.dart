@@ -944,7 +944,7 @@ class _LocationPermissionScreenState
 
     return Text(
       state is LocationValidationFetchingPosition
-          ? 'Locking GPS coordinates...'
+          ? AppStrings.locationFetchingPosition
           : 'Requesting permission to verify your physical presence...',
       style: theme.textTheme.bodyMedium?.copyWith(
         color: theme.colorScheme.onSurfaceVariant,

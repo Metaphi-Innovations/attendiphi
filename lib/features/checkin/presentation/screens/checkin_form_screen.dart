@@ -23,6 +23,7 @@ import '../../../app_config/presentation/providers/check_in_restrictions_provide
 import '../../../employee/domain/employee_lookup.dart';
 import '../../../employee/domain/entities/employee.dart';
 import '../../../employee/presentation/providers/employee_providers.dart';
+import '../../../location/domain/default_location_x.dart';
 import '../../../location/domain/entities/location_config.dart';
 import '../../../location/domain/usecases/validate_user_proximity.dart';
 import '../../../location/presentation/providers/location_providers.dart';
@@ -520,22 +521,12 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   }
 
   LocationConfig get _effectiveLocation {
-    const defaultLocation = LocationConfig(
-      id: 'location_x',
-      name: 'Jade Luxury Banquets, Mumbai',
-      latitude: 18.9888622,
-      longitude: 72.8152475,
-      radiusMeters: 500.0,
-      isActive: true,
-      address:
-          'Jade Luxury Banquets, Nehru Centre, Dr Annie Besant Rd, Worli, Mumbai, Maharashtra 400018',
-    );
     if (widget.initialLocation != null) return widget.initialLocation!;
     final loaded = ref
         .read(locationConfigFamilyProvider(widget.locationId))
         .asData
         ?.value;
-    return loaded ?? defaultLocation;
+    return loaded ?? DefaultLocationX.current();
   }
 
   ProximityResult get _effectiveProximity {
@@ -1092,19 +1083,10 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       desktop: 32.0,
     );
 
-    const defaultLocation = LocationConfig(
-      id: 'location_x',
-      name: 'Jade Luxury Banquets, Mumbai',
-      latitude: 18.9888622,
-      longitude: 72.8152475,
-      radiusMeters: 500.0,
-      isActive: true,
-      address: 'Jade Luxury Banquets, Nehru Centre, Dr Annie Besant Rd, Worli, Mumbai, Maharashtra 400018',
-    );
     final location =
         widget.initialLocation ??
         locationAsync.asData?.value ??
-        defaultLocation;
+        DefaultLocationX.current();
 
     final proximity =
         widget.proximityResult ??

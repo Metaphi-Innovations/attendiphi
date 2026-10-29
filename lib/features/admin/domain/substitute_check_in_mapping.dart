@@ -197,6 +197,19 @@ bool isAdminPlaceholderCheckIn(CheckInSubmission submission) {
       CheckInSubmission.isPlaceholderId(submission.id);
 }
 
+/// Wall-clock time to persist when an admin materializes a Not Checked In row.
+///
+/// Placeholders use session-day midnight only for list sorting / display as
+/// "—". Once Verify or Edit writes a real check-in, use [stamped] so Daily
+/// Attendance never shows 12:00 AM. Real QR rows keep [original.timestamp].
+DateTime adminPersistedTimestamp({
+  required CheckInSubmission original,
+  required DateTime stamped,
+}) {
+  if (isAdminPlaceholderCheckIn(original)) return stamped;
+  return original.timestamp;
+}
+
 /// Builds the Firestore payload when an admin edits a Daily Attendance row.
 ///
 /// Supports Member ↔ Substitute ↔ Absent and Not Checked In → any.
@@ -233,6 +246,10 @@ CheckInSubmission prepareAdminEditedCheckIn({
       ? CheckInType.member
       : selectedType;
   final keepVerified = isVerified && !isMarkedAbsent;
+  final persistedTimestamp = adminPersistedTimestamp(
+    original: original,
+    stamped: stamped,
+  );
 
   late CheckInSubmission edited;
   if (effectiveType.isSubstitute) {
@@ -269,7 +286,7 @@ CheckInSubmission prepareAdminEditedCheckIn({
       verifiedBy: keepVerified ? (original.verifiedBy ?? 'Admin') : null,
       isEdited: true,
       editedAt: stamped,
-      timestamp: original.timestamp,
+      timestamp: persistedTimestamp,
     );
   } else {
     // Absent always keeps the covered member identity (not the substitute name
@@ -296,7 +313,7 @@ CheckInSubmission prepareAdminEditedCheckIn({
       verifiedBy: keepVerified ? (original.verifiedBy ?? 'Admin') : null,
       isEdited: true,
       editedAt: stamped,
-      timestamp: original.timestamp,
+      timestamp: persistedTimestamp,
     );
   }
 

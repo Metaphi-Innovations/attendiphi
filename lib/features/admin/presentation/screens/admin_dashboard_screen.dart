@@ -210,6 +210,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   final _searchController = TextEditingController();
   final _scrollController = ScrollController();
 
+  /// In-flight Verify keys (memberId or row id) to block double-taps.
+  final Set<String> _verifyInFlight = <String>{};
+
   /// Unmapped Firestore check-in for [id], when present in the live stream.
   CheckInSubmission? _rawCheckInById(String id) {
     final all = ref.read(checkInsStreamProvider).value;
@@ -292,49 +295,52 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     final newVerified = !record.isVerified;
     final isAbsent = record.type.isAbsent;
     final isNotCheckedIn = record.type.isNotCheckedIn;
+    final lockKey = (record.memberId?.trim().isNotEmpty ?? false)
+        ? record.memberId!.trim()
+        : record.id;
+    if (_verifyInFlight.contains(lockKey)) return;
 
-    final shouldProceed = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Text(
-            newVerified
-                ? (isAbsent ? 'Verify Absence' : 'Verify Attendance')
-                : 'Unverify Record',
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          content: Text(
-            newVerified
-                ? (isAbsent
-                      ? 'Do you want to verify that ${record.userName} was Absent?'
-                      : (isNotCheckedIn
-                            ? 'Do you want to verify attendance for ${record.userName}?'
-                            : 'Do you want to verify this check-in for ${record.userName}?'))
-                : 'Do you want to unverify this record for ${record.userName}?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
+    // Confirm only for Absent (destructive / ambiguous). Member / Not Checked
+    // In / Substitute verify is one-tap so admins can mark many rows quickly.
+    if (isAbsent) {
+      final shouldProceed = await showDialog<bool>(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
             ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: newVerified
-                    ? AppColors.success
-                    : AppColors.error,
+            title: Text(
+              newVerified ? 'Verify Absence' : 'Unverify Record',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            content: Text(
+              newVerified
+                  ? 'Do you want to verify that ${record.userName} was Absent?'
+                  : 'Do you want to unverify this record for ${record.userName}?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
               ),
-              onPressed: () => Navigator.of(context).pop(true),
-              child: Text(newVerified ? 'Verify' : 'Unverify'),
-            ),
-          ],
-        );
-      },
-    );
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: newVerified
+                      ? AppColors.success
+                      : AppColors.error,
+                ),
+                onPressed: () => Navigator.of(context).pop(true),
+                child: Text(newVerified ? 'Verify' : 'Unverify'),
+              ),
+            ],
+          );
+        },
+      );
+      if (shouldProceed != true) return;
+    }
 
-    if (shouldProceed != true) return;
+    _verifyInFlight.add(lockKey);
 
     final fallback = _fallbackLocationFromDashboard();
     final stamped = DateTime.now();
@@ -350,6 +356,12 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             coveredMemberPhone: memberPhone,
           )
         : null;
+    // Not Checked In placeholders use session-day midnight only for UI.
+    // Persist the click time so Daily Attendance never shows 12:00 AM.
+    final persistedTimestamp = adminPersistedTimestamp(
+      original: record,
+      stamped: stamped,
+    );
     final updatedRecord = materializeAdminCheckInForWrite(
       record.copyWith(
         type: isNotCheckedIn ? CheckInType.member : record.type,
@@ -357,6 +369,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
         clearVerificationMeta: !newVerified,
         verifiedAt: newVerified ? stamped : null,
         verifiedBy: newVerified ? 'Admin' : null,
+        isEdited: isNotCheckedIn ? true : record.isEdited,
+        editedAt: isNotCheckedIn ? stamped : record.editedAt,
+        timestamp: persistedTimestamp,
         substituteName: (attendee?.name?.trim().isNotEmpty ?? false)
             ? attendee!.name!.trim()
             : record.substituteName,
@@ -382,44 +397,65 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       fallbackLocationName: fallback.$2,
     );
 
-    try {
-      final repository = ref.read(checkInRepositoryProvider);
-      await repository.updateCheckIn(updatedRecord);
-      ref
-          .read(paginatedCheckInsProvider.notifier)
-          .updateCheckInItem(updatedRecord, replaceId: record.id);
+    // Optimistic UI: paint green check / Member row before network returns.
+    ref
+        .read(dashboardCheckInOverridesProvider.notifier)
+        .apply(updatedRecord, replaceId: record.id);
+    ref
+        .read(paginatedCheckInsProvider.notifier)
+        .updateCheckInItem(updatedRecord, replaceId: record.id);
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                Icon(
-                  newVerified
-                      ? Icons.verified_rounded
-                      : Icons.info_outline_rounded,
-                  color: Colors.white,
-                  size: 18,
-                ),
-                const SizedBox(width: 8),
-                Text(
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(
+                newVerified
+                    ? Icons.verified_rounded
+                    : Icons.info_outline_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
                   newVerified
                       ? (isAbsent
                             ? 'Verified "${record.userName}" as Absent'
                             : 'Verified "${record.userName}" as Present')
                       : 'Unmarked verification for "${record.userName}"',
                 ),
-              ],
-            ),
-            backgroundColor: newVerified
-                ? AppColors.success
-                : const Color(0xFF475569),
-            behavior: SnackBarBehavior.floating,
-            shape: const RoundedRectangleBorder(borderRadius: AppRadius.mdAll),
+              ),
+            ],
           ),
-        );
-      }
+          backgroundColor: newVerified
+              ? AppColors.success
+              : const Color(0xFF475569),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(milliseconds: 1400),
+          shape: const RoundedRectangleBorder(borderRadius: AppRadius.mdAll),
+        ),
+      );
+    }
+
+    try {
+      final repository = ref.read(checkInRepositoryProvider);
+      await repository.updateCheckIn(updatedRecord);
     } catch (e) {
+      // Roll back optimistic patch so the row returns to pre-click state.
+      ref.read(dashboardCheckInOverridesProvider.notifier).remove(updatedRecord.id);
+      if (!isNotCheckedIn && !CheckInSubmission.isPlaceholderId(record.id)) {
+        ref.read(dashboardCheckInOverridesProvider.notifier).apply(record);
+        ref
+            .read(paginatedCheckInsProvider.notifier)
+            .updateCheckInItem(record, replaceId: updatedRecord.id);
+      } else {
+        ref
+            .read(paginatedCheckInsProvider.notifier)
+            .updateCheckInItem(record, replaceId: updatedRecord.id);
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -429,6 +465,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
           ),
         );
       }
+    } finally {
+      _verifyInFlight.remove(lockKey);
     }
   }
 

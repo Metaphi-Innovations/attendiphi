@@ -20,6 +20,7 @@ import '../../features/admin/presentation/widgets/admin_shell_layout.dart';
 import '../../features/checkin/domain/entities/check_in_submission.dart';
 import '../../features/checkin/presentation/screens/checkin_form_screen.dart';
 import '../../features/checkin/presentation/screens/checkin_result_screen.dart';
+import '../../features/location/domain/default_location_x.dart';
 import '../../features/location/domain/entities/location_config.dart';
 import '../../features/location/domain/usecases/validate_user_proximity.dart';
 import '../../features/location/presentation/screens/location_permission_screen.dart';
@@ -319,7 +320,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: RouteNames.venueQr,
                 name: 'venue_qr',
-                builder: (context, state) => const VenueQrDisplayScreen(),
+                builder: (context, state) => VenueQrDisplayScreen(),
               ),
             ],
           ),
@@ -345,16 +346,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           final queryAdminId = _extractQueryParam(state, 'adminId');
           final queryDate = _extractQueryParam(state, 'date');
           final location =
-              state.extra as LocationConfig? ??
-              const LocationConfig(
-                id: 'location_x',
-                name: 'Jade Luxury Banquets, Mumbai',
-                latitude: 18.9888622,
-                longitude: 72.8152475,
-                radiusMeters: 500.0,
-                isActive: true,
-                address: 'Jade Luxury Banquets, Nehru Centre, Dr Annie Besant Rd, Worli, Mumbai, Maharashtra 400018',
-              );
+              state.extra as LocationConfig? ?? DefaultLocationX.current();
           // Include full URI so a fresh QR open remounts and re-prompts location
           // instead of keeping a prior Deny state.
           return LocationPermissionScreen(
@@ -423,21 +415,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             }
           }
 
+          final defaultVenue = DefaultLocationX.current();
           final location =
               initialLocation ??
-              LocationConfig(
-                id: resolved.locationId,
-                name: resolved.locationId == 'location_x'
-                    ? 'Jade Luxury Banquets, Mumbai'
-                    : resolved.locationId,
-                latitude: 18.9888622,
-                longitude: 72.8152475,
-                radiusMeters: 500.0,
-                isActive: true,
-                address: resolved.locationId == 'location_x'
-                    ? 'Jade Luxury Banquets, Nehru Centre, Dr Annie Besant Rd, Worli, Mumbai, Maharashtra 400018'
-                    : '',
-              );
+              (resolved.locationId == DefaultLocationX.id
+                  ? defaultVenue
+                  : LocationConfig(
+                      id: resolved.locationId,
+                      name: resolved.locationId,
+                      latitude: defaultVenue.latitude,
+                      longitude: defaultVenue.longitude,
+                      radiusMeters: defaultVenue.radiusMeters,
+                      isActive: true,
+                      address: '',
+                    ));
 
           // Deep link / QR open: run GPS gate first, then form.
           if (proximityResult == null) {

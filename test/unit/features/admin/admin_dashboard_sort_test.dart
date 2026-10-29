@@ -82,4 +82,54 @@ void main() {
       'amit shah',
     ]);
   });
+
+  group('mergeCheckInOverrides', () {
+    test('injects optimistic verify before stream catches up', () {
+      final stamped = DateTime(2026, 10, 9, 16, 30);
+      final optimistic = _record(
+        id: 'new-uuid',
+        name: 'amit shah',
+        type: CheckInType.member,
+        timestamp: stamped,
+      ).copyWith(memberId: 'emp_amit', isVerified: true);
+
+      final merged = mergeCheckInOverrides(
+        streamRows: const [],
+        overrides: {optimistic.id: optimistic},
+      );
+
+      expect(merged, hasLength(1));
+      expect(merged.single.id, 'new-uuid');
+      expect(merged.single.isVerified, isTrue);
+      expect(merged.single.timestamp, stamped);
+    });
+
+    test('patches existing stream row isVerified without dropping others', () {
+      final existing = _record(
+        id: '1',
+        name: 'Zara Khan',
+        type: CheckInType.member,
+        timestamp: DateTime(2026, 10, 9, 10),
+      ).copyWith(memberId: 'emp_zara', isVerified: false);
+      final other = _record(
+        id: '3',
+        name: 'Meera Joshi',
+        type: CheckInType.member,
+        timestamp: DateTime(2026, 10, 9, 11),
+      ).copyWith(memberId: 'emp_meera');
+      final patched = existing.copyWith(isVerified: true);
+
+      final merged = mergeCheckInOverrides(
+        streamRows: [existing, other],
+        overrides: {patched.id: patched},
+      );
+
+      expect(merged, hasLength(2));
+      expect(
+        merged.firstWhere((r) => r.id == '1').isVerified,
+        isTrue,
+      );
+      expect(merged.any((r) => r.id == '3'), isTrue);
+    });
+  });
 }

@@ -80,10 +80,10 @@ class LocationValidationNotifier extends Notifier<LocationValidationState> {
       final permissionService = ref.read(permissionServiceProvider);
       await permissionService.requestLocationPermission();
 
-      // 2. Obtain current GPS coordinates
+      // 2. Obtain GPS — skip re-prompt; prefer last-known / short medium fix.
       state = const LocationValidationFetchingPosition();
       final getCurrentPosition = ref.read(getCurrentPositionUseCaseProvider);
-      final position = await getCurrentPosition();
+      final position = await getCurrentPosition(permissionAlreadyGranted: true);
 
       // 3. Validate proximity (Haversine). When restrictions OFF, outside radius is OK.
       final validateProximity = ref.read(validateUserProximityUseCaseProvider);

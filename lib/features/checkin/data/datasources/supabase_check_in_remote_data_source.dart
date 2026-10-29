@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../app/config/supabase_bootstrap.dart';
@@ -199,10 +201,12 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
         );
       }
 
+      // Lean row: mapper never writes photo_base64 into Postgres.
       final row = SupabaseCheckInMapper.toRow(submission);
       await _client.from('check_ins').upsert(row);
 
-      // Keep QR typeahead projection in sync (admin upsert bypasses the RPC).
+      // QR typeahead projection (session_attendance) is eventually consistent.
+      // Do not block admin Verify/Edit on the extra fetch+upsert round trip.
       final memberId = submission.memberId?.trim() ?? '';
       if (memberId.isNotEmpty &&
           (submission.type.isMember ||
@@ -211,9 +215,11 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
         final date = SessionLockIds.sessionDateYmd(
           fallbackTimestamp: submission.timestamp,
         );
-        await _mergeSessionAttendanceMember(
-          sessionDateYmd: date,
-          memberId: memberId,
+        unawaited(
+          _mergeSessionAttendanceMember(
+            sessionDateYmd: date,
+            memberId: memberId,
+          ),
         );
       }
 

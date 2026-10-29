@@ -368,6 +368,7 @@ void main() {
         timestamp: DateTime(2026, 10, 8),
         memberId: omkar.id,
       );
+      final stamped = DateTime(2026, 10, 8, 11, 42, 15);
 
       final updated = prepareAdminEditedCheckIn(
         original: placeholder,
@@ -377,6 +378,7 @@ void main() {
         venueField: '—',
         coveredMemberName: omkar.name,
         coveredMemberId: omkar.id,
+        now: stamped,
         newCheckInId: 'real-uuid-absent-1',
         fallbackLocationId: 'location_x',
         fallbackLocationName: 'Jade Luxury Banquets, Mumbai',
@@ -388,11 +390,105 @@ void main() {
       expect(updated.locationId, 'location_x');
       expect(updated.locationName, isNot('—'));
       expect(updated.memberId, 'emp_omkar');
+      expect(updated.timestamp, stamped);
+      expect(updated.isEdited, isTrue);
+      expect(updated.editedAt, stamped);
 
       final firestoreMap = updated.toFirestoreMap();
       expect(firestoreMap['id'], 'real-uuid-absent-1');
       expect(firestoreMap['locationId'], 'location_x');
       expect(firestoreMap.containsKey('substituteForMember'), isFalse);
+    });
+
+    test(
+      'Not Checked In → Member stamps click time (not placeholder midnight)',
+      () {
+        final placeholder = CheckInSubmission(
+          id: 'not_checked_in_emp_omkar_456',
+          locationId: '',
+          locationName: '—',
+          userName: omkar.name,
+          userPhone: omkar.phone,
+          type: CheckInType.notCheckedIn,
+          userLatitude: 0,
+          userLongitude: 0,
+          gpsAccuracy: 0,
+          distanceMeters: 0,
+          timestamp: DateTime(2026, 10, 8),
+          memberId: omkar.id,
+        );
+        final stamped = DateTime(2026, 10, 8, 16, 5, 30);
+
+        final updated = prepareAdminEditedCheckIn(
+          original: placeholder,
+          selectedType: CheckInType.member,
+          nameField: omkar.name,
+          phoneField: omkar.phone,
+          venueField: '—',
+          coveredMemberName: omkar.name,
+          coveredMemberId: omkar.id,
+          now: stamped,
+          isVerified: true,
+          newCheckInId: 'real-uuid-member-1',
+          fallbackLocationId: 'location_x',
+          fallbackLocationName: 'Jade Luxury Banquets, Mumbai',
+        );
+
+        expect(updated.type, CheckInType.member);
+        expect(updated.timestamp, stamped);
+        expect(updated.timestamp.hour, isNot(0));
+        expect(updated.isEdited, isTrue);
+        expect(updated.editedAt, stamped);
+        expect(updated.isVerified, isTrue);
+      },
+    );
+
+    test(
+      'adminPersistedTimestamp keeps real QR time; stamps placeholders',
+      () {
+        final qr = original;
+        final stamped = DateTime(2026, 10, 8, 14, 20);
+        expect(
+          adminPersistedTimestamp(original: qr, stamped: stamped),
+          qr.timestamp,
+        );
+
+        final placeholder = CheckInSubmission(
+          id: 'not_checked_in_emp_omkar_789',
+          locationId: '',
+          locationName: '—',
+          userName: omkar.name,
+          userPhone: omkar.phone,
+          type: CheckInType.notCheckedIn,
+          userLatitude: 0,
+          userLongitude: 0,
+          gpsAccuracy: 0,
+          distanceMeters: 0,
+          timestamp: DateTime(2026, 10, 8),
+          memberId: omkar.id,
+        );
+        expect(
+          adminPersistedTimestamp(original: placeholder, stamped: stamped),
+          stamped,
+        );
+      },
+    );
+
+    test('Member → Substitute keeps original QR timestamp', () {
+      final stamped = DateTime(2026, 10, 8, 18, 0);
+      final updated = prepareAdminEditedCheckIn(
+        original: original,
+        selectedType: CheckInType.substitute,
+        nameField: 'Ravi Kumar',
+        phoneField: '9976543215',
+        venueField: 'Venue',
+        coveredMemberName: omkar.name,
+        coveredMemberId: omkar.id,
+        now: stamped,
+      );
+
+      expect(updated.timestamp, original.timestamp);
+      expect(updated.editedAt, stamped);
     });
 
     test('Absent → Member produces member payload without null write keys', () {
