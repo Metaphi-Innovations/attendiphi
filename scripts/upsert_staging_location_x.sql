@@ -20,8 +20,8 @@ insert into public.locations (
 )
 values (
   'location_x',
-  'Attendiphi Staging Test Venue',
-  'https://maps.app.goo.gl/oNVd6NJVhc5ZfSY99?g_st=ic',
+  'Metaphi',
+  'Excel Plaza, 90 Feet Road, Behind Durga Parmeshwari Mandir, Pant Nagar, Ghatkopar East, Mumbai, Maharashtra 400075, India',
   19.083304,
   72.913425,
   500,

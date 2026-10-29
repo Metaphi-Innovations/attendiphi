@@ -29,12 +29,13 @@ class DefaultLocationX {
   /// Staging / attendiphi-test venue (attendiphi.staging.metaphi.in).
   static const staging = LocationConfig(
     id: id,
-    name: 'Attendiphi Staging Test Venue',
+    name: 'Metaphi',
     latitude: 19.083304,
     longitude: 72.913425,
     radiusMeters: AppConstants.defaultRadiusMeters,
     isActive: true,
-    address: 'https://maps.app.goo.gl/oNVd6NJVhc5ZfSY99?g_st=ic',
+    address:
+        'Excel Plaza, 90 Feet Road, Behind Durga Parmeshwari Mandir, Pant Nagar, Ghatkopar East, Mumbai, Maharashtra 400075, India',
   );
 
   /// Resolves default `location_x` for [environment].

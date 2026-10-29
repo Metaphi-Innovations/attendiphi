@@ -193,8 +193,9 @@ async function main() {
     [
       {
         id: 'location_x',
-        name: 'Attendiphi Staging Test Venue',
-        address: 'https://maps.app.goo.gl/oNVd6NJVhc5ZfSY99?g_st=ic',
+        name: 'Metaphi',
+        address:
+          'Excel Plaza, 90 Feet Road, Behind Durga Parmeshwari Mandir, Pant Nagar, Ghatkopar East, Mumbai, Maharashtra 400075, India',
         latitude: 19.083304,
         longitude: 72.913425,
         radius_meters: 500,
@@ -232,7 +233,7 @@ async function main() {
   // Same keys on every row (PostgREST batch upsert requirement).
   const baseCheckIn = {
     location_id: 'location_x',
-    location_name: 'Attendiphi Staging Test Venue',
+    location_name: 'Metaphi',
     user_email: null,
     user_latitude: 19.083304,
     user_longitude: 72.913425,

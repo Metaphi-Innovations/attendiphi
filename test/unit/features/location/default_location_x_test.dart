@@ -13,12 +13,15 @@ void main() {
       expect(loc.radiusMeters, 500);
     });
 
-    test('staging uses Metaphi test pin (not Jade)', () {
+    test('staging uses Metaphi Excel Plaza pin (not Jade)', () {
       final loc = DefaultLocationX.forEnvironment(Environment.staging);
       expect(loc.id, 'location_x');
+      expect(loc.name, 'Metaphi');
       expect(loc.latitude, 19.083304);
       expect(loc.longitude, 72.913425);
-      expect(loc.address, contains('maps.app.goo.gl/oNVd6NJVhc5ZfSY99'));
+      expect(loc.address, contains('Excel Plaza'));
+      expect(loc.address, contains('Ghatkopar East'));
+      expect(loc.address, isNot(contains('maps.app.goo.gl')));
       expect(loc.latitude, isNot(DefaultLocationX.production.latitude));
       expect(loc.longitude, isNot(DefaultLocationX.production.longitude));
     });
