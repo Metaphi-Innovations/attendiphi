@@ -125,6 +125,7 @@ class _LocationPermissionScreenState
 
   bool _locationStarted = false;
   bool _gateApplied = false;
+  bool _gateInFlight = false;
 
   /// Live Supabase venue when fetch succeeds; otherwise router / DefaultLocationX.
   LocationConfig get _displayLocation => _resolvedLocation ?? widget.location;
@@ -187,6 +188,8 @@ class _LocationPermissionScreenState
 
   void _goToCheckInForm(ProximityResult proximity) {
     if (!mounted) return;
+    // Device already checked in — never open the Member form.
+    if (_hasCheckedIn) return;
     // Widget tests may mount without GoRouter; skip navigation then.
     if (GoRouter.maybeOf(context) == null) return;
 
@@ -231,68 +234,85 @@ class _LocationPermissionScreenState
     required bool dateRestrictionEnabled,
     required bool deviceRestrictionEnabled,
   }) async {
-    // One device = one check-in: if this browser already recorded attendance
-    // for the session, skip GPS and show the recorded result.
-    if (deviceRestrictionEnabled) {
-      final existing = await ref
-          .read(deviceCheckInServiceProvider)
-          .getSubmissionForSession(
-            sessionDateStr: _effectiveSessionDateStr,
-            locationId: widget.location.id,
-          );
-      if (!mounted) return;
-      if (existing != null) {
-        setState(() {
-          _hasCheckedIn = true;
-          _existingSubmission = existing;
-          _isCheckingDevice = false;
+    // Prevent overlapping applies (date-OFF listen re-fires while awaiting).
+    if (_gateInFlight) return;
+    _gateInFlight = true;
+    try {
+      // One device = one check-in: skip GPS + form; show first success screen.
+      if (deviceRestrictionEnabled) {
+        if (_hasCheckedIn) {
           _gateApplied = true;
-        });
+          _isCheckingDevice = false;
+          return;
+        }
+        final attendance = await ref
+            .read(deviceCheckInServiceProvider)
+            .resolveSessionAttendance(
+              sessionDateStr: _effectiveSessionDateStr,
+              locationId: widget.location.id,
+            );
+        if (!mounted) return;
+        if (attendance.alreadyCheckedIn) {
+          setState(() {
+            _hasCheckedIn = true;
+            _existingSubmission = attendance.submission;
+            _isCheckingDevice = false;
+            _gateApplied = true;
+          });
+          return;
+        }
+      }
+
+      if (!dateRestrictionEnabled) {
+        // Date gates off: any QR date / any weekday. Still fetch GPS (enforce
+        // is controlled separately by locationRestrictionEnabledProvider).
+        // Never wipe a device-restriction success hit on re-entry.
+        if (!deviceRestrictionEnabled &&
+            (_hasCheckedIn || _existingSubmission != null)) {
+          setState(() {
+            _hasCheckedIn = false;
+            _existingSubmission = null;
+            _isCheckingDevice = false;
+            _gateApplied = true;
+          });
+        } else if (_isCheckingDevice || !_gateApplied) {
+          setState(() {
+            _isCheckingDevice = false;
+            _gateApplied = true;
+          });
+        } else {
+          _gateApplied = true;
+        }
+        _startLocationIfNeeded();
         return;
       }
-    }
 
-    if (!dateRestrictionEnabled) {
-      // Date gates off: any QR date / any weekday. Still fetch GPS (enforce
-      // is controlled separately by locationRestrictionEnabledProvider).
-      if (_hasCheckedIn || _existingSubmission != null) {
-        setState(() {
+      if (_gateApplied && !_isCheckingDevice) {
+        // Already applied date gates for this visit.
+        return;
+      }
+
+      // Date restriction ON: Thursday + session-day gates.
+      // When device restriction is OFF, shared venue phones may check in many
+      // members — do not redirect based on a prior device submission.
+      if (!mounted) return;
+
+      setState(() {
+        if (!deviceRestrictionEnabled) {
           _hasCheckedIn = false;
           _existingSubmission = null;
-          _isCheckingDevice = false;
-          _gateApplied = true;
-        });
-      } else if (_isCheckingDevice || !_gateApplied) {
-        setState(() {
-          _isCheckingDevice = false;
-          _gateApplied = true;
-        });
+        }
+        _isCheckingDevice = false;
+        _gateApplied = true;
+      });
+
+      final canStartLocation =
+          _isTodayThursday && !_isSessionExpired && !_isSessionFuture;
+      if (canStartLocation) {
+        _startLocationIfNeeded();
       }
-      _startLocationIfNeeded();
-      return;
-    }
-
-    if (_gateApplied && !_isCheckingDevice) {
-      // Already applied date gates for this visit.
-      return;
-    }
-
-    // Date restriction ON: Thursday + session-day gates.
-    // When device restriction is OFF, shared venue phones may check in many
-    // members — do not redirect based on a prior device submission.
-    if (!mounted) return;
-
-    setState(() {
-      _hasCheckedIn = false;
-      _existingSubmission = null;
-      _isCheckingDevice = false;
-      _gateApplied = true;
-    });
-
-    final canStartLocation =
-        _isTodayThursday && !_isSessionExpired && !_isSessionFuture;
-    if (canStartLocation) {
-      _startLocationIfNeeded();
+    } finally {
+      _gateInFlight = false;
     }
   }
 
@@ -342,6 +362,12 @@ class _LocationPermissionScreenState
         final deviceChanged =
             prev?.asData?.value.deviceRestrictionEnabled !=
             config.deviceRestrictionEnabled;
+        // Stay on Attendance Recorded once device restriction claimed a hit.
+        if (_hasCheckedIn &&
+            config.deviceRestrictionEnabled &&
+            !deviceChanged) {
+          return;
+        }
         // Re-apply when date gates OFF (any-date unlock), first load, or
         // device policy flips.
         if (!config.dateRestrictionEnabled || !_gateApplied || deviceChanged) {

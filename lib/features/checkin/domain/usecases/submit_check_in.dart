@@ -248,9 +248,7 @@ class SubmitCheckIn {
         if (existingDeviceSubmission != null) {
           throw DuplicateCheckInException(
             userMessage:
-                'This device has already recorded attendance for today. '
-                'Use another device, or ask an admin to turn off '
-                '"One device = one check-in".',
+                'Attendance for this session was already submitted on this phone.',
             existingSubmissionData: existingDeviceSubmission.toMap(),
           );
         }

@@ -179,4 +179,89 @@ void main() {
       );
     },
   );
+
+  test('session date keys normalize timestamps to yyyy-MM-dd', () {
+    service = DeviceCheckInService();
+    expect(
+      service.getSessionKey(
+        sessionDateStr: '2026-10-30T12:00:00.000',
+        locationId: 'location_x',
+      ),
+      service.getSessionKey(
+        sessionDateStr: '2026-10-30',
+        locationId: 'location_x',
+      ),
+    );
+  });
+
+  test('recordSubmission JSON is recoverable from cookie when prefs empty', () async {
+    final prefs = await SharedPreferences.getInstance();
+    service = DeviceCheckInService(prefs);
+
+    final submission = CheckInSubmission(
+      id: 'sub-cookie',
+      locationId: 'location_x',
+      locationName: 'Metaphi',
+      userName: 'Demo Member',
+      userPhone: '+919876543210',
+      type: CheckInType.member,
+      userLatitude: 19.08,
+      userLongitude: 72.91,
+      gpsAccuracy: 20,
+      distanceMeters: 10,
+      timestamp: DateTime(2026, 10, 30, 11, 0),
+      memberId: 'mem_1',
+    );
+
+    await service.recordSubmission(
+      sessionDateStr: '2026-10-30',
+      submission: submission,
+    );
+
+    // Simulate prefs miss (new SharedPreferences mock) while cookie/localStorage remains.
+    SharedPreferences.setMockInitialValues({});
+    final prefs2 = await SharedPreferences.getInstance();
+    final service2 = DeviceCheckInService(prefs2);
+
+    final loaded = await service2.getSubmissionForSession(
+      sessionDateStr: '2026-10-30',
+      locationId: 'location_x',
+      probeServer: false,
+    );
+    expect(loaded, isNotNull);
+    expect(loaded!.id, 'sub-cookie');
+    expect(loaded.userName, 'Demo Member');
+  });
+
+  test('resolveSessionAttendance found from local session', () async {
+    final prefs = await SharedPreferences.getInstance();
+    service = DeviceCheckInService(prefs);
+
+    final submission = CheckInSubmission(
+      id: 'sub-resolve',
+      locationId: 'location_x',
+      locationName: 'Metaphi',
+      userName: 'Asha',
+      userPhone: '+919876543211',
+      type: CheckInType.member,
+      userLatitude: 19.08,
+      userLongitude: 72.91,
+      gpsAccuracy: 15,
+      distanceMeters: 5,
+      timestamp: DateTime(2026, 10, 30, 9, 0),
+    );
+
+    await service.recordSubmission(
+      sessionDateStr: '2026-10-30',
+      submission: submission,
+    );
+
+    final attendance = await service.resolveSessionAttendance(
+      sessionDateStr: '2026-10-30',
+      locationId: 'location_x',
+      probeServer: false,
+    );
+    expect(attendance.alreadyCheckedIn, isTrue);
+    expect(attendance.submission?.id, 'sub-resolve');
+  });
 }

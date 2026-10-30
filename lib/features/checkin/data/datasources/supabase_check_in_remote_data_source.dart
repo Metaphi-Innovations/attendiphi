@@ -134,9 +134,7 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
       if (msg.contains('duplicate_device')) {
         throw const DuplicateCheckInException(
           userMessage:
-              'This device has already recorded attendance for today. '
-              'Use another device, or ask an admin to turn off '
-              '"One device = one check-in".',
+              'Attendance for this session was already submitted on this phone.',
           technicalMessage: 'submit_public_check_in duplicate_device',
         );
       }
@@ -735,7 +733,8 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
     } on PostgrestException catch (e, st) {
       if (_isUniqueViolation(e)) {
         throw const DuplicateCheckInException(
-          userMessage: 'This device has already recorded attendance for today.',
+          userMessage:
+              'Attendance for this session was already submitted on this phone.',
           technicalMessage: 'device_session_locks already-exists',
         );
       }

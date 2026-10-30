@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
@@ -6,7 +8,9 @@ import 'package:qr_checkin/core/l10n/app_strings.dart';
 import 'package:qr_checkin/core/widgets/app_button.dart';
 import 'package:qr_checkin/features/app_config/domain/entities/check_in_restrictions_config.dart';
 import 'package:qr_checkin/features/app_config/presentation/providers/check_in_restrictions_provider.dart';
+import 'package:qr_checkin/features/checkin/data/datasources/device_checkin_service.dart';
 import 'package:qr_checkin/features/checkin/domain/entities/check_in_submission.dart';
+import 'package:qr_checkin/features/checkin/domain/entities/check_in_type.dart';
 import 'package:qr_checkin/features/checkin/presentation/providers/checkin_providers.dart';
 import 'package:qr_checkin/features/checkin/presentation/screens/checkin_form_screen.dart';
 import 'package:qr_checkin/features/employee/domain/entities/employee.dart';
@@ -120,6 +124,81 @@ void main() {
 
       expect(find.text('Check-In Available on Thursday Only'), findsOneWidget);
     });
+
+    testWidgets(
+      'device restriction ON skips form when prior session submission exists',
+      (tester) async {
+        final submission = CheckInSubmission(
+          id: 'sub-prior',
+          locationId: 'test_venue',
+          locationName: 'Jade Luxury Banquets, Mumbai',
+          userName: 'Rohan Mehta',
+          userPhone: '+919876543210',
+          type: CheckInType.member,
+          userLatitude: 18.9888622,
+          userLongitude: 72.8152475,
+          gpsAccuracy: 5,
+          distanceMeters: 10,
+          timestamp: DateTime(2026, 10, 30, 10, 0),
+          memberId: 'emp_1',
+        );
+        final key = DeviceCheckInService().getSessionKey(
+          sessionDateStr: '2026-10-30',
+          locationId: 'test_venue',
+        );
+        final json = jsonEncode(submission.toMap());
+        SharedPreferences.setMockInitialValues({
+          key: json,
+          'app_last_submission': json,
+        });
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              checkInRestrictionsConfigProvider.overrideWith(
+                (ref) => Stream.value(
+                  const CheckInRestrictionsConfig(
+                    locationRestrictionEnabled: true,
+                    dateRestrictionEnabled: false,
+                    deviceRestrictionEnabled: true,
+                  ),
+                ),
+              ),
+              locationConfigFamilyProvider('test_venue').overrideWith(
+                (ref) => Future.value(testLocation),
+              ),
+              publicMembersStreamProvider.overrideWith(
+                (ref) => Stream.value(testEmployees),
+              ),
+              publicMembersOnceProvider.overrideWith(
+                (ref) async => testEmployees,
+              ),
+              liveCheckInsStreamProvider.overrideWith(
+                (ref) => Stream.value(const <CheckInSubmission>[]),
+              ),
+              sessionCheckedInMemberIdsProvider.overrideWith(
+                (ref, sessionDateYmd) => Stream.value(const <String>{}),
+              ),
+            ],
+            child: MaterialApp(
+              home: CheckInFormScreen(
+                locationId: 'test_venue',
+                proximityResult: testProximity,
+                sessionDateStr: '2026-10-30',
+                nowProvider: () => DateTime(2026, 10, 30, 11, 0),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        expect(find.text('Attendance Recorded'), findsOneWidget);
+        expect(find.text('Rohan Mehta'), findsOneWidget);
+        expect(find.text('Select Member Name *'), findsNothing);
+        expect(find.widgetWithText(AppButton, 'Check-In'), findsNothing);
+      },
+    );
 
     testWidgets(
       'renders top Check-in Type options with Member selected by default',

@@ -1,8 +1,13 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qr_checkin/features/app_config/domain/entities/check_in_restrictions_config.dart';
 import 'package:qr_checkin/features/app_config/presentation/providers/check_in_restrictions_provider.dart';
+import 'package:qr_checkin/features/checkin/data/datasources/device_checkin_service.dart';
+import 'package:qr_checkin/features/checkin/domain/entities/check_in_submission.dart';
+import 'package:qr_checkin/features/checkin/domain/entities/check_in_type.dart';
 import 'package:qr_checkin/features/location/domain/entities/location_config.dart';
 import 'package:qr_checkin/features/location/presentation/providers/location_providers.dart';
 import 'package:qr_checkin/features/location/presentation/screens/location_permission_screen.dart';
@@ -134,6 +139,70 @@ void main() {
         expect(find.text('Session Not Active Yet'), findsOneWidget);
         expect(find.text('Scan Another QR'), findsNothing);
         expect(find.text('Allowed Perimeter:'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'device ON + prior submission shows Attendance Recorded, not GPS form',
+      (tester) async {
+        final submission = CheckInSubmission(
+          id: 'sub-loc',
+          locationId: testLocation.id,
+          locationName: testLocation.name,
+          userName: 'Pooja Nair',
+          userPhone: '+919876543211',
+          type: CheckInType.member,
+          userLatitude: testLocation.latitude,
+          userLongitude: testLocation.longitude,
+          gpsAccuracy: 8,
+          distanceMeters: 4,
+          timestamp: DateTime(2026, 10, 30, 10, 0),
+          memberId: 'emp_2',
+        );
+        final key = DeviceCheckInService().getSessionKey(
+          sessionDateStr: '2026-10-30',
+          locationId: testLocation.id,
+        );
+        final json = jsonEncode(submission.toMap());
+        SharedPreferences.setMockInitialValues({
+          key: json,
+          'app_last_submission': json,
+        });
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              checkInRestrictionsConfigProvider.overrideWith(
+                (ref) => Stream.value(
+                  const CheckInRestrictionsConfig(
+                    locationRestrictionEnabled: true,
+                    dateRestrictionEnabled: false,
+                    deviceRestrictionEnabled: true,
+                  ),
+                ),
+              ),
+              locationConfigFamilyProvider(testLocation.id).overrideWith(
+                (ref) async => testLocation,
+              ),
+            ],
+            child: MaterialApp(
+              home: Scaffold(
+                body: LocationPermissionScreen(
+                  location: testLocation,
+                  sessionDateStr: '2026-10-30',
+                  nowProvider: () => DateTime(2026, 10, 30, 11, 0),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        expect(find.text('Attendance Recorded'), findsOneWidget);
+        expect(find.text('Pooja Nair'), findsOneWidget);
+        expect(find.text('Allowed Perimeter:'), findsNothing);
+        expect(find.text('Select Member Name *'), findsNothing);
       },
     );
 

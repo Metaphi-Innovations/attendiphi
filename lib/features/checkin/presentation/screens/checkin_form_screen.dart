@@ -454,20 +454,31 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       return;
     }
 
+    if (_hasCheckedIn) {
+      if (mounted) {
+        setState(() => _isCheckingDevice = false);
+      }
+      return;
+    }
+
     final deviceService = ref.read(deviceCheckInServiceProvider);
-    final existingSubmission = await deviceService.getSubmissionForSession(
+    final attendance = await deviceService.resolveSessionAttendance(
       sessionDateStr: _effectiveSessionDateStr,
       locationId: widget.locationId,
     );
 
     if (!mounted) return;
 
-    if (existingSubmission != null) {
+    if (attendance.alreadyCheckedIn) {
       setState(() {
         _hasCheckedIn = true;
-        _existingSubmission = existingSubmission;
+        _existingSubmission = attendance.submission;
         _isCheckingDevice = false;
       });
+      // Prefer the dedicated result route when we have a full payload.
+      if (attendance.submission != null) {
+        _goToCheckInResult(attendance.submission);
+      }
       return;
     }
 
@@ -628,6 +639,8 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     if (!mounted) return;
     // Never open Approved without a real submission (avoids empty Present gap).
     if (submission == null) return;
+    // Widget tests may mount without GoRouter; inline CheckInResultScreen then.
+    if (GoRouter.maybeOf(context) == null) return;
     context.go(
       RouteNames.checkinResultPath(
         checkInId: submission.id,
@@ -635,6 +648,49 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       ),
       extra: submission,
     );
+  }
+
+  /// Opens the recorded-attendance screen after a duplicate submit.
+  ///
+  /// Server `duplicate_device` often omits the prior row; fall back to this
+  /// phone's saved session / device lock so we still leave the form.
+  Future<void> _openDuplicateAttendanceResult(
+    CheckInSubmission? existing,
+  ) async {
+    var resolved = existing;
+    if (resolved == null) {
+      final attendance = await ref
+          .read(deviceCheckInServiceProvider)
+          .resolveSessionAttendance(
+            sessionDateStr: _effectiveSessionDateStr,
+            locationId: widget.locationId,
+          );
+      resolved = attendance.submission;
+      if (!mounted) return;
+      if (resolved == null && attendance.alreadyCheckedIn) {
+        setState(() {
+          _hasCheckedIn = true;
+          _existingSubmission = null;
+        });
+        return;
+      }
+    }
+    if (!mounted) return;
+
+    if (resolved != null) {
+      setState(() {
+        _hasCheckedIn = true;
+        _existingSubmission = resolved;
+      });
+      _goToCheckInResult(resolved);
+      return;
+    }
+
+    // No local payload available — still leave the form for the recorded screen.
+    setState(() {
+      _hasCheckedIn = true;
+      _existingSubmission = null;
+    });
   }
 
   Future<Employee> _authoritativeMember(Employee selected) async {
@@ -832,42 +888,8 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                   submission: existing,
                 );
           }
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (ctx) => AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              title: const Row(
-                children: [
-                  Icon(
-                    Icons.info_outline_rounded,
-                    color: AppColors.primary,
-                    size: 24,
-                  ),
-                  SizedBox(width: 10),
-                  Text(
-                    'Already Responded',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                  ),
-                ],
-              ),
-              content: Text(
-                ErrorHandler.getUserMessage(error),
-                style: const TextStyle(fontSize: 14, height: 1.4),
-              ),
-              actions: [
-                FilledButton(
-                  onPressed: () {
-                    Navigator.of(ctx).pop();
-                    _goToCheckInResult(existing);
-                  },
-                  child: const Text('View Response'),
-                ),
-              ],
-            ),
-          );
+          // Skip the dialog — open the first check-in's success screen directly.
+          await _openDuplicateAttendanceResult(existing);
           return;
         }
 
