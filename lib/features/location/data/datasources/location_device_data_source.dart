@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart'
     hide LocationServiceDisabledException;
@@ -20,8 +22,14 @@ abstract class LocationDeviceDataSource {
 }
 
 /// Whether [position] is accurate enough for check-in proximity.
-bool isGpsAccuracyAcceptable(Position position) {
-  return position.accuracy <= AppConstants.maxGpsAccuracyMeters;
+///
+/// [maxAccuracyMeters] defaults to the native [AppConstants.maxGpsAccuracyMeters]
+/// gate. Web callers pass [AppConstants.maxGpsAccuracyMetersWeb].
+bool isGpsAccuracyAcceptable(
+  Position position, {
+  double maxAccuracyMeters = AppConstants.maxGpsAccuracyMeters,
+}) {
+  return position.accuracy <= maxAccuracyMeters;
 }
 
 /// Whether [position.timestamp] is within [maxAgeSeconds] of [now].
@@ -100,6 +108,20 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
   int get _highTimeoutSeconds =>
       _isWeb ? webHighGpsTimeoutSeconds : nativeHighGpsTimeoutSeconds;
 
+  double get _maxAccuracyMeters => _isWeb
+      ? AppConstants.maxGpsAccuracyMetersWeb
+      : AppConstants.maxGpsAccuracyMeters;
+
+  bool _isAccuracyAcceptable(Position position) =>
+      isGpsAccuracyAcceptable(position, maxAccuracyMeters: _maxAccuracyMeters);
+
+  /// Prefer the lower `accuracy` value (smaller circle of uncertainty).
+  Position? _preferBetter(Position? current, Position? candidate) {
+    if (candidate == null) return current;
+    if (current == null) return candidate;
+    return candidate.accuracy < current.accuracy ? candidate : current;
+  }
+
   @override
   Future<Position> getCurrentPosition({
     bool permissionAlreadyGranted = false,
@@ -118,7 +140,7 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
     final cachedAt = _cacheTimestamp;
     if (!forceRefresh && cached != null && cachedAt != null) {
       final age = now.difference(cachedAt).inSeconds;
-      if (age < cacheDurationSeconds && isGpsAccuracyAcceptable(cached)) {
+      if (age < cacheDurationSeconds && _isAccuracyAcceptable(cached)) {
         AppLogger.info(
           'Returning cached GPS position (${age}s old): '
           'lat=${cached.latitude}, lon=${cached.longitude}',
@@ -154,7 +176,7 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
     AppLogger.info(
       'GPS acquire start (web=$_isWeb, forceRefresh=$forceRefresh, '
       'permission=$permission, medium=${_mediumTimeoutSeconds}s, '
-      'high=${_highTimeoutSeconds}s)',
+      'high=${_highTimeoutSeconds}s, maxAccuracy=${_maxAccuracyMeters}m)',
       tag: 'LocationDeviceDataSource',
     );
 
@@ -174,58 +196,60 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
     }
 
     try {
-      // 3. Fresh last-known first (skip on forceRefresh / Retry).
-      Position? lastKnown;
-      if (!forceRefresh) {
-        lastKnown = await _getLastKnownPosition();
-        if (lastKnown != null &&
-            isGpsAccuracyAcceptable(lastKnown) &&
-            isGpsPositionFresh(
-              lastKnown,
-              now: now,
-              maxAgeSeconds: lastKnownMaxAgeSeconds,
-            )) {
-          AppLogger.info(
-            'Using fresh last-known GPS '
-            '(accuracy=${lastKnown.accuracy.toStringAsFixed(0)}m): '
-            'lat=${lastKnown.latitude}, lon=${lastKnown.longitude}',
-            tag: 'LocationDeviceDataSource',
-          );
-          return _remember(lastKnown);
-        }
-      } else {
-        lastKnown = await _getLastKnownPosition();
+      // 3. Fresh last-known first (native only).
+      // geolocator_web throws UnsupportedError for getLastKnownPosition, which
+      // used to become LocationUnavailableException before any live fix.
+      final lastKnown = await _readLastKnownPosition();
+      if (!forceRefresh &&
+          lastKnown != null &&
+          _isAccuracyAcceptable(lastKnown) &&
+          isGpsPositionFresh(
+            lastKnown,
+            now: now,
+            maxAgeSeconds: lastKnownMaxAgeSeconds,
+          )) {
+        AppLogger.info(
+          'Using fresh last-known GPS '
+          '(accuracy=${lastKnown.accuracy.toStringAsFixed(0)}m): '
+          'lat=${lastKnown.latitude}, lon=${lastKnown.longitude}',
+          tag: 'LocationDeviceDataSource',
+        );
+        return _remember(lastKnown);
       }
 
-      // 4. Medium fix (longer on web).
+      // 4. Live fix. Web must use high accuracy: geolocator_web maps medium
+      // to enableHighAccuracy false.
+      final firstAccuracy = _isWeb
+          ? LocationAccuracy.high
+          : LocationAccuracy.medium;
       Position? pos = await _tryCurrentPosition(
-        accuracy: LocationAccuracy.medium,
+        accuracy: firstAccuracy,
         timeLimitSeconds: _mediumTimeoutSeconds,
       );
 
       // Web: one quick retry after a miss (common after first Allow).
-      if (_isWeb && (pos == null || !isGpsAccuracyAcceptable(pos))) {
+      if (_isWeb && (pos == null || !_isAccuracyAcceptable(pos))) {
         await Future<void>.delayed(const Duration(milliseconds: 500));
-        final retryMedium = await _tryCurrentPosition(
-          accuracy: LocationAccuracy.medium,
+        final retryHigh = await _tryCurrentPosition(
+          accuracy: LocationAccuracy.high,
           timeLimitSeconds: _mediumTimeoutSeconds,
         );
-        if (retryMedium != null) pos = retryMedium;
+        pos = _preferBetter(pos, retryHigh);
       }
 
-      // 5. High-accuracy if medium missing or too coarse.
-      if (pos == null || !isGpsAccuracyAcceptable(pos)) {
+      // 5. High-accuracy if the first fix is missing or too coarse.
+      if (pos == null || !_isAccuracyAcceptable(pos)) {
         final high = await _tryCurrentPosition(
           accuracy: LocationAccuracy.high,
           timeLimitSeconds: _highTimeoutSeconds,
         );
-        if (high != null) pos = high;
+        pos = _preferBetter(pos, high);
       }
 
       // 6. Last resort: still-usable last-known within cache TTL.
-      if ((pos == null || !isGpsAccuracyAcceptable(pos)) &&
+      if ((pos == null || !_isAccuracyAcceptable(pos)) &&
           lastKnown != null &&
-          isGpsAccuracyAcceptable(lastKnown) &&
+          _isAccuracyAcceptable(lastKnown) &&
           isGpsPositionFresh(
             lastKnown,
             now: _clock(),
@@ -256,8 +280,24 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
               'GPS position timed out after ${elapsedMs}ms (web=$_isWeb).',
         );
       }
-      if (!isGpsAccuracyAcceptable(pos)) {
-        throw LocationAccuracyTooLowException(accuracy: pos.accuracy);
+      if (!_isAccuracyAcceptable(pos)) {
+        AppLogger.warning(
+          'GPS accuracy too low: ${pos.accuracy.toStringAsFixed(0)}m '
+          '(max ${_maxAccuracyMeters.toStringAsFixed(0)}m, web=$_isWeb)',
+          tag: 'LocationDeviceDataSource',
+        );
+        throw LocationAccuracyTooLowException(
+          accuracy: pos.accuracy,
+          userMessage: _isWeb
+              ? 'Browser location accuracy is too coarse '
+                    '(±${pos.accuracy.round()}m; need ≤${_maxAccuracyMeters.round()}m). '
+                    'Try a phone on the venue Wi‑Fi/GPS, or move near a window and tap Retry.'
+              : 'Your GPS signal is too weak for accurate verification. '
+                    'Please move to an open area and try again.',
+          technicalMessage:
+              'GPS accuracy too low: ${pos.accuracy.toStringAsFixed(1)}m '
+              '(max ${_maxAccuracyMeters.toStringAsFixed(0)}m, web=$_isWeb).',
+        );
       }
 
       if (pos.isMocked) {
@@ -286,20 +326,51 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
     }
   }
 
+  /// Native last-known cache. Web skips the call: geolocator_web throws
+  /// [UnsupportedError] and has no last-known position.
+  Future<Position?> _readLastKnownPosition() async {
+    if (_isWeb) return null;
+    try {
+      return await _getLastKnownPosition();
+    } on UnsupportedError catch (e) {
+      AppLogger.info(
+        'Last-known GPS unsupported, requesting a live fix: $e',
+        tag: 'LocationDeviceDataSource',
+      );
+      return null;
+    }
+  }
+
   Future<Position?> _tryCurrentPosition({
     required LocationAccuracy accuracy,
     required int timeLimitSeconds,
   }) async {
+    final limit = Duration(seconds: timeLimitSeconds);
+    // Web live fixes always ask for high accuracy. geolocator_web turns
+    // LocationAccuracy.medium into enableHighAccuracy: false.
+    final LocationSettings settings = _isWeb
+        ? WebSettings(
+            accuracy: LocationAccuracy.high,
+            maximumAge: Duration.zero,
+            timeLimit: limit,
+          )
+        : LocationSettings(accuracy: accuracy, timeLimit: limit);
     try {
-      return await _getCurrentPositionFn(
-        LocationSettings(
-          accuracy: accuracy,
-          timeLimit: Duration(seconds: timeLimitSeconds),
+      final future = _getCurrentPositionFn(settings);
+      if (!_isWeb) return await future;
+      // geolocator_web writes timeLimit.inMicroseconds into the browser
+      // timeout, which is in milliseconds, so a 10s limit waits ~10000s.
+      // Stop waiting ourselves. Swallow a late error from the abandoned call.
+      unawaited(
+        future.then<void>(
+          (_) {},
+          onError: (Object _, StackTrace _) {},
         ),
       );
+      return await future.timeout(limit);
     } catch (e) {
       AppLogger.info(
-        'GPS $accuracy fix missed within ${timeLimitSeconds}s: $e',
+        'GPS ${settings.accuracy} fix missed within ${timeLimitSeconds}s: $e',
         tag: 'LocationDeviceDataSource',
       );
       return null;

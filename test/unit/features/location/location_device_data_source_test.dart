@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart'
     hide LocationServiceDisabledException;
+import 'package:qr_checkin/core/constants/app_constants.dart';
 import 'package:qr_checkin/core/errors/app_exception.dart';
 import 'package:qr_checkin/features/location/data/datasources/location_device_data_source.dart';
 
@@ -48,6 +51,20 @@ void main() {
       expect(isGpsAccuracyAcceptable(_pos(timestamp: now, accuracy: 50)), isTrue);
       expect(
         isGpsAccuracyAcceptable(_pos(timestamp: now, accuracy: 150)),
+        isFalse,
+      );
+      expect(
+        isGpsAccuracyAcceptable(
+          _pos(timestamp: now, accuracy: 250),
+          maxAccuracyMeters: AppConstants.maxGpsAccuracyMetersWeb,
+        ),
+        isTrue,
+      );
+      expect(
+        isGpsAccuracyAcceptable(
+          _pos(timestamp: now, accuracy: 1500),
+          maxAccuracyMeters: AppConstants.maxGpsAccuracyMetersWeb,
+        ),
         isFalse,
       );
     });
@@ -265,8 +282,9 @@ void main() {
       );
     });
 
-    test('web uses longer medium/high timeouts', () async {
+    test('web uses high accuracy and the web medium timeout', () async {
       final limits = <int>[];
+      final accuracies = <LocationAccuracy>[];
       final ds = LocationDeviceDataSourceImpl(
         clock: () => now,
         isWebOverride: true,
@@ -275,17 +293,176 @@ void main() {
         getLastKnownPosition: () async => null,
         getCurrentPositionFn: (settings) async {
           limits.add(settings.timeLimit?.inSeconds ?? -1);
+          accuracies.add(settings.accuracy);
+          expect(settings, isA<WebSettings>());
           return _pos(timestamp: now, accuracy: 25, lat: 19.4);
         },
       );
 
       await ds.getCurrentPosition(permissionAlreadyGranted: true);
-      expect(limits, isNotEmpty);
-      expect(
-        limits.first,
-        LocationDeviceDataSourceImpl.webMediumGpsTimeoutSeconds,
+      expect(limits, [LocationDeviceDataSourceImpl.webMediumGpsTimeoutSeconds]);
+      expect(accuracies, [LocationAccuracy.high]);
+    });
+
+    test(
+      'web skips throwing last-known and returns the live fix',
+      () async {
+        var lastKnownCalls = 0;
+        final ds = LocationDeviceDataSourceImpl(
+          clock: () => now,
+          isWebOverride: true,
+          isLocationServiceEnabled: () async => true,
+          checkPermission: () async => LocationPermission.whileInUse,
+          getLastKnownPosition: () async {
+            lastKnownCalls++;
+            throw UnsupportedError(
+              'getLastKnownPosition is not supported on the web platform.',
+            );
+          },
+          getCurrentPositionFn: (settings) async {
+            expect(settings.accuracy, LocationAccuracy.high);
+            return _pos(timestamp: now, accuracy: 20, lat: 19.5);
+          },
+        );
+
+        final pos = await ds.getCurrentPosition(
+          permissionAlreadyGranted: true,
+        );
+        expect(pos.latitude, 19.5);
+        expect(lastKnownCalls, 0);
+
+        final refreshed = await ds.getCurrentPosition(
+          permissionAlreadyGranted: true,
+          forceRefresh: true,
+        );
+        expect(refreshed.latitude, 19.5);
+        expect(lastKnownCalls, 0);
+      },
+    );
+
+    test('web accepts Wi‑Fi-grade accuracy within the web cap', () async {
+      final ds = LocationDeviceDataSourceImpl(
+        clock: () => now,
+        isWebOverride: true,
+        isLocationServiceEnabled: () async => true,
+        checkPermission: () async => LocationPermission.whileInUse,
+        getLastKnownPosition: () async => null,
+        getCurrentPositionFn: (_) async =>
+            _pos(timestamp: now, accuracy: 250, lat: 19.1),
+      );
+
+      final pos = await ds.getCurrentPosition(permissionAlreadyGranted: true);
+      expect(pos.accuracy, 250);
+      expect(pos.latitude, 19.1);
+    });
+
+    test('web rejects accuracy above the web cap', () async {
+      final ds = LocationDeviceDataSourceImpl(
+        clock: () => now,
+        isWebOverride: true,
+        isLocationServiceEnabled: () async => true,
+        checkPermission: () async => LocationPermission.whileInUse,
+        getLastKnownPosition: () async => null,
+        getCurrentPositionFn: (_) async =>
+            _pos(timestamp: now, accuracy: 2500, lat: 19.1),
+      );
+
+      await expectLater(
+        ds.getCurrentPosition(permissionAlreadyGranted: true),
+        throwsA(
+          isA<LocationAccuracyTooLowException>().having(
+            (e) => e.technicalMessage,
+            'technicalMessage',
+            contains('2500'),
+          ),
+        ),
       );
     });
+
+    test('web keeps the more accurate fix across retries', () async {
+      var calls = 0;
+      final ds = LocationDeviceDataSourceImpl(
+        clock: () => now,
+        isWebOverride: true,
+        isLocationServiceEnabled: () async => true,
+        checkPermission: () async => LocationPermission.whileInUse,
+        getLastKnownPosition: () async => null,
+        getCurrentPositionFn: (_) async {
+          calls++;
+          // First two readings exceed the web cap; third is usable.
+          if (calls == 1) {
+            return _pos(timestamp: now, accuracy: 1800, lat: 1);
+          }
+          if (calls == 2) {
+            return _pos(timestamp: now, accuracy: 1400, lat: 2);
+          }
+          return _pos(timestamp: now, accuracy: 220, lat: 19.2);
+        },
+      );
+
+      final pos = await ds.getCurrentPosition(permissionAlreadyGranted: true);
+      expect(calls, 3);
+      expect(pos.accuracy, 220);
+      expect(pos.latitude, 19.2);
+    });
+
+    test(
+      'web live miss after a throwing last-known is LocationTimeoutException',
+      () async {
+        var lastKnownCalls = 0;
+        var liveCalls = 0;
+        final ds = LocationDeviceDataSourceImpl(
+          clock: () => now,
+          isWebOverride: true,
+          isLocationServiceEnabled: () async => true,
+          checkPermission: () async => LocationPermission.whileInUse,
+          getLastKnownPosition: () async {
+            lastKnownCalls++;
+            throw UnsupportedError(
+              'getLastKnownPosition is not supported on the web platform.',
+            );
+          },
+          getCurrentPositionFn: (_) async {
+            liveCalls++;
+            throw TimeoutException('browser geolocation timed out');
+          },
+        );
+
+        await expectLater(
+          ds.getCurrentPosition(
+            permissionAlreadyGranted: true,
+            forceRefresh: true,
+          ),
+          throwsA(isA<LocationTimeoutException>()),
+        );
+        expect(lastKnownCalls, 0);
+        expect(liveCalls, greaterThan(0));
+      },
+    );
+
+    test(
+      'native swallows UnsupportedError from last-known and uses live fix',
+      () async {
+        final ds = LocationDeviceDataSourceImpl(
+          clock: () => now,
+          isWebOverride: false,
+          isLocationServiceEnabled: () async => true,
+          checkPermission: () async => LocationPermission.whileInUse,
+          getLastKnownPosition: () async {
+            throw UnsupportedError('last known unavailable');
+          },
+          getCurrentPositionFn: (settings) async {
+            expect(settings.accuracy, LocationAccuracy.medium);
+            return _pos(timestamp: now, accuracy: 15, lat: 19.8);
+          },
+        );
+
+        final pos = await ds.getCurrentPosition(
+          permissionAlreadyGranted: true,
+        );
+        expect(pos.latitude, 19.8);
+      },
+    );
 
     test('web timeout after failed fixes throws LocationTimeoutException', () async {
       final ds = LocationDeviceDataSourceImpl(

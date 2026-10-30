@@ -19,6 +19,7 @@ import '../../../../core/widgets/app_card.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/metaphi_loading_indicator.dart';
 import '../../../app_config/presentation/providers/check_in_restrictions_provider.dart';
+import '../../../checkin/data/datasources/device_checkin_service.dart';
 import '../../../checkin/domain/entities/check_in_submission.dart';
 import '../../../checkin/presentation/screens/checkin_result_screen.dart';
 import '../../../qr_checkin/domain/check_in_session_token.dart';
@@ -228,7 +229,29 @@ class _LocationPermissionScreenState
 
   Future<void> _applyRestrictionsGate({
     required bool dateRestrictionEnabled,
+    required bool deviceRestrictionEnabled,
   }) async {
+    // One device = one check-in: if this browser already recorded attendance
+    // for the session, skip GPS and show the recorded result.
+    if (deviceRestrictionEnabled) {
+      final existing = await ref
+          .read(deviceCheckInServiceProvider)
+          .getSubmissionForSession(
+            sessionDateStr: _effectiveSessionDateStr,
+            locationId: widget.location.id,
+          );
+      if (!mounted) return;
+      if (existing != null) {
+        setState(() {
+          _hasCheckedIn = true;
+          _existingSubmission = existing;
+          _isCheckingDevice = false;
+          _gateApplied = true;
+        });
+        return;
+      }
+    }
+
     if (!dateRestrictionEnabled) {
       // Date gates off: any QR date / any weekday. Still fetch GPS (enforce
       // is controlled separately by locationRestrictionEnabledProvider).
@@ -255,9 +278,8 @@ class _LocationPermissionScreenState
     }
 
     // Date restriction ON: Thursday + session-day gates.
-    // Venue phones/tablets are shared: never redirect to "Attendance Recorded"
-    // based on this device's previous member. Phone + member locks enforce
-    // one check-in per person on submit.
+    // When device restriction is OFF, shared venue phones may check in many
+    // members — do not redirect based on a prior device submission.
     if (!mounted) return;
 
     setState(() {
@@ -317,10 +339,15 @@ class _LocationPermissionScreenState
     // Wait for live Super Admin toggle before enforcing date/device gates.
     ref.listen(checkInRestrictionsConfigProvider, (prev, next) {
       next.whenData((config) {
-        // Always re-apply when date gates OFF so any-date unlocks.
-        if (!config.dateRestrictionEnabled || !_gateApplied) {
+        final deviceChanged =
+            prev?.asData?.value.deviceRestrictionEnabled !=
+            config.deviceRestrictionEnabled;
+        // Re-apply when date gates OFF (any-date unlock), first load, or
+        // device policy flips.
+        if (!config.dateRestrictionEnabled || !_gateApplied || deviceChanged) {
           _applyRestrictionsGate(
             dateRestrictionEnabled: config.dateRestrictionEnabled,
+            deviceRestrictionEnabled: config.deviceRestrictionEnabled,
           );
         }
       });
@@ -334,6 +361,10 @@ class _LocationPermissionScreenState
       data: (config) => config.dateRestrictionEnabled,
       orElse: () => true,
     );
+    final deviceRestrictionEnabled = configAsync.maybeWhen(
+      data: (config) => config.deviceRestrictionEnabled,
+      orElse: () => true,
+    );
 
     // First emission after build: apply gates once config is known.
     if (!_gateApplied && configAsync.hasValue) {
@@ -341,6 +372,7 @@ class _LocationPermissionScreenState
         if (!mounted || _gateApplied) return;
         _applyRestrictionsGate(
           dateRestrictionEnabled: dateRestrictionEnabled,
+          deviceRestrictionEnabled: deviceRestrictionEnabled,
         );
       });
     }
@@ -557,8 +589,16 @@ class _LocationPermissionScreenState
     final theme = Theme.of(context);
     String detail = state.runtimeType.toString();
     if (state is LocationValidationError) {
+      final ex = state.exception;
+      final original = ex.originalError;
+      final cause = original == null
+          ? ''
+          : ' · ${original.runtimeType}: $original';
+      final tech = ex.technicalMessage.trim().isEmpty
+          ? ''
+          : ' · ${ex.technicalMessage}';
       detail =
-          '${state.exception.runtimeType}: ${ErrorHandler.getUserMessage(state.exception)}';
+          '${ex.runtimeType}: ${ErrorHandler.getUserMessage(ex)}$tech$cause';
     }
     return Text(
       'staging · web · venue=${_displayLocation.name} · $detail',

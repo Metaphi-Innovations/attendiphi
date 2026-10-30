@@ -3,9 +3,14 @@ class AppConstants {
   AppConstants._();
 
   // ── GPS / Location ────────────────────────────────────────────────────
-  /// Maximum acceptable GPS accuracy in meters.
+  /// Maximum acceptable GPS accuracy in meters (native).
   /// Readings with accuracy above this threshold are rejected.
   static const double maxGpsAccuracyMeters = 100;
+
+  /// Web / desktop browsers often report Wi‑Fi or cell accuracy of several
+  /// hundred meters even when Location is allowed. Cap is looser than native
+  /// but still bounded relative to the default venue radius.
+  static const double maxGpsAccuracyMetersWeb = 1000;
 
   /// Default check-in radius in meters.
   /// Overridden per-location from the location configuration.

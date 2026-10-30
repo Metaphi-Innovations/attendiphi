@@ -439,11 +439,38 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     }
   }
 
-  Future<void> _applyDeviceGate({required bool restrictionsEnabled}) async {
-    // Venue phones/tablets are shared: do not block the form because another
-    // member already checked in on this browser. Per-member / per-phone
-    // uniqueness is enforced on submit.
+  /// When [deviceRestrictionEnabled] is ON, one browser/device may only
+  /// complete one check-in per session day. Redirect to the recorded result.
+  /// When OFF (standee / shared tablet), skip the early gate; phone + member
+  /// locks still apply on submit.
+  Future<void> _applyDeviceGate({required bool deviceRestrictionEnabled}) async {
+    if (!deviceRestrictionEnabled) {
+      if (!mounted) return;
+      setState(() {
+        _hasCheckedIn = false;
+        _existingSubmission = null;
+        _isCheckingDevice = false;
+      });
+      return;
+    }
+
+    final deviceService = ref.read(deviceCheckInServiceProvider);
+    final existingSubmission = await deviceService.getSubmissionForSession(
+      sessionDateStr: _effectiveSessionDateStr,
+      locationId: widget.locationId,
+    );
+
     if (!mounted) return;
+
+    if (existingSubmission != null) {
+      setState(() {
+        _hasCheckedIn = true;
+        _existingSubmission = existingSubmission;
+        _isCheckingDevice = false;
+      });
+      return;
+    }
+
     setState(() {
       _hasCheckedIn = false;
       _existingSubmission = null;
@@ -826,9 +853,9 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                   ),
                 ],
               ),
-              content: const Text(
-                'You have already submitted your attendance for this date.\n\nOnly one check-in is allowed per member (or phone) each Thursday.',
-                style: TextStyle(fontSize: 14, height: 1.4),
+              content: Text(
+                ErrorHandler.getUserMessage(error),
+                style: const TextStyle(fontSize: 14, height: 1.4),
               ),
               actions: [
                 FilledButton(
@@ -860,10 +887,14 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
 
     ref.listen(checkInRestrictionsConfigProvider, (prev, next) {
       next.whenData((config) {
-        if (!config.dateRestrictionEnabled) {
-          _applyDeviceGate(restrictionsEnabled: false);
-        } else if (_isCheckingDevice) {
-          _applyDeviceGate(restrictionsEnabled: true);
+        // Re-evaluate whenever device policy changes (or first config load).
+        if (_isCheckingDevice ||
+            prev == null ||
+            prev.asData?.value.deviceRestrictionEnabled !=
+                config.deviceRestrictionEnabled) {
+          _applyDeviceGate(
+            deviceRestrictionEnabled: config.deviceRestrictionEnabled,
+          );
         }
       });
     });
@@ -876,11 +907,17 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       data: (config) => config.dateRestrictionEnabled,
       orElse: () => true,
     );
+    final deviceRestrictionEnabled = configAsync.maybeWhen(
+      data: (config) => config.deviceRestrictionEnabled,
+      orElse: () => true,
+    );
 
     if (_isCheckingDevice && configAsync.hasValue) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !_isCheckingDevice) return;
-        _applyDeviceGate(restrictionsEnabled: dateRestrictionEnabled);
+        _applyDeviceGate(
+          deviceRestrictionEnabled: deviceRestrictionEnabled,
+        );
       });
     }
 
