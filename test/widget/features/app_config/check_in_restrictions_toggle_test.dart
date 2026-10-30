@@ -17,6 +17,7 @@ class _FakeAppConfigRepository implements AppConfigRepository {
 
   CheckInRestrictionsConfig _config;
   bool? lastLocationWrite;
+  bool? lastDeviceWrite;
 
   final _controller = StreamController<CheckInRestrictionsConfig>.broadcast();
 
@@ -36,6 +37,7 @@ class _FakeAppConfigRepository implements AppConfigRepository {
     String? updatedByEmail,
   }) async {
     lastLocationWrite = locationRestrictionEnabled;
+    lastDeviceWrite = deviceRestrictionEnabled;
     _config = CheckInRestrictionsConfig(
       locationRestrictionEnabled:
           locationRestrictionEnabled ?? _config.locationRestrictionEnabled,
@@ -172,6 +174,53 @@ void main() {
       expect(find.text('Turn OFF'), findsNothing);
       expect(repo.lastLocationWrite, isFalse);
       expect(find.textContaining('Updated — Location OFF'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'One device = one check-in toggle OFF writes and stays OFF',
+    (tester) async {
+      final repo = _FakeAppConfigRepository(
+        const CheckInRestrictionsConfig(
+          locationRestrictionEnabled: true,
+          dateRestrictionEnabled: true,
+          deviceRestrictionEnabled: true,
+        ),
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            isSuperAdminProvider.overrideWithValue(true),
+            currentAdminUserProvider.overrideWithValue(superAdmin),
+            adminAuthProvider.overrideWith(
+              () => MockAuthenticatedAdminAuthNotifier(superAdmin),
+            ),
+            appConfigRepositoryProvider.overrideWithValue(repo),
+            checkInRestrictionsConfigProvider.overrideWith(
+              (ref) => repo.watchCheckInRestrictions(),
+            ),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: CheckInRestrictionsToggle()),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.menu));
+      await tester.pumpAndSettle();
+
+      // Third switch: Location, Date, Device.
+      await tester.tap(find.byType(Switch).at(2));
+      await tester.pumpAndSettle();
+
+      expect(repo.lastDeviceWrite, isFalse);
+      expect(find.textContaining('Device OFF'), findsOneWidget);
+
+      // Switch must remain OFF (no snap-back to ON after reload).
+      final deviceSwitch = tester.widget<Switch>(find.byType(Switch).at(2));
+      expect(deviceSwitch.value, isFalse);
     },
   );
 

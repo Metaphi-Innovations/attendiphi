@@ -36,13 +36,24 @@ void main() {
       );
     });
 
-    test('returns false for permanent/permission errors', () {
+    test('location permission / services errors are retryable via Allow Location', () {
       expect(
         ErrorHandler.isRetryable(
           const LocationPermissionPermanentlyDeniedException(),
         ),
-        isFalse,
+        isTrue,
       );
+      expect(
+        ErrorHandler.isRetryable(const LocationPermissionDeniedException()),
+        isTrue,
+      );
+      expect(
+        ErrorHandler.isRetryable(const LocationServiceDisabledException()),
+        isTrue,
+      );
+    });
+
+    test('returns false for non-retryable permanent errors', () {
       expect(ErrorHandler.isRetryable(const InvalidQrCodeException()), isFalse);
       expect(
         ErrorHandler.isRetryable(const DuplicateCheckInException()),

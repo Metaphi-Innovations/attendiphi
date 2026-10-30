@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 /// Branded MetaPhi loading indicator widget.
@@ -90,9 +88,11 @@ class MetaPhiLoadingIndicator extends StatelessWidget {
   }
 }
 
-/// A wrapper widget that enforces at least a 2-second MetaPhi loading screen
-/// with spinner and logo whenever a page transitions or opens.
-class PageLoadingTransitionWrapper extends StatefulWidget {
+/// Pass-through route wrapper kept for call-site compatibility.
+///
+/// Previously enforced a 1–2s branded spinner before showing [child], which
+/// made every login/QR navigation feel lagged. Content paints immediately now.
+class PageLoadingTransitionWrapper extends StatelessWidget {
   const PageLoadingTransitionWrapper({
     super.key,
     required this.child,
@@ -100,78 +100,14 @@ class PageLoadingTransitionWrapper extends StatefulWidget {
     this.minimumDuration,
   });
 
-  /// Target page widget displayed once loading is complete.
   final Widget child;
 
-  /// Optional message parameter kept for backward compatibility (not rendered).
+  /// Ignored — kept so existing named arguments still compile.
   final String? message;
 
-  /// Minimum duration to display the loading screen (defaults to 2 seconds).
+  /// Ignored — kept so existing named arguments still compile.
   final Duration? minimumDuration;
 
   @override
-  State<PageLoadingTransitionWrapper> createState() =>
-      _PageLoadingTransitionWrapperState();
-}
-
-class _PageLoadingTransitionWrapperState
-    extends State<PageLoadingTransitionWrapper> {
-  bool _isLoading = true;
-  Timer? _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    _startTimer();
-  }
-
-  void _startTimer() {
-    _timer?.cancel();
-
-    // Check if running under automated widget test suite
-    final isTest = WidgetsBinding.instance.runtimeType.toString().contains(
-      'TestWidgetsFlutterBinding',
-    );
-
-    final duration =
-        widget.minimumDuration ??
-        (isTest ? Duration.zero : const Duration(seconds: 1));
-
-    if (duration == Duration.zero) {
-      _isLoading = false;
-      return;
-    }
-
-    _timer = Timer(duration, () {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      final theme = Theme.of(context);
-      final isDark = theme.brightness == Brightness.dark;
-      return Scaffold(
-        backgroundColor: isDark
-            ? const Color(0xFF0F172A)
-            : const Color(0xFFF8FAFC),
-        body: Center(
-          child: MetaPhiLoadingIndicator(
-            message: widget.message,
-            showCard: false,
-          ),
-        ),
-      );
-    }
-    return widget.child;
-  }
+  Widget build(BuildContext context) => child;
 }

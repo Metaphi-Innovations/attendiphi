@@ -218,17 +218,20 @@ class SubmitCheckIn {
     // claimed atomically with the check-in write below.
     final formattedPhone = Validators.formatPhoneWithCountryCode(phone);
 
-    // Phone uniqueness — always. Device uniqueness only when device restriction ON.
+    // Phone uniqueness is per check-in type (Member vs Substitute may share a
+    // phone on the same session day). Device uniqueness only when device ON.
     // Member uniqueness is enforced via member_session_locks on write.
     try {
       final existingPhoneSubmission = await _repository.getIdentitySubmission(
         formattedPhone,
         submissionTimestamp,
+        type: type,
       );
       if (existingPhoneSubmission != null) {
         throw DuplicateCheckInException(
           userMessage:
-              'This phone number has already submitted attendance for today.',
+              'This phone number has already submitted a '
+              '${type.displayName.toLowerCase()} check-in for today.',
           existingSubmissionData: existingPhoneSubmission.toMap(),
         );
       }

@@ -9,6 +9,7 @@ import '../../../../core/logger/app_logger.dart';
 import '../../../../core/utils/cookie_helper.dart';
 import '../../../../core/utils/device_fingerprint_helper.dart';
 import '../../domain/entities/check_in_submission.dart';
+import '../../domain/entities/public_device_session_attendance.dart';
 import '../../presentation/providers/checkin_providers.dart';
 import 'check_in_remote_data_source.dart';
 
@@ -17,21 +18,31 @@ class DeviceSessionAttendance {
   const DeviceSessionAttendance._({
     this.submission,
     this.claimedWithoutPayload = false,
+    this.checkInId,
   });
 
   factory DeviceSessionAttendance.found(CheckInSubmission submission) {
-    return DeviceSessionAttendance._(submission: submission);
+    return DeviceSessionAttendance._(
+      submission: submission,
+      checkInId: submission.id,
+    );
   }
 
   /// Server device lock exists but the prior row is not readable (anon RLS).
-  factory DeviceSessionAttendance.claimedWithoutPayload() {
-    return const DeviceSessionAttendance._(claimedWithoutPayload: true);
+  factory DeviceSessionAttendance.claimedWithoutPayload({String? checkInId}) {
+    return DeviceSessionAttendance._(
+      claimedWithoutPayload: true,
+      checkInId: checkInId,
+    );
   }
 
   static const none = DeviceSessionAttendance._();
 
   final CheckInSubmission? submission;
   final bool claimedWithoutPayload;
+
+  /// Known check-in id when locked without a full payload (result deep-link).
+  final String? checkInId;
 
   /// True when the UI must skip the form and show Attendance Recorded.
   bool get alreadyCheckedIn => submission != null || claimedWithoutPayload;
@@ -134,6 +145,9 @@ class DeviceCheckInService {
   }
 
   /// Resolves prior attendance for early QR gates (form / location screens).
+  ///
+  /// Order: local JSON → lastSubmission → public SECURITY DEFINER RPC
+  /// (works for anon after clear-site-data) → legacy direct lock probe.
   Future<DeviceSessionAttendance> resolveSessionAttendance({
     String? sessionDateStr,
     String? locationId,
@@ -150,23 +164,64 @@ class DeviceCheckInService {
       tag: 'DeviceCheckInService',
     );
 
-    final submission = await getSubmissionForSession(
+    // Local only first — avoid waiting on RLS-denied table reads.
+    final local = await _getLocalSubmission(
       sessionDateStr: sessionDateStr,
       locationId: locationId,
-      probeServer: probeServer,
     );
-    if (submission != null) {
-      return DeviceSessionAttendance.found(submission);
+    if (local != null) {
+      return DeviceSessionAttendance.found(local);
+    }
+
+    final last = await getLastSubmission();
+    if (last != null && _matchesSessionDate(last, sessionDateStr)) {
+      final loc = locationId?.trim() ?? '';
+      if (loc.isEmpty || last.locationId == loc) {
+        return DeviceSessionAttendance.found(last);
+      }
     }
 
     if (!probeServer || _remoteDataSource == null) {
       return DeviceSessionAttendance.none;
     }
 
-    // getSubmissionForSession already probed the row; re-check lock only.
+    final deviceId = await getOrCreateDeviceId();
+    final sessionDateYmd = _sessionDateYmd(sessionDateStr);
+
+    // Preferred: anon-callable RPC returns lock + first check-in summary.
     try {
-      final deviceId = await getOrCreateDeviceId();
-      final sessionDateYmd = _sessionDateYmd(sessionDateStr);
+      final public = await _remoteDataSource
+          .getPublicDeviceSessionAttendance(
+            deviceId: deviceId,
+            sessionDateYmd: sessionDateYmd,
+          )
+          .timeout(
+            const Duration(milliseconds: 2500),
+            onTimeout: () => null,
+          );
+      final fromPublic = await _attendanceFromPublic(public, sessionDateStr);
+      if (fromPublic != null) return fromPublic;
+    } catch (e) {
+      AppLogger.warning(
+        'Public device-session attendance probe failed: $e',
+        tag: 'DeviceCheckInService',
+      );
+    }
+
+    // Legacy: direct table reads (admin / permissive RLS only).
+    try {
+      final sessionDate = _parseSessionDate(sessionDateStr);
+      final serverSubmission = await _remoteDataSource
+          .getDeviceSubmission(deviceId, sessionDate)
+          .timeout(const Duration(milliseconds: 1500), onTimeout: () => null);
+      if (serverSubmission != null) {
+        await recordSubmission(
+          sessionDateStr: sessionDateStr,
+          submission: serverSubmission,
+        );
+        return DeviceSessionAttendance.found(serverSubmission);
+      }
+
       final isLocked = await _remoteDataSource
           .isDeviceSessionLocked(
             deviceId: deviceId,
@@ -191,6 +246,36 @@ class DeviceCheckInService {
       );
     }
     return DeviceSessionAttendance.none;
+  }
+
+  Future<DeviceSessionAttendance?> _attendanceFromPublic(
+    PublicDeviceSessionAttendance? public,
+    String? sessionDateStr,
+  ) async {
+    if (public == null || !public.alreadyCheckedIn) return null;
+
+    final submission = public.submission;
+    if (submission != null) {
+      await recordSubmission(
+        sessionDateStr: sessionDateStr,
+        submission: submission,
+      );
+      AppLogger.info(
+        'Public RPC hit with check-in ${submission.id} '
+        '(${submission.userName})',
+        tag: 'DeviceCheckInService',
+      );
+      return DeviceSessionAttendance.found(submission);
+    }
+
+    AppLogger.info(
+      'Public RPC locked without payload '
+      '(check_in_id=${public.checkInId})',
+      tag: 'DeviceCheckInService',
+    );
+    return DeviceSessionAttendance.claimedWithoutPayload(
+      checkInId: public.checkInId,
+    );
   }
 
   /// Removes lock-only / non-JSON session cookies that are not real attendance.
@@ -331,10 +416,29 @@ class DeviceCheckInService {
 
     if (!probeServer) return null;
 
-    // Server-side fallback (works for admin-capable clients; public may be denied)
+    // Server-side: public RPC first (anon after clear-site-data), then table reads.
     if (_remoteDataSource != null) {
       try {
         final deviceId = await getOrCreateDeviceId();
+        final sessionDateYmd = _sessionDateYmd(sessionDateStr);
+
+        final public = await _remoteDataSource
+            .getPublicDeviceSessionAttendance(
+              deviceId: deviceId,
+              sessionDateYmd: sessionDateYmd,
+            )
+            .timeout(
+              const Duration(milliseconds: 2500),
+              onTimeout: () => null,
+            );
+        if (public?.submission != null) {
+          await recordSubmission(
+            sessionDateStr: sessionDateStr,
+            submission: public!.submission!,
+          );
+          return public.submission;
+        }
+
         final sessionDate = _parseSessionDate(sessionDateStr);
         final serverSubmission = await _remoteDataSource
             .getDeviceSubmission(deviceId, sessionDate)
@@ -350,17 +454,7 @@ class DeviceCheckInService {
         // Lock without a readable check-in is handled by resolveSessionAttendance
         // (show success). Do not clear local markers here — that caused the form
         // to reopen on second QR scan when RLS blocks check_ins reads.
-        final sessionDateYmd = _sessionDateYmd(sessionDateStr);
-        final isLocked = await _remoteDataSource
-            .isDeviceSessionLocked(
-              deviceId: deviceId,
-              sessionDateYmd: sessionDateYmd,
-            )
-            .timeout(
-              const Duration(milliseconds: 2000),
-              onTimeout: () => false,
-            );
-        if (isLocked) {
+        if (public?.locked == true) {
           AppLogger.info(
             'Device session lock exists without resolvable check-in '
             '($deviceId / $sessionDateYmd)',

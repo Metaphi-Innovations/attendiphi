@@ -1231,10 +1231,12 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
     Map<String, int> visitorCounts,
   ) {
     final list = rawList.where((u) {
-      if (_statusFilter == MemberStatusFilter.active && !u.isActive)
+      if (_statusFilter == MemberStatusFilter.active && !u.isActive) {
         return false;
-      if (_statusFilter == MemberStatusFilter.inactive && u.isActive)
+      }
+      if (_statusFilter == MemberStatusFilter.inactive && u.isActive) {
         return false;
+      }
       if (_searchQuery.isEmpty) return true;
       final query = _searchQuery.toLowerCase();
       return u.name.toLowerCase().contains(query) ||

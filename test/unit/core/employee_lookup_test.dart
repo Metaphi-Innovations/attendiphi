@@ -11,6 +11,8 @@ CheckInSubmission _checkIn({
   CheckInType type = CheckInType.member,
   String? memberId,
   String? substituteForMember,
+  String? substituteName,
+  String? substitutePhone,
 }) {
   return CheckInSubmission(
     id: 'c1',
@@ -26,6 +28,8 @@ CheckInSubmission _checkIn({
     timestamp: DateTime(2026, 9, 3),
     memberId: memberId,
     substituteForMember: substituteForMember,
+    substituteName: substituteName,
+    substitutePhone: substitutePhone,
   );
 }
 
@@ -217,6 +221,45 @@ void main() {
       'Visitor Name',
     );
   });
+
+  test(
+    'success display for Substitute shows attending person, not covered member',
+    () {
+      const covered = Employee(
+        id: 'member_covered',
+        name: 'omkar anarseF',
+        phone: '9876543213',
+      );
+      final record = _checkIn(
+        name: 'yashraj',
+        phone: '8356011246',
+        type: CheckInType.substitute,
+        memberId: covered.id,
+        substituteForMember: covered.name,
+        substituteName: 'yashraj',
+        substitutePhone: '8356011246',
+      );
+
+      expect(
+        EmployeeLookup.successDisplayName(
+          submission: record,
+          employees: [covered],
+          memberId: covered.id,
+          authoritativeMember: covered,
+        ),
+        'yashraj',
+      );
+      expect(
+        EmployeeLookup.successDisplayPhone(
+          submission: record,
+          employees: [covered],
+          memberId: covered.id,
+          authoritativeMember: covered,
+        ),
+        '8356011246',
+      );
+    },
+  );
 
   test('success display ignores stale userName and same-phone members', () {
     const omkar = Employee(

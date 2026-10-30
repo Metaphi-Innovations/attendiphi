@@ -3,19 +3,56 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:geolocator/geolocator.dart'
+    hide LocationServiceDisabledException;
+import 'package:qr_checkin/core/l10n/app_strings.dart';
+import 'package:qr_checkin/core/permissions/permission_service.dart';
+import 'package:qr_checkin/core/utils/cookie_helper_stub.dart' as cookie_stub;
 import 'package:qr_checkin/features/app_config/domain/entities/check_in_restrictions_config.dart';
 import 'package:qr_checkin/features/app_config/presentation/providers/check_in_restrictions_provider.dart';
+import 'package:qr_checkin/features/checkin/data/datasources/check_in_remote_data_source.dart';
 import 'package:qr_checkin/features/checkin/data/datasources/device_checkin_service.dart';
 import 'package:qr_checkin/features/checkin/domain/entities/check_in_submission.dart';
 import 'package:qr_checkin/features/checkin/domain/entities/check_in_type.dart';
+import 'package:qr_checkin/features/checkin/domain/entities/public_device_session_attendance.dart';
 import 'package:qr_checkin/features/location/domain/entities/location_config.dart';
 import 'package:qr_checkin/features/location/presentation/providers/location_providers.dart';
+import 'package:qr_checkin/features/location/presentation/providers/location_validation_provider.dart';
 import 'package:qr_checkin/features/location/presentation/screens/location_permission_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+class _FakeCheckInRemote extends Fake implements CheckInRemoteDataSource {
+  _FakeCheckInRemote(this.publicAttendance);
+
+  final PublicDeviceSessionAttendance? publicAttendance;
+
+  @override
+  Future<PublicDeviceSessionAttendance?> getPublicDeviceSessionAttendance({
+    required String deviceId,
+    required String sessionDateYmd,
+  }) async => publicAttendance;
+
+  @override
+  Future<CheckInSubmission?> getDeviceSubmission(
+    String deviceId,
+    DateTime sessionDate,
+  ) async => null;
+
+  @override
+  Future<bool> isDeviceSessionLocked({
+    required String deviceId,
+    required String sessionDateYmd,
+  }) async => false;
+
+  @override
+  Future<CheckInSubmission?> getPublicCheckInSummary(String checkInId) async =>
+      null;
+}
 
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+    cookie_stub.clearWebCookieMemoryForTests();
   });
 
   const testLocation = LocationConfig(
@@ -104,7 +141,8 @@ void main() {
 
         expect(find.text('SESSION EXPIRED'), findsNothing);
         expect(find.text('UPCOMING SESSION'), findsNothing);
-        expect(find.text('Allowed Perimeter:'), findsOneWidget);
+        expect(find.text('Jade Luxury Banquets, Mumbai'), findsOneWidget);
+        expect(find.text('Allowed Perimeter:'), findsNothing);
       },
     );
 
@@ -197,12 +235,252 @@ void main() {
           ),
         );
         await tester.pump();
+        // Config invalidate on open + GPay success animation timers.
+        await tester.pump(const Duration(milliseconds: 300));
         await tester.pump(const Duration(milliseconds: 300));
 
         expect(find.text('Attendance Recorded'), findsOneWidget);
         expect(find.text('Pooja Nair'), findsOneWidget);
         expect(find.text('Allowed Perimeter:'), findsNothing);
         expect(find.text('Select Member Name *'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'device ON + empty prefs + remote lock shows Attendance Recorded',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final prefs = await SharedPreferences.getInstance();
+        final prior = CheckInSubmission(
+          id: 'sub-rpc',
+          locationId: testLocation.id,
+          locationName: testLocation.name,
+          userName: 'Remote Member',
+          userPhone: '+919876543299',
+          type: CheckInType.member,
+          userLatitude: testLocation.latitude,
+          userLongitude: testLocation.longitude,
+          gpsAccuracy: 10,
+          distanceMeters: 5,
+          timestamp: DateTime(2026, 10, 30, 9, 30),
+          memberId: 'emp_rpc',
+        );
+        final service = DeviceCheckInService(
+          prefs,
+          _FakeCheckInRemote(
+            PublicDeviceSessionAttendance(
+              locked: true,
+              submission: prior,
+              checkInId: prior.id,
+            ),
+          ),
+        );
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              sharedPreferencesProvider.overrideWithValue(prefs),
+              deviceCheckInServiceProvider.overrideWithValue(service),
+              checkInRestrictionsConfigProvider.overrideWith(
+                (ref) => Stream.value(
+                  const CheckInRestrictionsConfig(
+                    locationRestrictionEnabled: true,
+                    dateRestrictionEnabled: false,
+                    deviceRestrictionEnabled: true,
+                  ),
+                ),
+              ),
+              locationConfigFamilyProvider(testLocation.id).overrideWith(
+                (ref) async => testLocation,
+              ),
+            ],
+            child: MaterialApp(
+              home: Scaffold(
+                body: LocationPermissionScreen(
+                  location: testLocation,
+                  sessionDateStr: '2026-10-30',
+                  nowProvider: () => DateTime(2026, 10, 30, 11, 0),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        // Config invalidate on open + GPay success animation timers.
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pump(const Duration(milliseconds: 300));
+
+        expect(find.text('Attendance Recorded'), findsOneWidget);
+        expect(find.text('Remote Member'), findsOneWidget);
+        expect(find.text('Allowed Perimeter:'), findsNothing);
+        expect(find.text('Select Member Name *'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'device OFF + empty prefs + remote lock still shows GPS / form path',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final prefs = await SharedPreferences.getInstance();
+        final prior = CheckInSubmission(
+          id: 'sub-standee',
+          locationId: testLocation.id,
+          locationName: testLocation.name,
+          userName: 'Should Not Show',
+          userPhone: '+919876543288',
+          type: CheckInType.member,
+          userLatitude: testLocation.latitude,
+          userLongitude: testLocation.longitude,
+          gpsAccuracy: 10,
+          distanceMeters: 5,
+          timestamp: DateTime(2026, 10, 30, 9, 30),
+        );
+        final service = DeviceCheckInService(
+          prefs,
+          _FakeCheckInRemote(
+            PublicDeviceSessionAttendance(
+              locked: true,
+              submission: prior,
+              checkInId: prior.id,
+            ),
+          ),
+        );
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              sharedPreferencesProvider.overrideWithValue(prefs),
+              deviceCheckInServiceProvider.overrideWithValue(service),
+              checkInRestrictionsConfigProvider.overrideWith(
+                (ref) => Stream.value(
+                  const CheckInRestrictionsConfig(
+                    locationRestrictionEnabled: true,
+                    dateRestrictionEnabled: false,
+                    deviceRestrictionEnabled: false,
+                  ),
+                ),
+              ),
+              locationConfigFamilyProvider(testLocation.id).overrideWith(
+                (ref) async => testLocation,
+              ),
+            ],
+            child: MaterialApp(
+              home: Scaffold(
+                body: LocationPermissionScreen(
+                  location: testLocation,
+                  sessionDateStr: '2026-10-30',
+                  nowProvider: () => DateTime(2026, 10, 30, 11, 0),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+
+        expect(find.text('Attendance Recorded'), findsNothing);
+        expect(find.text('Should Not Show'), findsNothing);
+        expect(find.text(testLocation.name), findsOneWidget);
+        expect(find.text('Allowed Perimeter:'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'permission deny shows guidance text without Allow Location button',
+      (tester) async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              checkInRestrictionsConfigProvider.overrideWith(
+                (ref) => Stream.value(
+                  const CheckInRestrictionsConfig(
+                    locationRestrictionEnabled: true,
+                    dateRestrictionEnabled: false,
+                    deviceRestrictionEnabled: false,
+                  ),
+                ),
+              ),
+              locationConfigFamilyProvider(testLocation.id).overrideWith(
+                (ref) async => testLocation,
+              ),
+              permissionServiceProvider.overrideWithValue(
+                PermissionService(
+                  isWebOverride: true,
+                  isLocationServiceEnabled: () async => true,
+                  checkPermission: () async => LocationPermission.deniedForever,
+                  requestPermission: () async =>
+                      LocationPermission.deniedForever,
+                ),
+              ),
+            ],
+            child: MaterialApp(
+              home: Scaffold(
+                body: LocationPermissionScreen(
+                  location: testLocation,
+                  sessionDateStr: '2026-10-30',
+                  nowProvider: () => DateTime(2026, 10, 30, 11, 0),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+
+        expect(find.text(AppStrings.locationPermissionAllow), findsNothing);
+        expect(find.text(AppStrings.locationPermissionPermanentlyDenied), findsNothing);
+        expect(find.text(AppStrings.locationPermissionDenied), findsOneWidget);
+        // Web help is kIsWeb-only; VM tests still must not show the CTA.
+        expect(find.textContaining('Tap Allow Location'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'OS location off shows turn-on guidance, not blocked-for-site',
+      (tester) async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              checkInRestrictionsConfigProvider.overrideWith(
+                (ref) => Stream.value(
+                  const CheckInRestrictionsConfig(
+                    locationRestrictionEnabled: true,
+                    dateRestrictionEnabled: false,
+                    deviceRestrictionEnabled: false,
+                  ),
+                ),
+              ),
+              locationConfigFamilyProvider(testLocation.id).overrideWith(
+                (ref) async => testLocation,
+              ),
+              permissionServiceProvider.overrideWithValue(
+                PermissionService(
+                  isWebOverride: true,
+                  isLocationServiceEnabled: () async => false,
+                  checkPermission: () async => LocationPermission.deniedForever,
+                  requestPermission: () async =>
+                      LocationPermission.deniedForever,
+                ),
+              ),
+            ],
+            child: MaterialApp(
+              home: Scaffold(
+                body: LocationPermissionScreen(
+                  location: testLocation,
+                  sessionDateStr: '2026-10-30',
+                  nowProvider: () => DateTime(2026, 10, 30, 11, 0),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+
+        expect(find.text(AppStrings.locationPermissionPermanentlyDenied), findsNothing);
+        expect(find.textContaining('Location is blocked'), findsNothing);
+        expect(find.text(AppStrings.locationServiceDisabled), findsOneWidget);
+        expect(find.text(AppStrings.locationPermissionAllow), findsNothing);
       },
     );
 
@@ -222,7 +500,8 @@ void main() {
       expect(find.text('THURSDAY ONLY'), findsNothing);
       expect(find.text('SESSION EXPIRED'), findsNothing);
       // Location UI still shown; GPS radius is not enforced when OFF.
-      expect(find.text('Allowed Perimeter:'), findsOneWidget);
+      expect(find.text('Jade Luxury Banquets, Mumbai'), findsOneWidget);
+      expect(find.text('Allowed Perimeter:'), findsNothing);
       expect(find.text('Outside Allowed Radius'), findsNothing);
     });
 
@@ -241,7 +520,8 @@ void main() {
 
       expect(find.text('UPCOMING SESSION'), findsNothing);
       expect(find.text('THURSDAY ONLY'), findsNothing);
-      expect(find.text('Allowed Perimeter:'), findsOneWidget);
+      expect(find.text('Jade Luxury Banquets, Mumbai'), findsOneWidget);
+      expect(find.text('Allowed Perimeter:'), findsNothing);
       expect(find.text('Outside Allowed Radius'), findsNothing);
     });
   });

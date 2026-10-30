@@ -4,12 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
-import '../../../../app/config/environment.dart';
 import '../../../../app/router/route_names.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_radius.dart';
 import '../../../../app/theme/app_spacing.dart';
-import '../../../../core/config/supabase_app_config.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/errors/error_handler.dart';
 import '../../../../core/l10n/app_strings.dart';
@@ -22,6 +20,7 @@ import '../../../app_config/presentation/providers/check_in_restrictions_provide
 import '../../../checkin/data/datasources/device_checkin_service.dart';
 import '../../../checkin/domain/entities/check_in_submission.dart';
 import '../../../checkin/presentation/screens/checkin_result_screen.dart';
+import '../../../employee/presentation/providers/employee_providers.dart';
 import '../../../qr_checkin/domain/check_in_session_token.dart';
 import '../../domain/entities/location_config.dart';
 import '../../domain/usecases/validate_user_proximity.dart';
@@ -60,6 +59,10 @@ class _LocationPermissionScreenState
   bool _isCheckingDevice = true;
   bool _hasCheckedIn = false;
   CheckInSubmission? _existingSubmission;
+
+  /// When device lock exists without a full local payload (result still hydrates).
+  String? _lockedCheckInId;
+  String? _lockedMemberId;
 
   /// Robust extraction of session date query parameter across Native and Web.
   String? get _effectiveSessionDateStr {
@@ -131,9 +134,6 @@ class _LocationPermissionScreenState
   LocationConfig get _displayLocation => _resolvedLocation ?? widget.location;
   LocationConfig? _resolvedLocation;
 
-  bool get _showStagingGpsDebug =>
-      kIsWeb && SupabaseAppConfig.environment == Environment.staging;
-
   @override
   void initState() {
     super.initState();
@@ -142,12 +142,19 @@ class _LocationPermissionScreenState
       vsync: this,
       duration: const Duration(seconds: 2),
     );
+    // Pull fresh Super Admin flags so One device = one check-in OFF/ON
+    // is not stuck on a keepAlive poll snapshot from an earlier visit.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.invalidate(checkInRestrictionsConfigProvider);
+    });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // After Deny → browser/app settings → Allow, retry automatically on return.
     if (state == AppLifecycleState.resumed && mounted) {
+      ref.invalidate(checkInRestrictionsConfigProvider);
       final current = ref.read(
         locationValidationFamilyProvider(widget.location),
       );
@@ -192,6 +199,9 @@ class _LocationPermissionScreenState
     if (_hasCheckedIn) return;
     // Widget tests may mount without GoRouter; skip navigation then.
     if (GoRouter.maybeOf(context) == null) return;
+
+    // Warm the members roster so the form typeahead is ready on first paint.
+    ref.read(employeesStreamProvider);
 
     final venue = _displayLocation;
     final date = _effectiveSessionDateStr;
@@ -256,6 +266,8 @@ class _LocationPermissionScreenState
           setState(() {
             _hasCheckedIn = true;
             _existingSubmission = attendance.submission;
+            _lockedCheckInId = attendance.checkInId;
+            _lockedMemberId = attendance.submission?.memberId;
             _isCheckingDevice = false;
             _gateApplied = true;
           });
@@ -379,21 +391,25 @@ class _LocationPermissionScreenState
       });
     });
 
-    if (configAsync.isLoading && !configAsync.hasValue) {
+    final lastKnown = ref.watch(lastKnownCheckInRestrictionsProvider);
+    if (configAsync.isLoading && !configAsync.hasValue && lastKnown == null) {
       return const Scaffold(body: Center(child: MetaPhiLoadingIndicator()));
     }
 
+    // Prefer live stream; fall back to lastKnown so reload/invalidate does not
+    // default the One device toggle to ON and mis-gate the QR flow.
     final dateRestrictionEnabled = configAsync.maybeWhen(
       data: (config) => config.dateRestrictionEnabled,
-      orElse: () => true,
+      orElse: () => lastKnown?.dateRestrictionEnabled ?? true,
     );
     final deviceRestrictionEnabled = configAsync.maybeWhen(
       data: (config) => config.deviceRestrictionEnabled,
-      orElse: () => true,
+      orElse: () => lastKnown?.deviceRestrictionEnabled ?? true,
     );
+    final configReady = configAsync.hasValue || lastKnown != null;
 
     // First emission after build: apply gates once config is known.
-    if (!_gateApplied && configAsync.hasValue) {
+    if (!_gateApplied && configReady) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || _gateApplied) return;
         _applyRestrictionsGate(
@@ -406,8 +422,8 @@ class _LocationPermissionScreenState
     if (_hasCheckedIn || _existingSubmission != null) {
       return CheckInResultScreen(
         submission: _existingSubmission,
-        memberId: _existingSubmission?.memberId,
-        checkInId: _existingSubmission?.id,
+        memberId: _existingSubmission?.memberId ?? _lockedMemberId,
+        checkInId: _existingSubmission?.id ?? _lockedCheckInId,
       );
     }
 
@@ -434,7 +450,8 @@ class _LocationPermissionScreenState
       (prev, next) {
         if (_hasCheckedIn || _existingSubmission != null) return;
         if (next is LocationValidationSuccess) {
-          Future.delayed(const Duration(milliseconds: 300), () {
+          // Brief success flash, then navigate — keep short for snappy QR flow.
+          Future.delayed(const Duration(milliseconds: 120), () {
             if (!context.mounted) return;
             _goToCheckInForm(next.result);
           });
@@ -544,44 +561,6 @@ class _LocationPermissionScreenState
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 12),
-                            const Divider(),
-                            const SizedBox(height: 8),
-                            Wrap(
-                              alignment: WrapAlignment.spaceBetween,
-                              crossAxisAlignment: WrapCrossAlignment.center,
-                              spacing: 8,
-                              runSpacing: 4,
-                              children: [
-                                Text(
-                                  'Allowed Perimeter:',
-                                  style: Theme.of(context).textTheme.bodySmall
-                                      ?.copyWith(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onSurfaceVariant,
-                                      ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary.withAlpha(20),
-                                    borderRadius: AppRadius.smAll,
-                                  ),
-                                  child: Text(
-                                    'Within ${venue.radiusMeters.round()} meters',
-                                    style: const TextStyle(
-                                      color: AppColors.primary,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
                           ],
                         ),
                       ),
@@ -590,11 +569,6 @@ class _LocationPermissionScreenState
 
                       // 3. Dynamic State Message
                       _buildStateMessage(context, validationState),
-
-                      if (_showStagingGpsDebug) ...[
-                        const SizedBox(height: 12),
-                        _buildStagingGpsDebug(context, validationState),
-                      ],
 
                       SizedBox(height: isCompact ? 20 : 32),
 
@@ -605,34 +579,6 @@ class _LocationPermissionScreenState
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildStagingGpsDebug(
-    BuildContext context,
-    LocationValidationState state,
-  ) {
-    final theme = Theme.of(context);
-    String detail = state.runtimeType.toString();
-    if (state is LocationValidationError) {
-      final ex = state.exception;
-      final original = ex.originalError;
-      final cause = original == null
-          ? ''
-          : ' · ${original.runtimeType}: $original';
-      final tech = ex.technicalMessage.trim().isEmpty
-          ? ''
-          : ' · ${ex.technicalMessage}';
-      detail =
-          '${ex.runtimeType}: ${ErrorHandler.getUserMessage(ex)}$tech$cause';
-    }
-    return Text(
-      'staging · web · venue=${_displayLocation.name} · $detail',
-      style: theme.textTheme.labelSmall?.copyWith(
-        color: theme.colorScheme.onSurfaceVariant,
-        fontFamily: 'monospace',
-      ),
-      textAlign: TextAlign.center,
     );
   }
 
@@ -1099,16 +1045,24 @@ class _LocationPermissionScreenState
     LocationValidationState state,
     bool isBusy,
   ) {
-    // Web cannot re-open the browser location prompt or site settings after
-    // Deny — hide dead Allow Location / Open Settings actions.
-    if (state is LocationValidationError &&
-        (state.exception is LocationPermissionDeniedException ||
-            state.exception is LocationPermissionPermanentlyDeniedException)) {
-      return const SizedBox.shrink();
+    // Permission / services-off: guidance text only (no Allow Location CTA).
+    // Browsers often cannot re-open the prompt from an in-page button after Deny.
+    if (state is LocationValidationError) {
+      final isPermissionOrService =
+          state.exception is LocationPermissionDeniedException ||
+          state.exception is LocationPermissionPermanentlyDeniedException ||
+          state.exception is LocationServiceDisabledException;
+      if (isPermissionOrService) {
+        return const SizedBox.shrink();
+      }
+      return AppButton.primary(
+        label: AppStrings.locationRetry,
+        icon: Icons.refresh_rounded,
+        onPressed: _retryLocationPermission,
+      );
     }
 
-    if (state is LocationValidationOutsideRadius ||
-        state is LocationValidationError) {
+    if (state is LocationValidationOutsideRadius) {
       return AppButton.primary(
         label: AppStrings.locationRetry,
         icon: Icons.refresh_rounded,

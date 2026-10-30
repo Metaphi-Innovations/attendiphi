@@ -2,16 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/theme/app_radius.dart';
+import '../../../../core/logger/app_logger.dart';
 import '../../../../core/responsive/responsive_breakpoints.dart';
 import '../../../../core/widgets/app_scaffold.dart';
+import '../../../../core/widgets/metaphi_loading_indicator.dart';
 import '../../../employee/domain/employee_lookup.dart';
 import '../../../employee/domain/entities/employee.dart';
 import '../../../employee/presentation/providers/employee_providers.dart';
 import '../../data/datasources/device_checkin_service.dart';
 import '../../domain/entities/check_in_submission.dart';
+import '../../domain/entities/check_in_type.dart';
+import '../providers/checkin_providers.dart';
 import '../widgets/gpay_success_animation.dart';
 
 /// Simplified check-in completion screen.
+///
+/// Hydrates name / phone / type from (1) [submission] extra, (2) public
+/// `checkInId` RPC, (3) local device session, (4) public member roster.
 class CheckInResultScreen extends ConsumerStatefulWidget {
   const CheckInResultScreen({
     super.key,
@@ -25,7 +32,7 @@ class CheckInResultScreen extends ConsumerStatefulWidget {
   /// Authoritative member document id for this check-in. Preferred over names.
   final String? memberId;
 
-  /// Firestore check-in document id for this submission.
+  /// Check-in document id for this submission (URL query after refresh/paste).
   final String? checkInId;
 
   @override
@@ -39,6 +46,7 @@ class _CheckInResultScreenState extends ConsumerState<CheckInResultScreen>
   late final Animation<double> _cardFadeAnimation;
   late final Animation<Offset> _cardSlideAnimation;
   CheckInSubmission? _resolvedSubmission;
+  bool _hydrating = false;
 
   @override
   void initState() {
@@ -63,24 +71,14 @@ class _CheckInResultScreenState extends ConsumerState<CheckInResultScreen>
           ),
         );
 
-    // Device last-submission is only a last resort when this route has no
-    // check-in extra and no memberId/checkInId in the URL.
-    final hasIdentity =
-        widget.submission != null ||
-        (widget.memberId != null && widget.memberId!.trim().isNotEmpty) ||
-        (widget.checkInId != null && widget.checkInId!.trim().isNotEmpty);
-    if (!hasIdentity) {
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        final deviceService = ref.read(deviceCheckInServiceProvider);
-        final last = await deviceService.getLastSubmission();
-        if (mounted && last != null && _resolvedSubmission == null) {
-          setState(() => _resolvedSubmission = last);
-        }
+    _cardFadeController.forward();
+
+    if (widget.submission == null) {
+      _hydrating = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _hydrateSubmission();
       });
     }
-
-    // Stagger the card slide-in after the celebration burst
-    _cardFadeController.forward();
   }
 
   @override
@@ -97,7 +95,92 @@ class _CheckInResultScreenState extends ConsumerState<CheckInResultScreen>
             widget.submission?.memberId != oldWidget.submission?.memberId ||
             widget.memberId != oldWidget.memberId)) {
       _resolvedSubmission = widget.submission;
+      _hydrating = false;
+    } else if (widget.submission == null &&
+        (widget.checkInId != oldWidget.checkInId ||
+            widget.memberId != oldWidget.memberId) &&
+        _resolvedSubmission == null &&
+        !_hydrating) {
+      _hydrating = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _hydrateSubmission();
+      });
     }
+  }
+
+  Future<void> _hydrateSubmission() async {
+    if (!mounted) return;
+
+    // 1. Already have payload from GoRouter extra / parent.
+    if (widget.submission != null) {
+      setState(() {
+        _resolvedSubmission = widget.submission;
+        _hydrating = false;
+      });
+      return;
+    }
+
+    final checkInId = widget.checkInId?.trim() ?? '';
+    final memberId = widget.memberId?.trim() ?? '';
+
+    // 2. Public SECURITY DEFINER summary by check-in id (refresh / paste URL).
+    if (checkInId.isNotEmpty) {
+      try {
+        final remote = ref.read(checkInRemoteDataSourceProvider);
+        final fromRpc = await remote.getPublicCheckInSummary(checkInId);
+        if (!mounted) return;
+        if (fromRpc != null) {
+          await ref
+              .read(deviceCheckInServiceProvider)
+              .recordSubmission(submission: fromRpc);
+          if (!mounted) return;
+          setState(() {
+            _resolvedSubmission = fromRpc;
+            _hydrating = false;
+          });
+          return;
+        }
+      } catch (e) {
+        AppLogger.warning(
+          'Result hydrate via checkInId failed: $e',
+          tag: 'CheckInResultScreen',
+        );
+      }
+    }
+
+    // 3. Local device session / last submission (same browser, empty extra).
+    try {
+      final device = ref.read(deviceCheckInServiceProvider);
+      CheckInSubmission? local = await device.getLastSubmission();
+      if (local != null && checkInId.isNotEmpty && local.id != checkInId) {
+        // Prefer matching id when URL specifies one.
+        local = null;
+      }
+      local ??= await device.getSubmissionForSession(probeServer: true);
+      if (!mounted) return;
+      if (local != null) {
+        final matchesMember =
+            memberId.isEmpty ||
+            (local.memberId?.trim().isNotEmpty == true &&
+                local.memberId!.trim() == memberId);
+        final matchesId = checkInId.isEmpty || local.id == checkInId;
+        if (matchesMember || matchesId) {
+          setState(() {
+            _resolvedSubmission = local;
+            _hydrating = false;
+          });
+          return;
+        }
+      }
+    } catch (e) {
+      AppLogger.warning(
+        'Result hydrate via device storage failed: $e',
+        tag: 'CheckInResultScreen',
+      );
+    }
+
+    if (!mounted) return;
+    setState(() => _hydrating = false);
   }
 
   @override
@@ -131,6 +214,22 @@ class _CheckInResultScreenState extends ConsumerState<CheckInResultScreen>
           authoritativeMember: authoritativeMember,
         ) ??
         '';
+    final typeLabel =
+        submission?.type.displayName ??
+        (memberId.isNotEmpty ? CheckInType.member.displayName : '');
+
+    final showIdentity =
+        displayName.isNotEmpty ||
+        displayPhone.isNotEmpty ||
+        (submission != null && typeLabel.isNotEmpty);
+
+    // While hydrating with known IDs, avoid a permanent blank identity card.
+    final awaitingIdentity =
+        _hydrating &&
+        submission == null &&
+        displayName.isEmpty &&
+        ((widget.checkInId?.trim().isNotEmpty ?? false) ||
+            memberId.isNotEmpty);
 
     final hPadding = context.responsiveValue<double>(
       compactMobile: 16.0,
@@ -154,12 +253,10 @@ class _CheckInResultScreenState extends ConsumerState<CheckInResultScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // 1. Google Pay Celebration Animation
                 GPaySuccessAnimation(size: isCompact ? 72 : 90),
 
                 SizedBox(height: isCompact ? 20 : 28),
 
-                // 2. Attendance Recorded Card
                 FadeTransition(
                   opacity: _cardFadeAnimation,
                   child: SlideTransition(
@@ -212,25 +309,36 @@ class _CheckInResultScreenState extends ConsumerState<CheckInResultScreen>
                             ],
                           ),
                           const SizedBox(height: 12),
-                          if (submission != null && displayName.isNotEmpty) ...[
-                            Text(
-                              displayName,
-                              style: const TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w800,
-                                color: Color(0xFF0F172A),
-                              ),
-                              textAlign: TextAlign.center,
+                          if (awaitingIdentity) ...[
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 8),
+                              child: MetaPhiLoadingIndicator(),
                             ),
-                            const SizedBox(height: 4),
+                            const SizedBox(height: 8),
+                          ] else if (showIdentity) ...[
+                            if (displayName.isNotEmpty) ...[
+                              Text(
+                                displayName,
+                                style: const TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF0F172A),
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 4),
+                            ],
                             Text(
-                              '${displayPhone.isEmpty ? submission.userPhone : displayPhone} • ${submission.type.displayName}',
+                              [
+                                if (displayPhone.isNotEmpty) displayPhone,
+                                if (typeLabel.isNotEmpty) typeLabel,
+                              ].join(' • '),
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w500,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
                               ),
                               textAlign: TextAlign.center,
                             ),

@@ -171,7 +171,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 200));
 
         expect(find.text('Jade Luxury Banquets, Mumbai'), findsOneWidget);
-        expect(find.textContaining('Allowed Perimeter:'), findsOneWidget);
+        expect(find.textContaining('Allowed Perimeter:'), findsNothing);
         expect(tester.takeException(), isNull);
       },
     );

@@ -150,12 +150,8 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
       }
     }
 
-    // 2. Service + permissions (always re-check; web status can be stale).
-    final serviceEnabled = await _isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      throw const LocationServiceDisabledException();
-    }
-
+    // 2. Permissions first (so web can show Allow), then services check.
+    // Never map OS Location-off → “blocked for this site”.
     var permission = await _checkPermission();
     var granted =
         permission == LocationPermission.always ||
@@ -173,22 +169,36 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
           permission == LocationPermission.whileInUse;
     }
 
+    if (!granted) {
+      final serviceEnabled = await _isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        throw const LocationServiceDisabledException();
+      }
+      if (permission == LocationPermission.deniedForever) {
+        // Web often reports deniedForever when Location was off or site is Ask.
+        if (_isWeb) {
+          throw const LocationPermissionDeniedException(
+            technicalMessage:
+                'Web LocationPermission.deniedForever after requestPermission '
+                '(recoverable; Retry re-prompts).',
+          );
+        }
+        throw const LocationPermissionPermanentlyDeniedException();
+      }
+      throw const LocationPermissionDeniedException();
+    }
+
+    final serviceEnabled = await _isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      throw const LocationServiceDisabledException();
+    }
+
     AppLogger.info(
       'GPS acquire start (web=$_isWeb, forceRefresh=$forceRefresh, '
       'permission=$permission, medium=${_mediumTimeoutSeconds}s, '
       'high=${_highTimeoutSeconds}s, maxAccuracy=${_maxAccuracyMeters}m)',
       tag: 'LocationDeviceDataSource',
     );
-
-    if (permission == LocationPermission.denied) {
-      throw const LocationPermissionDeniedException();
-    }
-    if (permission == LocationPermission.deniedForever) {
-      throw const LocationPermissionPermanentlyDeniedException();
-    }
-    if (!granted) {
-      throw const LocationPermissionDeniedException();
-    }
 
     // Web: permission dialog often resolves before the GPS stack is ready.
     if (_isWeb) {

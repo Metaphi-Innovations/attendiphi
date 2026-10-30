@@ -191,6 +191,8 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   bool _isCheckingDevice = true;
   bool _hasCheckedIn = false;
   CheckInSubmission? _existingSubmission;
+  String? _lockedCheckInId;
+  String? _lockedMemberId;
 
   /// Member selected from the typeahead list (manual check-in only).
   Employee? _manuallySelectedMember;
@@ -473,11 +475,18 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       setState(() {
         _hasCheckedIn = true;
         _existingSubmission = attendance.submission;
+        _lockedCheckInId = attendance.checkInId;
+        _lockedMemberId = attendance.submission?.memberId;
         _isCheckingDevice = false;
       });
-      // Prefer the dedicated result route when we have a full payload.
-      if (attendance.submission != null) {
-        _goToCheckInResult(attendance.submission);
+      // Prefer the dedicated result route (payload and/or ids for hydration).
+      if (attendance.submission != null ||
+          (attendance.checkInId?.trim().isNotEmpty ?? false)) {
+        _goToCheckInResult(
+          attendance.submission,
+          checkInId: attendance.checkInId,
+          memberId: attendance.submission?.memberId,
+        );
       }
       return;
     }
@@ -485,6 +494,8 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     setState(() {
       _hasCheckedIn = false;
       _existingSubmission = null;
+      _lockedCheckInId = null;
+      _lockedMemberId = null;
       _isCheckingDevice = false;
     });
   }
@@ -635,16 +646,24 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     }
   }
 
-  void _goToCheckInResult(CheckInSubmission? submission) {
+  void _goToCheckInResult(
+    CheckInSubmission? submission, {
+    String? checkInId,
+    String? memberId,
+  }) {
     if (!mounted) return;
-    // Never open Approved without a real submission (avoids empty Present gap).
-    if (submission == null) return;
+    final id = (submission?.id ?? checkInId)?.trim() ?? '';
+    final mem = (submission?.memberId ?? memberId)?.trim();
+    // Prefer a real payload; IDs alone still open result (screen hydrates).
+    if (submission == null && id.isEmpty && (mem == null || mem.isEmpty)) {
+      return;
+    }
     // Widget tests may mount without GoRouter; inline CheckInResultScreen then.
     if (GoRouter.maybeOf(context) == null) return;
     context.go(
       RouteNames.checkinResultPath(
-        checkInId: submission.id,
-        memberId: submission.memberId,
+        checkInId: id.isEmpty ? null : id,
+        memberId: mem,
       ),
       extra: submission,
     );
@@ -671,7 +690,14 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
         setState(() {
           _hasCheckedIn = true;
           _existingSubmission = null;
+          _lockedCheckInId = attendance.checkInId;
+          _lockedMemberId = attendance.submission?.memberId;
         });
+        _goToCheckInResult(
+          null,
+          checkInId: attendance.checkInId,
+          memberId: attendance.submission?.memberId,
+        );
         return;
       }
     }
@@ -691,6 +717,11 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       _hasCheckedIn = true;
       _existingSubmission = null;
     });
+    _goToCheckInResult(
+      null,
+      checkInId: _lockedCheckInId,
+      memberId: _lockedMemberId,
+    );
   }
 
   Future<Employee> _authoritativeMember(Employee selected) async {
@@ -880,6 +911,20 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       if (error != null) {
         if (error is DuplicateCheckInException) {
           final existing = formState.submissionResult;
+          final attemptedType = formState.type;
+          // Never open a different type's receipt (e.g. Member card after a
+          // Substitute submit that shared a phone before typed phone locks).
+          if (existing != null &&
+              attemptedType != null &&
+              existing.type != attemptedType) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(ErrorHandler.getUserMessage(error)),
+                backgroundColor: AppColors.error,
+              ),
+            );
+            return;
+          }
           if (existing != null) {
             ref
                 .read(deviceCheckInServiceProvider)
@@ -888,7 +933,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                   submission: existing,
                 );
           }
-          // Skip the dialog — open the first check-in's success screen directly.
+          // Same-type duplicate — open that check-in's success screen.
           await _openDuplicateAttendanceResult(existing);
           return;
         }
@@ -921,20 +966,22 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       });
     });
 
-    if (configAsync.isLoading && !configAsync.hasValue) {
+    final lastKnown = ref.watch(lastKnownCheckInRestrictionsProvider);
+    if (configAsync.isLoading && !configAsync.hasValue && lastKnown == null) {
       return const Scaffold(body: Center(child: MetaPhiLoadingIndicator()));
     }
 
     final dateRestrictionEnabled = configAsync.maybeWhen(
       data: (config) => config.dateRestrictionEnabled,
-      orElse: () => true,
+      orElse: () => lastKnown?.dateRestrictionEnabled ?? true,
     );
     final deviceRestrictionEnabled = configAsync.maybeWhen(
       data: (config) => config.deviceRestrictionEnabled,
-      orElse: () => true,
+      orElse: () => lastKnown?.deviceRestrictionEnabled ?? true,
     );
+    final configReady = configAsync.hasValue || lastKnown != null;
 
-    if (_isCheckingDevice && configAsync.hasValue) {
+    if (_isCheckingDevice && configReady) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !_isCheckingDevice) return;
         _applyDeviceGate(
@@ -946,8 +993,8 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     if (_hasCheckedIn || _existingSubmission != null) {
       return CheckInResultScreen(
         submission: _existingSubmission,
-        memberId: _existingSubmission?.memberId,
-        checkInId: _existingSubmission?.id,
+        memberId: _existingSubmission?.memberId ?? _lockedMemberId,
+        checkInId: _existingSubmission?.id ?? _lockedCheckInId,
       );
     }
 

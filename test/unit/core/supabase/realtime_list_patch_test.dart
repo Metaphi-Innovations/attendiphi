@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qr_checkin/core/supabase/realtime_list_patch.dart';
-import 'package:realtime_client/realtime_client.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
   PostgresChangePayload payload({

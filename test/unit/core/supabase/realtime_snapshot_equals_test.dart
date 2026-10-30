@@ -1,9 +1,9 @@
+import 'package:flutter_test/flutter_test.dart';
 import 'package:qr_checkin/core/supabase/realtime_snapshot_equals.dart';
 import 'package:qr_checkin/core/supabase/supabase_realtime_or_poll_stream.dart';
 import 'package:qr_checkin/features/checkin/domain/entities/check_in_submission.dart';
 import 'package:qr_checkin/features/checkin/domain/entities/check_in_type.dart';
 import 'package:qr_checkin/features/employee/domain/entities/employee.dart';
-import 'package:flutter_test/flutter_test.dart';
 
 Employee _member({
   required String id,

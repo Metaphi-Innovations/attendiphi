@@ -1,10 +1,44 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qr_checkin/core/utils/cookie_helper.dart';
 import 'package:qr_checkin/core/utils/cookie_helper_stub.dart' as cookie_stub;
+import 'package:qr_checkin/features/checkin/data/datasources/check_in_remote_data_source.dart';
 import 'package:qr_checkin/features/checkin/data/datasources/device_checkin_service.dart';
 import 'package:qr_checkin/features/checkin/domain/entities/check_in_submission.dart';
 import 'package:qr_checkin/features/checkin/domain/entities/check_in_type.dart';
+import 'package:qr_checkin/features/checkin/domain/entities/public_device_session_attendance.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+class _FakeCheckInRemote extends Fake implements CheckInRemoteDataSource {
+  _FakeCheckInRemote({this.publicAttendance});
+
+  PublicDeviceSessionAttendance? publicAttendance;
+  int publicCalls = 0;
+
+  @override
+  Future<PublicDeviceSessionAttendance?> getPublicDeviceSessionAttendance({
+    required String deviceId,
+    required String sessionDateYmd,
+  }) async {
+    publicCalls++;
+    return publicAttendance;
+  }
+
+  @override
+  Future<CheckInSubmission?> getDeviceSubmission(
+    String deviceId,
+    DateTime sessionDate,
+  ) async => null;
+
+  @override
+  Future<bool> isDeviceSessionLocked({
+    required String deviceId,
+    required String sessionDateYmd,
+  }) async => false;
+
+  @override
+  Future<CheckInSubmission?> getPublicCheckInSummary(String checkInId) async =>
+      null;
+}
 
 void main() {
   late DeviceCheckInService service;
@@ -264,4 +298,75 @@ void main() {
     expect(attendance.alreadyCheckedIn, isTrue);
     expect(attendance.submission?.id, 'sub-resolve');
   });
+
+  test(
+    'resolveSessionAttendance empty prefs + remote locked submission → alreadyCheckedIn',
+    () async {
+      final prefs = await SharedPreferences.getInstance();
+      final prior = CheckInSubmission(
+        id: 'sub-remote',
+        locationId: 'location_x',
+        locationName: 'Metaphi',
+        userName: 'First Member',
+        userPhone: '+919876543210',
+        type: CheckInType.member,
+        userLatitude: 19.08,
+        userLongitude: 72.91,
+        gpsAccuracy: 12,
+        distanceMeters: 8,
+        timestamp: DateTime(2026, 10, 30, 10, 0),
+        memberId: 'mem_1',
+        deviceId: 'fp_abc',
+      );
+      final remote = _FakeCheckInRemote(
+        publicAttendance: PublicDeviceSessionAttendance(
+          locked: true,
+          submission: prior,
+          checkInId: prior.id,
+        ),
+      );
+      service = DeviceCheckInService(prefs, remote);
+
+      final attendance = await service.resolveSessionAttendance(
+        sessionDateStr: '2026-10-30',
+        locationId: 'location_x',
+      );
+
+      expect(attendance.alreadyCheckedIn, isTrue);
+      expect(attendance.submission?.userName, 'First Member');
+      expect(attendance.submission?.id, 'sub-remote');
+      expect(remote.publicCalls, 1);
+
+      // RPC hit is cached locally for the next gate.
+      final cached = await service.getSubmissionForSession(
+        sessionDateStr: '2026-10-30',
+        locationId: 'location_x',
+        probeServer: false,
+      );
+      expect(cached?.id, 'sub-remote');
+    },
+  );
+
+  test(
+    'resolveSessionAttendance empty prefs + remote locked without payload → claimed',
+    () async {
+      final prefs = await SharedPreferences.getInstance();
+      final remote = _FakeCheckInRemote(
+        publicAttendance: const PublicDeviceSessionAttendance(
+          locked: true,
+          checkInId: 'sub-only-id',
+        ),
+      );
+      service = DeviceCheckInService(prefs, remote);
+
+      final attendance = await service.resolveSessionAttendance(
+        sessionDateStr: '2026-10-30',
+        locationId: 'location_x',
+      );
+
+      expect(attendance.alreadyCheckedIn, isTrue);
+      expect(attendance.submission, isNull);
+      expect(attendance.claimedWithoutPayload, isTrue);
+    },
+  );
 }

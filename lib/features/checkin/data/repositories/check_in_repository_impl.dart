@@ -1,5 +1,6 @@
 import '../../../../core/constants/app_constants.dart';
 import '../../domain/entities/check_in_submission.dart';
+import '../../domain/entities/check_in_type.dart';
 import '../../domain/entities/paginated_check_ins_result.dart';
 import '../../domain/repositories/check_in_repository.dart';
 import '../datasources/check_in_remote_data_source.dart';
@@ -45,16 +46,29 @@ class CheckInRepositoryImpl implements CheckInRepository {
   }
 
   @override
-  Future<bool> hasIdentityCheckedIn(String phone, DateTime sessionDate) {
-    return _remoteDataSource.hasIdentityCheckedIn(phone, sessionDate);
+  Future<bool> hasIdentityCheckedIn(
+    String phone,
+    DateTime sessionDate, {
+    CheckInType? type,
+  }) {
+    return _remoteDataSource.hasIdentityCheckedIn(
+      phone,
+      sessionDate,
+      type: type,
+    );
   }
 
   @override
   Future<CheckInSubmission?> getIdentitySubmission(
     String phone,
-    DateTime sessionDate,
-  ) {
-    return _remoteDataSource.getIdentitySubmission(phone, sessionDate);
+    DateTime sessionDate, {
+    CheckInType? type,
+  }) {
+    return _remoteDataSource.getIdentitySubmission(
+      phone,
+      sessionDate,
+      type: type,
+    );
   }
 
   @override

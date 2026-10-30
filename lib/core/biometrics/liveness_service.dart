@@ -23,9 +23,9 @@ class LivenessCheckResult {
 /// Face matching alone cannot stop a printed photo or screen replay.
 /// Do not invent random/fake liveness scores here.
 ///
-/// TODO: Integrate a production liveness provider (challenge-response blink,
-/// depth, or a dedicated anti-spoofing model) and call it after face detection
-/// and before descriptor matching. Only then consider a hard gate behind a
+/// Future work: integrate a production liveness provider (challenge-response
+/// blink, depth, or a dedicated anti-spoofing model) after face detection and
+/// before descriptor matching. Only then consider a hard gate behind a
 /// feature flag.
 abstract class LivenessService {
   Future<LivenessCheckResult> evaluateLiveCapture();

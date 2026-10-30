@@ -8,7 +8,6 @@ import '../../../checkin/presentation/providers/checkin_providers.dart';
 import '../../../employee/domain/employee_lookup.dart';
 import '../../../employee/domain/entities/employee.dart';
 import '../../../employee/presentation/providers/employee_providers.dart';
-import '../../domain/substitute_check_in_mapping.dart';
 import 'admin_auth_provider.dart';
 
 /// Represents the attendance status of a member on a specific Thursday meeting.
@@ -100,12 +99,28 @@ class AttendanceOverviewFilterState {
   }
 }
 
+/// Default month for the overview matrix (clamped to Sep 2026 – Sep 2027).
+///
+/// Opening on "All Months" builds ~140×57 cells and feels laggy on web; start
+/// on the current month (~4–5 date columns) instead.
+DateTime attendanceOverviewDefaultMonth([DateTime? now]) {
+  final n = now ?? DateTime.now();
+  final candidate = DateTime(n.year, n.month, 1);
+  final start = DateTime(2026, 9, 1);
+  final end = DateTime(2027, 9, 1);
+  if (candidate.isBefore(start)) return start;
+  if (candidate.isAfter(end)) return end;
+  return candidate;
+}
+
 /// Notifier to control filtering in Attendance Overview.
 class AttendanceOverviewFilterNotifier
     extends Notifier<AttendanceOverviewFilterState> {
   @override
   AttendanceOverviewFilterState build() {
-    return const AttendanceOverviewFilterState();
+    return AttendanceOverviewFilterState(
+      selectedMonth: attendanceOverviewDefaultMonth(),
+    );
   }
 
   void setSearchQuery(String query) {
@@ -117,7 +132,9 @@ class AttendanceOverviewFilterNotifier
   }
 
   void resetFilters() {
-    state = const AttendanceOverviewFilterState();
+    state = AttendanceOverviewFilterState(
+      selectedMonth: attendanceOverviewDefaultMonth(),
+    );
   }
 }
 
@@ -185,6 +202,9 @@ String _overviewYmd(DateTime d) {
 }
 
 /// Month-scoped check-ins for Attendance Overview (avoids full-history dumps).
+///
+/// When [AttendanceOverviewFilterState.selectedMonth] is null (All Months),
+/// fetch the full Sep 2026 – Sep 2027 window so every visible column has data.
 final overviewCheckInsStreamProvider = StreamProvider<List<CheckInSubmission>>((
   ref,
 ) {
@@ -198,9 +218,16 @@ final overviewCheckInsStreamProvider = StreamProvider<List<CheckInSubmission>>((
     return Stream.value(const <CheckInSubmission>[]);
   }
   final filters = ref.watch(attendanceOverviewFilterProvider);
-  final month = filters.selectedMonth ?? DateTime.now();
-  final from = DateTime(month.year, month.month, 1);
-  final to = DateTime(month.year, month.month + 1, 0);
+  final DateTime from;
+  final DateTime to;
+  final month = filters.selectedMonth;
+  if (month == null) {
+    from = DateTime(2026, 9, 1);
+    to = DateTime(2027, 9, 30);
+  } else {
+    from = DateTime(month.year, month.month, 1);
+    to = DateTime(month.year, month.month + 1, 0);
+  }
   final repository = ref.watch(checkInRepositoryProvider);
   return repository.streamCheckIns(
     sessionDateFrom: _overviewYmd(from),
@@ -240,19 +267,30 @@ final attendanceMatrixProvider = Provider<AsyncValue<List<MemberAttendanceRow>>>
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
 
-  // Helper to format date keys
   String dateKey(DateTime dt) =>
       '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
 
-  // Index check-ins once by session day, then O(1) member lookups (Phase 4).
-  final byDate = <String, List<CheckInSubmission>>{};
+  // Only build cells for the filtered month (All Months → full range).
+  final relevantThursdays = filters.selectedMonth == null
+      ? allThursdays
+      : allThursdays
+            .where(
+              (d) =>
+                  d.year == filters.selectedMonth!.year &&
+                  d.month == filters.selectedMonth!.month,
+            )
+            .toList(growable: false);
+
+  // Per-day indexes for O(1) member resolution (avoids O(members × days ×
+  // check-ins) EmployeeLookup scans on every rebuild).
+  final byDate = <String, _OverviewDayIndex>{};
   for (final sub in checkIns) {
     if (sub.type.isVisitor) continue;
     final key = dateKey(sub.timestamp);
-    (byDate[key] ??= <CheckInSubmission>[]).add(sub);
+    final day = byDate.putIfAbsent(key, _OverviewDayIndex.new);
+    day.add(sub);
   }
 
-  // Filter members matching search query
   final filteredEmployees = employees.where((emp) {
     if (filters.searchQuery.isEmpty) return true;
     final query = filters.searchQuery.toLowerCase();
@@ -265,31 +303,24 @@ final attendanceMatrixProvider = Provider<AsyncValue<List<MemberAttendanceRow>>>
 
   for (final member in filteredEmployees) {
     final attendanceMap = <String, MemberDayAttendance>{};
-    int presentCount = 0;
-    int substituteCount = 0;
-    int absentCount = 0;
+    var presentCount = 0;
+    var substituteCount = 0;
+    var absentCount = 0;
+    final memberPhoneDigits = EmployeeLookup.digits(member.phone);
+    final memberNameKey = EmployeeLookup.normalizeName(member.name);
 
-    for (final thursday in allThursdays) {
+    for (final thursday in relevantThursdays) {
       final key = dateKey(thursday);
       final isTodayOrFuture = !thursday.isBefore(today);
-      final isThursInSelectedMonth =
-          filters.selectedMonth == null ||
-          (thursday.year == filters.selectedMonth!.year &&
-              thursday.month == filters.selectedMonth!.month);
+      final latest = byDate[key]?.resolve(
+        memberId: member.id,
+        phoneDigits: memberPhoneDigits,
+        nameKey: memberNameKey,
+        memberPhone: member.phone,
+        memberName: member.name,
+      );
 
-      final daySubs = byDate[key] ?? const <CheckInSubmission>[];
-      final matchingSubmissions = daySubs.where((sub) {
-        if (sub.type.isSubstitute) {
-          return substituteCheckInCoversMember(raw: sub, member: member);
-        }
-        return EmployeeLookup.forCheckIn([member], sub) != null;
-      }).toList();
-
-      if (matchingSubmissions.isNotEmpty) {
-        // Sort by timestamp descending (latest check-in takes precedence)
-        matchingSubmissions.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-        final latest = matchingSubmissions.first;
-
+      if (latest != null) {
         if (latest.type == CheckInType.absent) {
           attendanceMap[key] = MemberDayAttendance(
             date: thursday,
@@ -297,9 +328,7 @@ final attendanceMatrixProvider = Provider<AsyncValue<List<MemberAttendanceRow>>>
             submission: latest,
             isEdited: latest.isEdited,
           );
-          if (isThursInSelectedMonth) {
-            absentCount++;
-          }
+          absentCount++;
         } else if (latest.type == CheckInType.substitute) {
           attendanceMap[key] = MemberDayAttendance(
             date: thursday,
@@ -308,43 +337,33 @@ final attendanceMatrixProvider = Provider<AsyncValue<List<MemberAttendanceRow>>>
             substituteName: latest.userName,
             isEdited: latest.isEdited,
           );
-          if (isThursInSelectedMonth) {
-            substituteCount++;
-          }
+          substituteCount++;
         } else {
-          // Member / Visitor (Present)
           attendanceMap[key] = MemberDayAttendance(
             date: thursday,
             status: MemberAttendanceStatus.present,
             submission: latest,
             isEdited: latest.isEdited,
           );
-          if (isThursInSelectedMonth) {
-            presentCount++;
-          }
+          presentCount++;
         }
+      } else if (isTodayOrFuture) {
+        // Today / future: open session (aligns with Daily "Not Checked In").
+        attendanceMap[key] = MemberDayAttendance(
+          date: thursday,
+          status: MemberAttendanceStatus.upcoming,
+        );
       } else {
-        if (isTodayOrFuture) {
-          // Today / future: open session (aligns with Daily "Not Checked In").
-          // Past Thursdays with no record remain Absent.
-          attendanceMap[key] = MemberDayAttendance(
-            date: thursday,
-            status: MemberAttendanceStatus.upcoming,
-          );
-        } else {
-          attendanceMap[key] = MemberDayAttendance(
-            date: thursday,
-            status: MemberAttendanceStatus.absent,
-          );
-          if (isThursInSelectedMonth) {
-            absentCount++;
-          }
-        }
+        attendanceMap[key] = MemberDayAttendance(
+          date: thursday,
+          status: MemberAttendanceStatus.absent,
+        );
+        absentCount++;
       }
     }
 
     final totalCompletedMeetings = presentCount + substituteCount + absentCount;
-    final double attendanceRate = totalCompletedMeetings > 0
+    final attendanceRate = totalCompletedMeetings > 0
         ? ((presentCount + substituteCount) / totalCompletedMeetings) * 100
         : 0.0;
 
@@ -362,6 +381,110 @@ final attendanceMatrixProvider = Provider<AsyncValue<List<MemberAttendanceRow>>>
 
   return AsyncValue.data(rows);
 });
+
+/// Per-session-day check-in index for the overview matrix.
+class _OverviewDayIndex {
+  final Map<String, CheckInSubmission> memberById = {};
+  final Map<String, CheckInSubmission> memberByPhone = {};
+  final Map<String, CheckInSubmission> memberByName = {};
+  final Map<String, CheckInSubmission> substituteByCoveredId = {};
+  final Map<String, CheckInSubmission> substituteByCoveredName = {};
+  final List<CheckInSubmission> substituteLegacy = [];
+
+  static void _putLatest(
+    Map<String, CheckInSubmission> map,
+    String key,
+    CheckInSubmission sub,
+  ) {
+    final existing = map[key];
+    if (existing == null || sub.timestamp.isAfter(existing.timestamp)) {
+      map[key] = sub;
+    }
+  }
+
+  static void _putPhoneKeys(
+    Map<String, CheckInSubmission> map,
+    String? phone,
+    CheckInSubmission sub,
+  ) {
+    final digits = EmployeeLookup.digits(phone);
+    if (digits.isEmpty) return;
+    _putLatest(map, digits, sub);
+    if (digits.length > 10) {
+      _putLatest(map, digits.substring(digits.length - 10), sub);
+    }
+  }
+
+  void add(CheckInSubmission sub) {
+    if (sub.type.isSubstitute) {
+      final coveredId = (sub.memberId ?? '').trim();
+      if (coveredId.isNotEmpty) {
+        _putLatest(substituteByCoveredId, coveredId, sub);
+        return;
+      }
+      final coveredName = EmployeeLookup.normalizeName(sub.substituteForMember);
+      if (coveredName.isNotEmpty) {
+        _putLatest(substituteByCoveredName, coveredName, sub);
+        return;
+      }
+      // Admin-converted / legacy: no covered id/name — match by phone/name later.
+      substituteLegacy.add(sub);
+      return;
+    }
+
+    final memberId = (sub.memberId ?? '').trim();
+    if (memberId.isNotEmpty) {
+      _putLatest(memberById, memberId, sub);
+      return;
+    }
+    _putPhoneKeys(memberByPhone, sub.userPhone, sub);
+    final nameKey = EmployeeLookup.normalizeName(sub.userName);
+    if (nameKey.isNotEmpty) {
+      _putLatest(memberByName, nameKey, sub);
+    }
+  }
+
+  CheckInSubmission? resolve({
+    required String memberId,
+    required String phoneDigits,
+    required String nameKey,
+    required String memberPhone,
+    required String memberName,
+  }) {
+    CheckInSubmission? best;
+
+    void consider(CheckInSubmission? candidate) {
+      if (candidate == null) return;
+      if (best == null || candidate.timestamp.isAfter(best!.timestamp)) {
+        best = candidate;
+      }
+    }
+
+    consider(substituteByCoveredId[memberId]);
+    if (nameKey.isNotEmpty) {
+      consider(substituteByCoveredName[nameKey]);
+    }
+    for (final legacy in substituteLegacy) {
+      if (EmployeeLookup.phonesMatch(legacy.userPhone, memberPhone) ||
+          EmployeeLookup.normalizeName(legacy.userName) == nameKey) {
+        consider(legacy);
+      }
+    }
+
+    consider(memberById[memberId]);
+    if (phoneDigits.isNotEmpty) {
+      consider(memberByPhone[phoneDigits]);
+      if (phoneDigits.length > 10) {
+        consider(memberByPhone[phoneDigits.substring(phoneDigits.length - 10)]);
+      }
+    }
+    if (nameKey.isNotEmpty) {
+      consider(memberByName[nameKey]);
+    }
+
+    return best;
+  }
+}
 
 /// Overall Summary Statistics Provider for the Attendance Overview screen.
 class AttendanceOverviewStats {

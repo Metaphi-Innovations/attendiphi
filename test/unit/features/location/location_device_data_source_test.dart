@@ -148,7 +148,7 @@ void main() {
     });
 
     test('skips stale last-known and uses medium live fix', () async {
-      var usedAccuracy = <LocationAccuracy>[];
+      final usedAccuracy = <LocationAccuracy>[];
       final stale = _pos(
         timestamp: now.subtract(const Duration(minutes: 30)),
         accuracy: 15,
@@ -251,9 +251,10 @@ void main() {
       );
     });
 
-    test('deniedForever throws permanently denied', () async {
+    test('deniedForever throws permanently denied on native', () async {
       final ds = LocationDeviceDataSourceImpl(
         clock: () => now,
+        isWebOverride: false,
         isLocationServiceEnabled: () async => true,
         checkPermission: () async => LocationPermission.deniedForever,
         requestPermission: () async => LocationPermission.deniedForever,
@@ -266,6 +267,48 @@ void main() {
         throwsA(isA<LocationPermissionPermanentlyDeniedException>()),
       );
     });
+
+    test('web deniedForever is recoverable soft deny (not blocked)', () async {
+      var requestCalls = 0;
+      final ds = LocationDeviceDataSourceImpl(
+        clock: () => now,
+        isWebOverride: true,
+        isLocationServiceEnabled: () async => true,
+        checkPermission: () async => LocationPermission.deniedForever,
+        requestPermission: () async {
+          requestCalls++;
+          return LocationPermission.deniedForever;
+        },
+        getLastKnownPosition: () async => null,
+        getCurrentPositionFn: (_) async => _pos(timestamp: now),
+      );
+
+      await expectLater(
+        ds.getCurrentPosition(),
+        throwsA(isA<LocationPermissionDeniedException>()),
+      );
+      expect(requestCalls, 1);
+    });
+
+    test(
+      'services off after deny prefers LocationServiceDisabledException',
+      () async {
+        final ds = LocationDeviceDataSourceImpl(
+          clock: () => now,
+          isWebOverride: true,
+          isLocationServiceEnabled: () async => false,
+          checkPermission: () async => LocationPermission.deniedForever,
+          requestPermission: () async => LocationPermission.deniedForever,
+          getLastKnownPosition: () async => null,
+          getCurrentPositionFn: (_) async => _pos(timestamp: now),
+        );
+
+        await expectLater(
+          ds.getCurrentPosition(),
+          throwsA(isA<LocationServiceDisabledException>()),
+        );
+      },
+    );
 
     test('services disabled throws LocationServiceDisabledException', () async {
       final ds = LocationDeviceDataSourceImpl(

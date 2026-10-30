@@ -132,15 +132,27 @@ class EmployeeLookup {
     return byId(employees, id);
   }
 
-  /// Returns the live member name for [memberId], or null when that document
-  /// is not loaded yet. Does not return [submission.userName] when a memberId
-  /// is present, so a stale denormalized snapshot cannot replace the member.
+  /// Identity shown on the QR success card.
+  ///
+  /// - **Member**: live roster name for [memberId] (ignore stale snapshot).
+  /// - **Substitute / Visitor**: attending person from the submission
+  ///   (`substituteName` / `userName`). Do **not** resolve [memberId] — for
+  ///   substitutes that id is the covered member, not the person who checked in.
   static String? successDisplayName({
     CheckInSubmission? submission,
     Iterable<Employee> employees = const [],
     String? memberId,
     Employee? authoritativeMember,
   }) {
+    if (submission != null &&
+        (submission.type.isSubstitute || submission.type.isVisitor)) {
+      final substituteName = submission.substituteName?.trim() ?? '';
+      if (substituteName.isNotEmpty) return substituteName;
+      final userName = submission.userName.trim();
+      if (userName.isNotEmpty) return userName;
+      return null;
+    }
+
     final fromDoc = authoritativeMember?.name.trim() ?? '';
     if (fromDoc.isNotEmpty) return fromDoc;
 
@@ -163,6 +175,15 @@ class EmployeeLookup {
     String? memberId,
     Employee? authoritativeMember,
   }) {
+    if (submission != null &&
+        (submission.type.isSubstitute || submission.type.isVisitor)) {
+      final substitutePhone = submission.substitutePhone?.trim() ?? '';
+      if (substitutePhone.isNotEmpty) return substitutePhone;
+      final userPhone = submission.userPhone.trim();
+      if (userPhone.isNotEmpty) return userPhone;
+      return null;
+    }
+
     final fromDoc = authoritativeMember?.phone.trim() ?? '';
     if (fromDoc.isNotEmpty) return fromDoc;
 

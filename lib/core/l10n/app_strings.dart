@@ -29,7 +29,8 @@ class AppStrings {
       'Location permission is required to verify that you are at the check-in location.';
   static const locationPermissionGrant = 'Grant Permission';
   static const locationPermissionDenied =
-      'Location was denied. Enable location for this site to verify you are at the venue.';
+      'Location was denied. Enable location for this site in the browser, then '
+      'reload this page or scan the QR again to verify you are at the venue.';
   static const locationPermissionPermanentlyDenied =
       'Location is blocked for this site. Enable it in the browser, then reload or scan the QR again to continue check-in.';
   static const locationPermissionOpenSettings = 'Open Settings';
@@ -37,7 +38,8 @@ class AppStrings {
   static const locationPermissionWebHelp =
       'On web: tap the lock/tune icon next to the URL → Site settings → Location → Allow (or Ask), then reload this page or scan the QR again.';
   static const locationServiceDisabled =
-      'Location services are turned off. Please enable them to continue.';
+      'Location is turned off on this phone. Turn on Location (and Precise Location '
+      'if shown), then reload this page or scan the QR again so the browser can ask for permission.';
   static const locationFetchingPosition = 'Getting your location...';
   static const locationTimeout =
       'Unable to determine your location. Please check your GPS and try again.';

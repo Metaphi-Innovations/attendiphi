@@ -213,11 +213,20 @@ class _GranularRestrictionsDialogState
   bool _savingDate = false;
   bool _savingDevice = false;
 
+  /// Optimistic switch values so taps flip immediately (controlled Switch
+  /// otherwise stays on the old provider value until the write finishes).
+  bool? _optimisticLocation;
+  bool? _optimisticDate;
+  bool? _optimisticDevice;
+
   bool get _busy => _savingLocation || _savingDate || _savingDevice;
 
   Future<void> _onLocationChanged(bool next) async {
     if (_busy) return;
-    setState(() => _savingLocation = true);
+    setState(() {
+      _savingLocation = true;
+      _optimisticLocation = next;
+    });
     try {
       await ref
           .read(checkInRestrictionsNotifierProvider.notifier)
@@ -225,13 +234,21 @@ class _GranularRestrictionsDialogState
       if (!mounted) return;
       CheckInRestrictionsToggle._showWriteResult(context, ref);
     } finally {
-      if (mounted) setState(() => _savingLocation = false);
+      if (mounted) {
+        setState(() {
+          _savingLocation = false;
+          _optimisticLocation = null;
+        });
+      }
     }
   }
 
   Future<void> _onDateChanged(bool next) async {
     if (_busy) return;
-    setState(() => _savingDate = true);
+    setState(() {
+      _savingDate = true;
+      _optimisticDate = next;
+    });
     try {
       await ref
           .read(checkInRestrictionsNotifierProvider.notifier)
@@ -239,13 +256,21 @@ class _GranularRestrictionsDialogState
       if (!mounted) return;
       CheckInRestrictionsToggle._showWriteResult(context, ref);
     } finally {
-      if (mounted) setState(() => _savingDate = false);
+      if (mounted) {
+        setState(() {
+          _savingDate = false;
+          _optimisticDate = null;
+        });
+      }
     }
   }
 
   Future<void> _onDeviceChanged(bool next) async {
     if (_busy) return;
-    setState(() => _savingDevice = true);
+    setState(() {
+      _savingDevice = true;
+      _optimisticDevice = next;
+    });
     try {
       await ref
           .read(checkInRestrictionsNotifierProvider.notifier)
@@ -253,15 +278,27 @@ class _GranularRestrictionsDialogState
       if (!mounted) return;
       CheckInRestrictionsToggle._showWriteResult(context, ref);
     } finally {
-      if (mounted) setState(() => _savingDevice = false);
+      if (mounted) {
+        setState(() {
+          _savingDevice = false;
+          _optimisticDevice = null;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final locationOn = ref.watch(locationRestrictionEnabledProvider);
-    final dateOn = ref.watch(dateRestrictionEnabledProvider);
-    final deviceOn = ref.watch(deviceRestrictionEnabledProvider);
+    // Local optimistic values flip the switch immediately on tap.
+    final locationOn = _optimisticLocation != null
+        ? _optimisticLocation!
+        : ref.watch(locationRestrictionEnabledProvider);
+    final dateOn = _optimisticDate != null
+        ? _optimisticDate!
+        : ref.watch(dateRestrictionEnabledProvider);
+    final deviceOn = _optimisticDevice != null
+        ? _optimisticDevice!
+        : ref.watch(deviceRestrictionEnabledProvider);
     final busy = _busy;
 
     return AlertDialog(

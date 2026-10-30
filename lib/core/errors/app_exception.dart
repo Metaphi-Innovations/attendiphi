@@ -32,7 +32,8 @@ sealed class AppException implements Exception {
 class LocationPermissionDeniedException extends AppException {
   const LocationPermissionDeniedException({
     super.userMessage =
-        'Location was denied. Enable location for this site to verify you are at the venue.',
+        'Location was denied. Enable location for this site in the browser, then '
+        'reload this page or scan the QR again to verify you are at the venue.',
     super.technicalMessage = 'Location permission denied by user.',
     super.originalError,
     super.stackTrace,
@@ -55,7 +56,8 @@ class LocationPermissionPermanentlyDeniedException extends AppException {
 class LocationServiceDisabledException extends AppException {
   const LocationServiceDisabledException({
     super.userMessage =
-        'Location services are turned off. Please enable them to continue.',
+        'Location is turned off on this phone. Turn on Location (and Precise Location '
+        'if shown), then reload this page or scan the QR again so the browser can ask for permission.',
     super.technicalMessage = 'Device location services disabled.',
     super.originalError,
     super.stackTrace,
