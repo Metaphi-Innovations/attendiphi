@@ -14,11 +14,15 @@ abstract class LocationDeviceDataSource {
   ///
   /// [permissionAlreadyGranted] means the caller just finished a permission
   /// prompt; we still re-check status (web can report stale denied).
-  /// [forceRefresh] skips in-memory cache and last-known fast path.
+  /// [forceRefresh] skips in-memory cache and last-known fast path, and
+  /// always re-invokes [Geolocator.requestPermission] before acquiring.
   Future<Position> getCurrentPosition({
     bool permissionAlreadyGranted = false,
     bool forceRefresh = false,
   });
+
+  /// Drops the short-lived in-memory fix so a fresh QR scan cannot reuse it.
+  void clearCachedPosition();
 }
 
 /// Whether [position] is accurate enough for check-in proximity.
@@ -83,6 +87,12 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
   /// Cached position and its wall-clock capture time for short-term reuse.
   Position? _cachedPosition;
   DateTime? _cacheTimestamp;
+
+  @override
+  void clearCachedPosition() {
+    _cachedPosition = null;
+    _cacheTimestamp = null;
+  }
 
   /// How long a cached GPS position remains valid (seconds).
   static const int cacheDurationSeconds = 180;
@@ -152,15 +162,18 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
 
     // 2. Permissions first (so web can show Allow), then services check.
     // Never map OS Location-off → “blocked for this site”.
+    // Fresh QR / Retry (forceRefresh) always re-invokes requestPermission so
+    // the browser permission API runs even when a prior grant is cached.
     var permission = await _checkPermission();
     var granted =
         permission == LocationPermission.always ||
         permission == LocationPermission.whileInUse;
 
-    if (!granted) {
+    if (!granted || forceRefresh) {
       AppLogger.info(
-        'Location not granted (current=$permission, '
-        'alreadyGrantedFlag=$permissionAlreadyGranted, web=$_isWeb) — requesting',
+        'Requesting location permission (current=$permission, '
+        'alreadyGrantedFlag=$permissionAlreadyGranted, '
+        'forceRefresh=$forceRefresh, web=$_isWeb)',
         tag: 'LocationDeviceDataSource',
       );
       permission = await _requestPermission();

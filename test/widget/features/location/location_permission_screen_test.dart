@@ -386,7 +386,58 @@ void main() {
     );
 
     testWidgets(
-      'permission deny shows guidance text without Allow Location button',
+      'fresh QR shows Allow Location before any GPS attempt',
+      (tester) async {
+        var permissionRequests = 0;
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              checkInRestrictionsConfigProvider.overrideWith(
+                (ref) => Stream.value(
+                  const CheckInRestrictionsConfig(
+                    locationRestrictionEnabled: true,
+                    dateRestrictionEnabled: false,
+                    deviceRestrictionEnabled: false,
+                  ),
+                ),
+              ),
+              locationConfigFamilyProvider(testLocation.id).overrideWith(
+                (ref) async => testLocation,
+              ),
+              permissionServiceProvider.overrideWithValue(
+                PermissionService(
+                  isWebOverride: true,
+                  isLocationServiceEnabled: () async => true,
+                  checkPermission: () async => LocationPermission.whileInUse,
+                  requestPermission: () async {
+                    permissionRequests++;
+                    return LocationPermission.whileInUse;
+                  },
+                ),
+              ),
+            ],
+            child: MaterialApp(
+              home: Scaffold(
+                body: LocationPermissionScreen(
+                  location: testLocation,
+                  sessionDateStr: '2026-10-30',
+                  nowProvider: () => DateTime(2026, 10, 30, 11, 0),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+
+        expect(find.text(AppStrings.locationPermissionAllow), findsOneWidget);
+        expect(find.text(AppStrings.locationPermissionAwaitingAllow), findsOneWidget);
+        expect(permissionRequests, 0);
+      },
+    );
+
+    testWidgets(
+      'permission deny after Allow shows guidance and Allow Location CTA',
       (tester) async {
         await tester.pumpWidget(
           ProviderScope(
@@ -427,16 +478,19 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 400));
 
-        expect(find.text(AppStrings.locationPermissionAllow), findsNothing);
+        expect(find.text(AppStrings.locationPermissionAllow), findsOneWidget);
+        await tester.tap(find.text(AppStrings.locationPermissionAllow));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+
         expect(find.text(AppStrings.locationPermissionPermanentlyDenied), findsNothing);
         expect(find.text(AppStrings.locationPermissionDenied), findsOneWidget);
-        // Web help is kIsWeb-only; VM tests still must not show the CTA.
-        expect(find.textContaining('Tap Allow Location'), findsNothing);
+        expect(find.text(AppStrings.locationPermissionAllow), findsOneWidget);
       },
     );
 
     testWidgets(
-      'OS location off shows turn-on guidance, not blocked-for-site',
+      'OS location off shows turn-on guidance with Allow Location CTA',
       (tester) async {
         await tester.pumpWidget(
           ProviderScope(
@@ -477,10 +531,15 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 400));
 
+        expect(find.text(AppStrings.locationPermissionAllow), findsOneWidget);
+        await tester.tap(find.text(AppStrings.locationPermissionAllow));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+
         expect(find.text(AppStrings.locationPermissionPermanentlyDenied), findsNothing);
         expect(find.textContaining('Location is blocked'), findsNothing);
         expect(find.text(AppStrings.locationServiceDisabled), findsOneWidget);
-        expect(find.text(AppStrings.locationPermissionAllow), findsNothing);
+        expect(find.text(AppStrings.locationPermissionAllow), findsOneWidget);
       },
     );
 

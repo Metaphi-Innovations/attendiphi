@@ -57,7 +57,7 @@ class LocationServiceDisabledException extends AppException {
   const LocationServiceDisabledException({
     super.userMessage =
         'Location is turned off on this phone. Turn on Location (and Precise Location '
-        'if shown), then reload this page or scan the QR again so the browser can ask for permission.',
+        'if shown), return here, then tap Allow Location so the browser can ask for permission.',
     super.technicalMessage = 'Device location services disabled.',
     super.originalError,
     super.stackTrace,

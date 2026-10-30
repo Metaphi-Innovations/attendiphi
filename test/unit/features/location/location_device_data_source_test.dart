@@ -96,6 +96,7 @@ void main() {
 
     test('forceRefresh skips cache and last-known fast path', () async {
       var liveCalls = 0;
+      var permissionRequests = 0;
       final lastKnown = _pos(
         timestamp: now.subtract(const Duration(seconds: 10)),
         accuracy: 15,
@@ -105,6 +106,10 @@ void main() {
         clock: () => now,
         isLocationServiceEnabled: () async => true,
         checkPermission: () async => LocationPermission.whileInUse,
+        requestPermission: () async {
+          permissionRequests++;
+          return LocationPermission.whileInUse;
+        },
         getLastKnownPosition: () async => lastKnown,
         getCurrentPositionFn: (_) async {
           liveCalls++;
@@ -114,6 +119,7 @@ void main() {
 
       await ds.getCurrentPosition(permissionAlreadyGranted: true);
       expect(liveCalls, 0); // last-known
+      expect(permissionRequests, 0);
 
       final fresh = await ds.getCurrentPosition(
         permissionAlreadyGranted: true,
@@ -121,6 +127,29 @@ void main() {
       );
       expect(fresh.latitude, 19.9);
       expect(liveCalls, 1);
+      // Fresh QR / Retry always re-invokes requestPermission.
+      expect(permissionRequests, 1);
+    });
+
+    test('clearCachedPosition drops in-memory fix', () async {
+      var liveCalls = 0;
+      final ds = LocationDeviceDataSourceImpl(
+        clock: () => now,
+        isLocationServiceEnabled: () async => true,
+        checkPermission: () async => LocationPermission.whileInUse,
+        getLastKnownPosition: () async => null,
+        getCurrentPositionFn: (_) async {
+          liveCalls++;
+          return _pos(timestamp: now, lat: 19.0 + liveCalls);
+        },
+      );
+
+      await ds.getCurrentPosition(permissionAlreadyGranted: true);
+      expect(liveCalls, 1);
+      ds.clearCachedPosition();
+      final again = await ds.getCurrentPosition(permissionAlreadyGranted: true);
+      expect(liveCalls, 2);
+      expect(again.latitude, 21.0);
     });
 
     test('uses fresh last-known before waiting on live GPS', () async {
@@ -356,6 +385,7 @@ void main() {
           isWebOverride: true,
           isLocationServiceEnabled: () async => true,
           checkPermission: () async => LocationPermission.whileInUse,
+          requestPermission: () async => LocationPermission.whileInUse,
           getLastKnownPosition: () async {
             lastKnownCalls++;
             throw UnsupportedError(
@@ -459,6 +489,7 @@ void main() {
           isWebOverride: true,
           isLocationServiceEnabled: () async => true,
           checkPermission: () async => LocationPermission.whileInUse,
+          requestPermission: () async => LocationPermission.whileInUse,
           getLastKnownPosition: () async {
             lastKnownCalls++;
             throw UnsupportedError(
@@ -513,6 +544,7 @@ void main() {
         isWebOverride: true,
         isLocationServiceEnabled: () async => true,
         checkPermission: () async => LocationPermission.whileInUse,
+        requestPermission: () async => LocationPermission.whileInUse,
         getLastKnownPosition: () async => null,
         getCurrentPositionFn: (_) async {
           throw Exception('timeout');

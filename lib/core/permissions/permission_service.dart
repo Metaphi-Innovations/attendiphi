@@ -36,22 +36,26 @@ class PermissionService {
   /// we still call [requestPermission], prefer a recoverable services-off /
   /// soft-deny error over “blocked for this site”, and let Retry re-prompt.
   ///
+  /// When [forcePrompt] is true (every QR Allow tap), [requestPermission] runs
+  /// even if a prior grant is cached so the browser permission API is invoked.
+  ///
   /// Throws:
   /// - [LocationServiceDisabledException] if location services are off
   /// - [LocationPermissionDeniedException] if permission denied (retryable)
   /// - [LocationPermissionPermanentlyDeniedException] if permanently denied
   ///   (native only after an explicit permanent deny)
-  Future<void> requestLocationPermission() async {
+  Future<void> requestLocationPermission({bool forcePrompt = false}) async {
     var permission = await _checkPermission();
     final alreadyGranted =
         permission == LocationPermission.always ||
         permission == LocationPermission.whileInUse;
 
     // Always attempt the browser/OS prompt before treating the status as final.
-    // User-gesture Retry / fresh QR scan depends on this path.
-    if (!alreadyGranted) {
+    // User-gesture Allow / Retry / fresh QR scan depends on this path.
+    if (!alreadyGranted || forcePrompt) {
       AppLogger.info(
-        'Requesting location permission (current=$permission, web=$_isWeb)',
+        'Requesting location permission (current=$permission, '
+        'forcePrompt=$forcePrompt, web=$_isWeb)',
         tag: 'PermissionService',
       );
       permission = await _requestPermission();

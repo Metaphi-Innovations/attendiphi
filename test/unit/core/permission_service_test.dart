@@ -22,6 +22,21 @@ void main() {
       expect(requestCalls, 0);
     });
 
+    test('forcePrompt re-requests even when already whileInUse', () async {
+      var requestCalls = 0;
+      final service = PermissionService(
+        isLocationServiceEnabled: () async => true,
+        checkPermission: () async => LocationPermission.whileInUse,
+        requestPermission: () async {
+          requestCalls++;
+          return LocationPermission.whileInUse;
+        },
+      );
+
+      await service.requestLocationPermission(forcePrompt: true);
+      expect(requestCalls, 1);
+    });
+
     test('requests when denied and succeeds on Allow', () async {
       var requestCalls = 0;
       final service = PermissionService(

@@ -58,20 +58,29 @@ class LocationValidationNotifier extends Notifier<LocationValidationState> {
     );
   }
 
+  /// Resets to the in-app Allow step without acquiring GPS.
+  ///
+  /// Call on every fresh QR entry so a prior grant/cache cannot silently
+  /// complete the gate — the user must tap Allow Location.
+  void prepareFreshScan() {
+    ref.read(locationDeviceDataSourceProvider).clearCachedPosition();
+    state = const LocationValidationInitial();
+  }
+
   /// Clears any prior deny/error and re-runs permission + GPS validation.
   ///
-  /// Call this on every fresh QR visit so an accidental Deny does not leave
-  /// the user stuck on a stale "location denied" state.
-  ///
-  /// [forceRefresh] skips GPS cache / last-known (Retry after a failed fix).
-  Future<void> resetAndValidate({bool forceRefresh = false}) async {
+  /// Invoked from the Allow Location / Retry user gesture so the browser
+  /// permission prompt can appear. Always uses [forceRefresh] semantics for
+  /// the QR gate (no stale cache).
+  Future<void> resetAndValidate({bool forceRefresh = true}) async {
+    ref.read(locationDeviceDataSourceProvider).clearCachedPosition();
     state = const LocationValidationInitial();
     await validateLocation(forceRefresh: forceRefresh);
   }
 
   /// Initiates location permission check and proximity validation against the target venue.
   /// When Super Admin restrictions are OFF, GPS/radius never blocks check-in.
-  Future<void> validateLocation({bool forceRefresh = false}) async {
+  Future<void> validateLocation({bool forceRefresh = true}) async {
     // Match QR form: wait for config. While loading, do not treat as ON (M5).
     final configReady = ref.read(restrictionsConfigReadyProvider);
     // Enforce radius/permission only when location restriction is ON.
@@ -87,12 +96,12 @@ class LocationValidationNotifier extends Notifier<LocationValidationState> {
     );
 
     try {
-      // 1. Request location permission (re-prompts after a prior Deny when possible)
+      // 1. Always re-invoke permission API (QR Allow tap / Retry).
       state = const LocationValidationRequestingPermission();
       final permissionService = ref.read(permissionServiceProvider);
-      await permissionService.requestLocationPermission();
+      await permissionService.requestLocationPermission(forcePrompt: true);
 
-      // 2. Obtain GPS — skip re-prompt after Allow; Retry uses forceRefresh.
+      // 2. Obtain GPS with a forced live fix (no in-memory cache).
       state = const LocationValidationFetchingPosition();
       final getCurrentPosition = ref.read(getCurrentPositionUseCaseProvider);
       final position = await getCurrentPosition(

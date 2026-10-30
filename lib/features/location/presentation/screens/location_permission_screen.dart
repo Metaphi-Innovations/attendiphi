@@ -152,15 +152,10 @@ class _LocationPermissionScreenState
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // After Deny → browser/app settings → Allow, retry automatically on return.
+    // After Settings → Location ON, keep the Allow/Retry CTA so the next tap
+    // is a user gesture the browser can use for its permission prompt.
     if (state == AppLifecycleState.resumed && mounted) {
       ref.invalidate(checkInRestrictionsConfigProvider);
-      final current = ref.read(
-        locationValidationFamilyProvider(widget.location),
-      );
-      if (current is LocationValidationError) {
-        _retryLocationPermission();
-      }
     }
   }
 
@@ -171,23 +166,21 @@ class _LocationPermissionScreenState
         .applyLocation(live);
   }
 
-  void _startLocationIfNeeded({bool force = false}) {
+  /// Fresh QR entry: clear GPS cache and wait for in-app Allow (no silent fetch).
+  void _prepareLocationGateIfNeeded({bool force = false}) {
     if (!force && (_locationStarted || !mounted)) return;
     _locationStarted = true;
-    if (!_pulseController.isAnimating) {
-      _pulseController.repeat();
-    }
     ref
         .read(locationValidationFamilyProvider(widget.location).notifier)
-        .resetAndValidate();
+        .prepareFreshScan();
   }
 
-  void _retryLocationPermission() {
+  /// User gesture: browser may show Allow; then acquire a live GPS fix.
+  void _onAllowLocation() {
     if (!mounted) return;
     if (!_pulseController.isAnimating) {
       _pulseController.repeat();
     }
-    // Retry must force a fresh live fix — do not reuse a failed/short cache.
     ref
         .read(locationValidationFamilyProvider(widget.location).notifier)
         .resetAndValidate(forceRefresh: true);
@@ -295,7 +288,7 @@ class _LocationPermissionScreenState
         } else {
           _gateApplied = true;
         }
-        _startLocationIfNeeded();
+        _prepareLocationGateIfNeeded();
         return;
       }
 
@@ -321,7 +314,7 @@ class _LocationPermissionScreenState
       final canStartLocation =
           _isTodayThursday && !_isSessionExpired && !_isSessionFuture;
       if (canStartLocation) {
-        _startLocationIfNeeded();
+        _prepareLocationGateIfNeeded();
       }
     } finally {
       _gateInFlight = false;
@@ -999,6 +992,8 @@ class _LocationPermissionScreenState
       final isPermissionDeny =
           state.exception is LocationPermissionDeniedException ||
           state.exception is LocationPermissionPermanentlyDeniedException;
+      final isServicesOff =
+          state.exception is LocationServiceDisabledException;
       return Container(
         padding: const EdgeInsets.all(AppSpacing.md),
         decoration: BoxDecoration(
@@ -1023,9 +1018,29 @@ class _LocationPermissionScreenState
                 ),
                 textAlign: TextAlign.center,
               ),
+            ] else if (isServicesOff) ...[
+              const SizedBox(height: 10),
+              Text(
+                'After Location is on, tap Allow Location below.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  height: 1.4,
+                ),
+                textAlign: TextAlign.center,
+              ),
             ],
           ],
         ),
+      );
+    }
+
+    if (state is LocationValidationInitial) {
+      return Text(
+        AppStrings.locationPermissionAwaitingAllow,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+        textAlign: TextAlign.center,
       );
     }
 
@@ -1045,28 +1060,19 @@ class _LocationPermissionScreenState
     LocationValidationState state,
     bool isBusy,
   ) {
-    // Permission / services-off: guidance text only (no Allow Location CTA).
-    // Browsers often cannot re-open the prompt from an in-page button after Deny.
     if (state is LocationValidationError) {
-      final isPermissionOrService =
-          state.exception is LocationPermissionDeniedException ||
-          state.exception is LocationPermissionPermanentlyDeniedException ||
-          state.exception is LocationServiceDisabledException;
-      if (isPermissionOrService) {
-        return const SizedBox.shrink();
-      }
       return AppButton.primary(
-        label: AppStrings.locationRetry,
-        icon: Icons.refresh_rounded,
-        onPressed: _retryLocationPermission,
+        label: AppStrings.locationPermissionAllow,
+        icon: Icons.my_location_rounded,
+        onPressed: _onAllowLocation,
       );
     }
 
     if (state is LocationValidationOutsideRadius) {
       return AppButton.primary(
-        label: AppStrings.locationRetry,
-        icon: Icons.refresh_rounded,
-        onPressed: _retryLocationPermission,
+        label: AppStrings.locationPermissionAllow,
+        icon: Icons.my_location_rounded,
+        onPressed: _onAllowLocation,
       );
     }
 
@@ -1075,6 +1081,14 @@ class _LocationPermissionScreenState
         label: 'Continue to Check-In',
         icon: Icons.arrow_forward_rounded,
         onPressed: () => _goToCheckInForm(state.result),
+      );
+    }
+
+    if (state is LocationValidationInitial) {
+      return AppButton.primary(
+        label: AppStrings.locationPermissionAllow,
+        icon: Icons.my_location_rounded,
+        onPressed: _onAllowLocation,
       );
     }
 
