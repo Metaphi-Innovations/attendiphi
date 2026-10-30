@@ -6,6 +6,12 @@
 --   npx supabase db execute --project-ref ofieqhdkvofsjnpxkmee \
 --     --file scripts/upsert_staging_location_x.sql
 -- Or paste into the Supabase SQL editor for attendiphi-test.
+--
+-- Verify:
+--   select id,name,address,latitude,longitude from locations where id='location_x';
+--
+-- After deploying a new web-staging.zip: hard-refresh the browser (or unregister
+-- the service worker) if the Location Access card still shows an old venue name.
 
 insert into public.locations (
   id,

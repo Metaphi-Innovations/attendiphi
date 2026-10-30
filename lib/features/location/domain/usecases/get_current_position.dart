@@ -8,9 +8,13 @@ class GetCurrentPosition {
 
   final LocationDeviceDataSource _deviceDataSource;
 
-  Future<Position> call({bool permissionAlreadyGranted = false}) {
+  Future<Position> call({
+    bool permissionAlreadyGranted = false,
+    bool forceRefresh = false,
+  }) {
     return _deviceDataSource.getCurrentPosition(
       permissionAlreadyGranted: permissionAlreadyGranted,
+      forceRefresh: forceRefresh,
     );
   }
 }

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart'
     hide LocationServiceDisabledException;
 
@@ -9,10 +10,13 @@ import '../../../../core/logger/app_logger.dart';
 abstract class LocationDeviceDataSource {
   /// Returns the current GPS position.
   ///
-  /// When [permissionAlreadyGranted] is true (caller just finished
-  /// [PermissionService.requestLocationPermission]), skips redundant
-  /// `requestPermission` so the post-Allow path stays snappy.
-  Future<Position> getCurrentPosition({bool permissionAlreadyGranted = false});
+  /// [permissionAlreadyGranted] means the caller just finished a permission
+  /// prompt; we still re-check status (web can report stale denied).
+  /// [forceRefresh] skips in-memory cache and last-known fast path.
+  Future<Position> getCurrentPosition({
+    bool permissionAlreadyGranted = false,
+    bool forceRefresh = false,
+  });
 }
 
 /// Whether [position] is accurate enough for check-in proximity.
@@ -34,9 +38,8 @@ bool isGpsPositionFresh(
 
 /// Geolocator implementation of [LocationDeviceDataSource].
 ///
-/// Prefers in-memory cache → fresh last-known → short medium fix, so the
-/// post-Allow path typically resolves in ~1–2s instead of waiting on a long
-/// high-accuracy timeout first.
+/// Web uses longer first-fix timeouts than native — mobile browsers often
+/// need several seconds after Allow before a position is ready.
 class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
   LocationDeviceDataSourceImpl({
     Future<bool> Function()? isLocationServiceEnabled,
@@ -45,6 +48,7 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
     Future<Position?> Function()? getLastKnownPosition,
     Future<Position> Function(LocationSettings settings)? getCurrentPositionFn,
     DateTime Function()? clock,
+    bool? isWebOverride,
   }) : _isLocationServiceEnabled =
            isLocationServiceEnabled ?? Geolocator.isLocationServiceEnabled,
        _checkPermission = checkPermission ?? Geolocator.checkPermission,
@@ -56,7 +60,8 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
            ((settings) => Geolocator.getCurrentPosition(
              locationSettings: settings,
            )),
-       _clock = clock ?? DateTime.now;
+       _clock = clock ?? DateTime.now,
+       _isWeb = isWebOverride ?? kIsWeb;
 
   final Future<bool> Function() _isLocationServiceEnabled;
   final Future<LocationPermission> Function() _checkPermission;
@@ -65,6 +70,7 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
   final Future<Position> Function(LocationSettings settings)
   _getCurrentPositionFn;
   final DateTime Function() _clock;
+  final bool _isWeb;
 
   /// Cached position and its wall-clock capture time for short-term reuse.
   Position? _cachedPosition;
@@ -76,22 +82,41 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
   /// Max age for platform last-known before we refuse the fast path.
   static const int lastKnownMaxAgeSeconds = 120;
 
-  /// Primary post-Allow fix — medium is much faster on web/mobile than high.
-  static const int mediumGpsTimeoutSeconds = 2;
+  /// Native medium timeout (snappy).
+  static const int nativeMediumGpsTimeoutSeconds = 3;
 
-  /// One short high-accuracy attempt only if medium fails / is too coarse.
-  static const int highGpsTimeoutSeconds = 2;
+  /// Native high timeout.
+  static const int nativeHighGpsTimeoutSeconds = 3;
+
+  /// Web first-fix timeouts — browsers are slower after Allow.
+  static const int webMediumGpsTimeoutSeconds = 10;
+
+  /// Web high-accuracy attempt.
+  static const int webHighGpsTimeoutSeconds = 10;
+
+  int get _mediumTimeoutSeconds =>
+      _isWeb ? webMediumGpsTimeoutSeconds : nativeMediumGpsTimeoutSeconds;
+
+  int get _highTimeoutSeconds =>
+      _isWeb ? webHighGpsTimeoutSeconds : nativeHighGpsTimeoutSeconds;
 
   @override
   Future<Position> getCurrentPosition({
     bool permissionAlreadyGranted = false,
+    bool forceRefresh = false,
   }) async {
-    final now = _clock();
+    final started = _clock();
+    final now = started;
+
+    if (forceRefresh) {
+      _cachedPosition = null;
+      _cacheTimestamp = null;
+    }
 
     // 1. In-memory cache (same session / screen flow).
     final cached = _cachedPosition;
     final cachedAt = _cacheTimestamp;
-    if (cached != null && cachedAt != null) {
+    if (!forceRefresh && cached != null && cachedAt != null) {
       final age = now.difference(cachedAt).inSeconds;
       if (age < cacheDurationSeconds && isGpsAccuracyAcceptable(cached)) {
         AppLogger.info(
@@ -103,63 +128,101 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
       }
     }
 
-    // 2. Service + permissions (skip re-prompt when caller already granted).
+    // 2. Service + permissions (always re-check; web status can be stale).
     final serviceEnabled = await _isLocationServiceEnabled();
     if (!serviceEnabled) {
       throw const LocationServiceDisabledException();
     }
 
-    if (!permissionAlreadyGranted) {
-      var permission = await _checkPermission();
-      final alreadyGranted =
+    var permission = await _checkPermission();
+    var granted =
+        permission == LocationPermission.always ||
+        permission == LocationPermission.whileInUse;
+
+    if (!granted) {
+      AppLogger.info(
+        'Location not granted (current=$permission, '
+        'alreadyGrantedFlag=$permissionAlreadyGranted, web=$_isWeb) — requesting',
+        tag: 'LocationDeviceDataSource',
+      );
+      permission = await _requestPermission();
+      granted =
           permission == LocationPermission.always ||
           permission == LocationPermission.whileInUse;
-      if (!alreadyGranted) {
-        permission = await _requestPermission();
-      }
-      if (permission == LocationPermission.denied) {
-        throw const LocationPermissionDeniedException();
-      }
-      if (permission == LocationPermission.deniedForever) {
-        throw const LocationPermissionPermanentlyDeniedException();
-      }
+    }
+
+    AppLogger.info(
+      'GPS acquire start (web=$_isWeb, forceRefresh=$forceRefresh, '
+      'permission=$permission, medium=${_mediumTimeoutSeconds}s, '
+      'high=${_highTimeoutSeconds}s)',
+      tag: 'LocationDeviceDataSource',
+    );
+
+    if (permission == LocationPermission.denied) {
+      throw const LocationPermissionDeniedException();
+    }
+    if (permission == LocationPermission.deniedForever) {
+      throw const LocationPermissionPermanentlyDeniedException();
+    }
+    if (!granted) {
+      throw const LocationPermissionDeniedException();
+    }
+
+    // Web: permission dialog often resolves before the GPS stack is ready.
+    if (_isWeb) {
+      await Future<void>.delayed(const Duration(milliseconds: 400));
     }
 
     try {
-      // 3. Fresh last-known first — avoids waiting on a new satellite fix.
-      final lastKnown = await _getLastKnownPosition();
-      if (lastKnown != null &&
-          isGpsAccuracyAcceptable(lastKnown) &&
-          isGpsPositionFresh(
-            lastKnown,
-            now: now,
-            maxAgeSeconds: lastKnownMaxAgeSeconds,
-          )) {
-        AppLogger.info(
-          'Using fresh last-known GPS '
-          '(accuracy=${lastKnown.accuracy.toStringAsFixed(0)}m): '
-          'lat=${lastKnown.latitude}, lon=${lastKnown.longitude}',
-          tag: 'LocationDeviceDataSource',
-        );
-        return _remember(lastKnown);
+      // 3. Fresh last-known first (skip on forceRefresh / Retry).
+      Position? lastKnown;
+      if (!forceRefresh) {
+        lastKnown = await _getLastKnownPosition();
+        if (lastKnown != null &&
+            isGpsAccuracyAcceptable(lastKnown) &&
+            isGpsPositionFresh(
+              lastKnown,
+              now: now,
+              maxAgeSeconds: lastKnownMaxAgeSeconds,
+            )) {
+          AppLogger.info(
+            'Using fresh last-known GPS '
+            '(accuracy=${lastKnown.accuracy.toStringAsFixed(0)}m): '
+            'lat=${lastKnown.latitude}, lon=${lastKnown.longitude}',
+            tag: 'LocationDeviceDataSource',
+          );
+          return _remember(lastKnown);
+        }
+      } else {
+        lastKnown = await _getLastKnownPosition();
       }
 
-      // 4. Short medium-accuracy fix (fast on web + mobile).
+      // 4. Medium fix (longer on web).
       Position? pos = await _tryCurrentPosition(
         accuracy: LocationAccuracy.medium,
-        timeLimitSeconds: mediumGpsTimeoutSeconds,
+        timeLimitSeconds: _mediumTimeoutSeconds,
       );
 
-      // 5. Brief high-accuracy only if medium missing or too coarse.
+      // Web: one quick retry after a miss (common after first Allow).
+      if (_isWeb && (pos == null || !isGpsAccuracyAcceptable(pos))) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        final retryMedium = await _tryCurrentPosition(
+          accuracy: LocationAccuracy.medium,
+          timeLimitSeconds: _mediumTimeoutSeconds,
+        );
+        if (retryMedium != null) pos = retryMedium;
+      }
+
+      // 5. High-accuracy if medium missing or too coarse.
       if (pos == null || !isGpsAccuracyAcceptable(pos)) {
         final high = await _tryCurrentPosition(
           accuracy: LocationAccuracy.high,
-          timeLimitSeconds: highGpsTimeoutSeconds,
+          timeLimitSeconds: _highTimeoutSeconds,
         );
         if (high != null) pos = high;
       }
 
-      // 6. Last resort: still-usable last-known within cache TTL window.
+      // 6. Last resort: still-usable last-known within cache TTL.
       if ((pos == null || !isGpsAccuracyAcceptable(pos)) &&
           lastKnown != null &&
           isGpsAccuracyAcceptable(lastKnown) &&
@@ -175,8 +238,23 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
         return _remember(lastKnown);
       }
 
+      final elapsedMs = _clock().difference(started).inMilliseconds;
+
       if (pos == null) {
-        throw const LocationUnavailableException();
+        AppLogger.warning(
+          'GPS unavailable after ${elapsedMs}ms (web=$_isWeb)',
+          tag: 'LocationDeviceDataSource',
+        );
+        throw LocationTimeoutException(
+          userMessage: _isWeb
+              ? 'Still getting your location. Make sure Location is allowed '
+                    'for this site (Precise Location on iPhone), wait a moment, '
+                    'then tap Retry.'
+              : 'Unable to determine your location. Please check your GPS '
+                    'and try again.',
+          technicalMessage:
+              'GPS position timed out after ${elapsedMs}ms (web=$_isWeb).',
+        );
       }
       if (!isGpsAccuracyAcceptable(pos)) {
         throw LocationAccuracyTooLowException(accuracy: pos.accuracy);
@@ -189,6 +267,11 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
         );
       }
 
+      AppLogger.info(
+        'GPS acquired in ${elapsedMs}ms '
+        '(accuracy=${pos.accuracy.toStringAsFixed(0)}m)',
+        tag: 'LocationDeviceDataSource',
+      );
       return _remember(pos);
     } on AppException {
       rethrow;

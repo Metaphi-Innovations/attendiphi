@@ -4,10 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../app/config/environment.dart';
 import '../../../../app/router/route_names.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_radius.dart';
 import '../../../../app/theme/app_spacing.dart';
+import '../../../../core/config/supabase_app_config.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/errors/error_handler.dart';
 import '../../../../core/l10n/app_strings.dart';
@@ -22,6 +24,7 @@ import '../../../checkin/presentation/screens/checkin_result_screen.dart';
 import '../../../qr_checkin/domain/check_in_session_token.dart';
 import '../../domain/entities/location_config.dart';
 import '../../domain/usecases/validate_user_proximity.dart';
+import '../providers/location_providers.dart';
 import '../providers/location_validation_provider.dart';
 import '../providers/location_validation_state.dart';
 
@@ -122,6 +125,13 @@ class _LocationPermissionScreenState
   bool _locationStarted = false;
   bool _gateApplied = false;
 
+  /// Live Supabase venue when fetch succeeds; otherwise router / DefaultLocationX.
+  LocationConfig get _displayLocation => _resolvedLocation ?? widget.location;
+  LocationConfig? _resolvedLocation;
+
+  bool get _showStagingGpsDebug =>
+      kIsWeb && SupabaseAppConfig.environment == Environment.staging;
+
   @override
   void initState() {
     super.initState();
@@ -145,6 +155,13 @@ class _LocationPermissionScreenState
     }
   }
 
+  void _syncLiveVenue(LocationConfig live) {
+    _resolvedLocation = live;
+    ref
+        .read(locationValidationFamilyProvider(widget.location).notifier)
+        .applyLocation(live);
+  }
+
   void _startLocationIfNeeded({bool force = false}) {
     if (!force && (_locationStarted || !mounted)) return;
     _locationStarted = true;
@@ -161,9 +178,10 @@ class _LocationPermissionScreenState
     if (!_pulseController.isAnimating) {
       _pulseController.repeat();
     }
+    // Retry must force a fresh live fix — do not reuse a failed/short cache.
     ref
         .read(locationValidationFamilyProvider(widget.location).notifier)
-        .resetAndValidate();
+        .resetAndValidate(forceRefresh: true);
   }
 
   void _goToCheckInForm(ProximityResult proximity) {
@@ -171,12 +189,13 @@ class _LocationPermissionScreenState
     // Widget tests may mount without GoRouter; skip navigation then.
     if (GoRouter.maybeOf(context) == null) return;
 
+    final venue = _displayLocation;
     final date = _effectiveSessionDateStr;
     var token = widget.sessionToken?.trim() ?? '';
     if (token.isEmpty && date != null && date.isNotEmpty) {
       try {
         token = CheckInSessionToken.create(
-          locationId: widget.location.id,
+          locationId: venue.id,
           sessionDate: date,
           adminId: widget.adminId,
         );
@@ -189,7 +208,7 @@ class _LocationPermissionScreenState
       // Preferred: opaque path, no cleartext date/location in the URL.
       context.go(
         RouteNames.checkinFormPath(token),
-        extra: {'proximity': proximity, 'location': widget.location},
+        extra: {'proximity': proximity, 'location': venue},
       );
       return;
     }
@@ -202,8 +221,8 @@ class _LocationPermissionScreenState
     ].join('&');
     final fullQuery = queryParams.isNotEmpty ? '?$queryParams' : '';
     context.go(
-      '${RouteNames.checkinFormPath(widget.location.id)}$fullQuery',
-      extra: {'proximity': proximity, 'location': widget.location},
+      '${RouteNames.checkinFormPath(venue.id)}$fullQuery',
+      extra: {'proximity': proximity, 'location': venue},
     );
   }
 
@@ -265,6 +284,35 @@ class _LocationPermissionScreenState
   @override
   Widget build(BuildContext context) {
     final configAsync = ref.watch(checkInRestrictionsConfigProvider);
+    final liveVenueAsync = ref.watch(
+      locationConfigFamilyProvider(widget.location.id),
+    );
+
+    // Prefer live Supabase row for name/address/coords; keep router fallback.
+    ref.listen(locationConfigFamilyProvider(widget.location.id), (prev, next) {
+      next.whenData((live) {
+        if (!mounted) return;
+        final changed =
+            _resolvedLocation == null ||
+            _resolvedLocation!.name != live.name ||
+            _resolvedLocation!.address != live.address ||
+            _resolvedLocation!.latitude != live.latitude ||
+            _resolvedLocation!.longitude != live.longitude;
+        if (changed) {
+          setState(() => _syncLiveVenue(live));
+        } else {
+          _syncLiveVenue(live);
+        }
+      });
+    });
+    liveVenueAsync.whenData((live) {
+      if (_resolvedLocation == null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || _resolvedLocation != null) return;
+          setState(() => _syncLiveVenue(live));
+        });
+      }
+    });
 
     // Wait for live Super Admin toggle before enforcing date/device gates.
     ref.listen(checkInRestrictionsConfigProvider, (prev, next) {
@@ -309,6 +357,7 @@ class _LocationPermissionScreenState
       return const Scaffold(body: Center(child: MetaPhiLoadingIndicator()));
     }
 
+    final venue = _displayLocation;
     final validationState = ref.watch(
       locationValidationFamilyProvider(widget.location),
     );
@@ -380,7 +429,7 @@ class _LocationPermissionScreenState
 
                       SizedBox(height: isCompact ? 20 : 32),
 
-                      // 2. Venue Target Card
+                      // 2. Venue Target Card (live Supabase when available)
                       AppCard(
                         color: Theme.of(context)
                             .colorScheme
@@ -409,7 +458,7 @@ class _LocationPermissionScreenState
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        widget.location.name,
+                                        venue.name,
                                         style: Theme.of(context)
                                             .textTheme
                                             .titleMedium
@@ -417,10 +466,11 @@ class _LocationPermissionScreenState
                                               fontWeight: FontWeight.bold,
                                             ),
                                       ),
-                                      if (widget.location.address != null) ...[
+                                      if (venue.address != null &&
+                                          venue.address!.trim().isNotEmpty) ...[
                                         const SizedBox(height: 2),
                                         Text(
-                                          widget.location.address!,
+                                          venue.address!,
                                           style: Theme.of(context)
                                               .textTheme
                                               .bodySmall
@@ -464,7 +514,7 @@ class _LocationPermissionScreenState
                                     borderRadius: AppRadius.smAll,
                                   ),
                                   child: Text(
-                                    'Within ${widget.location.radiusMeters.round()} meters',
+                                    'Within ${venue.radiusMeters.round()} meters',
                                     style: const TextStyle(
                                       color: AppColors.primary,
                                       fontWeight: FontWeight.w600,
@@ -483,6 +533,11 @@ class _LocationPermissionScreenState
                       // 3. Dynamic State Message
                       _buildStateMessage(context, validationState),
 
+                      if (_showStagingGpsDebug) ...[
+                        const SizedBox(height: 12),
+                        _buildStagingGpsDebug(context, validationState),
+                      ],
+
                       SizedBox(height: isCompact ? 20 : 32),
 
                       // 4. Action Buttons
@@ -492,6 +547,26 @@ class _LocationPermissionScreenState
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildStagingGpsDebug(
+    BuildContext context,
+    LocationValidationState state,
+  ) {
+    final theme = Theme.of(context);
+    String detail = state.runtimeType.toString();
+    if (state is LocationValidationError) {
+      detail =
+          '${state.exception.runtimeType}: ${ErrorHandler.getUserMessage(state.exception)}';
+    }
+    return Text(
+      'staging · web · venue=${_displayLocation.name} · $detail',
+      style: theme.textTheme.labelSmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
+        fontFamily: 'monospace',
+      ),
+      textAlign: TextAlign.center,
     );
   }
 

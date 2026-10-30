@@ -77,6 +77,35 @@ void main() {
       expect(liveCalls, 1); // cache hit
     });
 
+    test('forceRefresh skips cache and last-known fast path', () async {
+      var liveCalls = 0;
+      final lastKnown = _pos(
+        timestamp: now.subtract(const Duration(seconds: 10)),
+        accuracy: 15,
+        lat: 18.5,
+      );
+      final ds = LocationDeviceDataSourceImpl(
+        clock: () => now,
+        isLocationServiceEnabled: () async => true,
+        checkPermission: () async => LocationPermission.whileInUse,
+        getLastKnownPosition: () async => lastKnown,
+        getCurrentPositionFn: (_) async {
+          liveCalls++;
+          return _pos(timestamp: now, lat: 19.9);
+        },
+      );
+
+      await ds.getCurrentPosition(permissionAlreadyGranted: true);
+      expect(liveCalls, 0); // last-known
+
+      final fresh = await ds.getCurrentPosition(
+        permissionAlreadyGranted: true,
+        forceRefresh: true,
+      );
+      expect(fresh.latitude, 19.9);
+      expect(liveCalls, 1);
+    });
+
     test('uses fresh last-known before waiting on live GPS', () async {
       var liveCalls = 0;
       final lastKnown = _pos(
@@ -87,6 +116,7 @@ void main() {
       final ds = LocationDeviceDataSourceImpl(
         clock: () => now,
         isLocationServiceEnabled: () async => true,
+        checkPermission: () async => LocationPermission.whileInUse,
         getLastKnownPosition: () async => lastKnown,
         getCurrentPositionFn: (_) async {
           liveCalls++;
@@ -110,6 +140,7 @@ void main() {
       final ds = LocationDeviceDataSourceImpl(
         clock: () => now,
         isLocationServiceEnabled: () async => true,
+        checkPermission: () async => LocationPermission.whileInUse,
         getLastKnownPosition: () async => stale,
         getCurrentPositionFn: (settings) async {
           usedAccuracy.add(settings.accuracy);
@@ -127,6 +158,7 @@ void main() {
       final ds = LocationDeviceDataSourceImpl(
         clock: () => now,
         isLocationServiceEnabled: () async => true,
+        checkPermission: () async => LocationPermission.whileInUse,
         getLastKnownPosition: () async => null,
         getCurrentPositionFn: (settings) async {
           calls++;
@@ -142,26 +174,51 @@ void main() {
       expect(calls, 2);
     });
 
-    test('permissionAlreadyGranted skips requestPermission', () async {
-      var requestCalls = 0;
-      final ds = LocationDeviceDataSourceImpl(
-        clock: () => now,
-        isLocationServiceEnabled: () async => true,
-        checkPermission: () async => LocationPermission.denied,
-        requestPermission: () async {
-          requestCalls++;
-          return LocationPermission.whileInUse;
-        },
-        getLastKnownPosition: () async =>
-            _pos(timestamp: now, accuracy: 20, lat: 19.0),
-        getCurrentPositionFn: (_) async => _pos(timestamp: now),
-      );
+    test(
+      'permissionAlreadyGranted still requests when checkPermission is denied',
+      () async {
+        var requestCalls = 0;
+        final ds = LocationDeviceDataSourceImpl(
+          clock: () => now,
+          isLocationServiceEnabled: () async => true,
+          checkPermission: () async => LocationPermission.denied,
+          requestPermission: () async {
+            requestCalls++;
+            return LocationPermission.whileInUse;
+          },
+          getLastKnownPosition: () async =>
+              _pos(timestamp: now, accuracy: 20, lat: 19.0),
+          getCurrentPositionFn: (_) async => _pos(timestamp: now),
+        );
 
-      await ds.getCurrentPosition(permissionAlreadyGranted: true);
-      expect(requestCalls, 0);
-    });
+        await ds.getCurrentPosition(permissionAlreadyGranted: true);
+        expect(requestCalls, 1);
+      },
+    );
 
-    test('denied permission still throws when not pre-granted', () async {
+    test(
+      'permissionAlreadyGranted skips request when already whileInUse',
+      () async {
+        var requestCalls = 0;
+        final ds = LocationDeviceDataSourceImpl(
+          clock: () => now,
+          isLocationServiceEnabled: () async => true,
+          checkPermission: () async => LocationPermission.whileInUse,
+          requestPermission: () async {
+            requestCalls++;
+            return LocationPermission.whileInUse;
+          },
+          getLastKnownPosition: () async =>
+              _pos(timestamp: now, accuracy: 20, lat: 19.0),
+          getCurrentPositionFn: (_) async => _pos(timestamp: now),
+        );
+
+        await ds.getCurrentPosition(permissionAlreadyGranted: true);
+        expect(requestCalls, 0);
+      },
+    );
+
+    test('denied permission still throws when not granted after request', () async {
       final ds = LocationDeviceDataSourceImpl(
         clock: () => now,
         isLocationServiceEnabled: () async => true,
@@ -174,6 +231,101 @@ void main() {
       await expectLater(
         ds.getCurrentPosition(),
         throwsA(isA<LocationPermissionDeniedException>()),
+      );
+    });
+
+    test('deniedForever throws permanently denied', () async {
+      final ds = LocationDeviceDataSourceImpl(
+        clock: () => now,
+        isLocationServiceEnabled: () async => true,
+        checkPermission: () async => LocationPermission.deniedForever,
+        requestPermission: () async => LocationPermission.deniedForever,
+        getLastKnownPosition: () async => null,
+        getCurrentPositionFn: (_) async => _pos(timestamp: now),
+      );
+
+      await expectLater(
+        ds.getCurrentPosition(),
+        throwsA(isA<LocationPermissionPermanentlyDeniedException>()),
+      );
+    });
+
+    test('services disabled throws LocationServiceDisabledException', () async {
+      final ds = LocationDeviceDataSourceImpl(
+        clock: () => now,
+        isLocationServiceEnabled: () async => false,
+        checkPermission: () async => LocationPermission.whileInUse,
+        getLastKnownPosition: () async => null,
+        getCurrentPositionFn: (_) async => _pos(timestamp: now),
+      );
+
+      await expectLater(
+        ds.getCurrentPosition(permissionAlreadyGranted: true),
+        throwsA(isA<LocationServiceDisabledException>()),
+      );
+    });
+
+    test('web uses longer medium/high timeouts', () async {
+      final limits = <int>[];
+      final ds = LocationDeviceDataSourceImpl(
+        clock: () => now,
+        isWebOverride: true,
+        isLocationServiceEnabled: () async => true,
+        checkPermission: () async => LocationPermission.whileInUse,
+        getLastKnownPosition: () async => null,
+        getCurrentPositionFn: (settings) async {
+          limits.add(settings.timeLimit?.inSeconds ?? -1);
+          return _pos(timestamp: now, accuracy: 25, lat: 19.4);
+        },
+      );
+
+      await ds.getCurrentPosition(permissionAlreadyGranted: true);
+      expect(limits, isNotEmpty);
+      expect(
+        limits.first,
+        LocationDeviceDataSourceImpl.webMediumGpsTimeoutSeconds,
+      );
+    });
+
+    test('web timeout after failed fixes throws LocationTimeoutException', () async {
+      final ds = LocationDeviceDataSourceImpl(
+        clock: () => now,
+        isWebOverride: true,
+        isLocationServiceEnabled: () async => true,
+        checkPermission: () async => LocationPermission.whileInUse,
+        getLastKnownPosition: () async => null,
+        getCurrentPositionFn: (_) async {
+          throw Exception('timeout');
+        },
+      );
+
+      await expectLater(
+        ds.getCurrentPosition(
+          permissionAlreadyGranted: true,
+          forceRefresh: true,
+        ),
+        throwsA(isA<LocationTimeoutException>()),
+      );
+    });
+
+    test('native keeps shorter medium timeout', () async {
+      final limits = <int>[];
+      final ds = LocationDeviceDataSourceImpl(
+        clock: () => now,
+        isWebOverride: false,
+        isLocationServiceEnabled: () async => true,
+        checkPermission: () async => LocationPermission.whileInUse,
+        getLastKnownPosition: () async => null,
+        getCurrentPositionFn: (settings) async {
+          limits.add(settings.timeLimit?.inSeconds ?? -1);
+          return _pos(timestamp: now, accuracy: 25);
+        },
+      );
+
+      await ds.getCurrentPosition(permissionAlreadyGranted: true);
+      expect(
+        limits.first,
+        LocationDeviceDataSourceImpl.nativeMediumGpsTimeoutSeconds,
       );
     });
   });

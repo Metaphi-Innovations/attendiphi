@@ -75,7 +75,9 @@ class LocationUnavailableException extends AppException {
 /// GPS location request timed out.
 class LocationTimeoutException extends AppException {
   const LocationTimeoutException({
-    super.userMessage = 'Unable to determine your location. Please check your GPS and try again.',
+    super.userMessage =
+        'Still getting your location. Wait a moment outdoors, enable Precise '
+        'Location if prompted, then tap Retry.',
     super.technicalMessage = 'Location request timed out.',
     super.originalError,
     super.stackTrace,
