@@ -58,20 +58,16 @@ class LocationValidationNotifier extends Notifier<LocationValidationState> {
     );
   }
 
-  /// Resets to the in-app Allow step without acquiring GPS.
+  /// Clears GPS cache and returns to idle — no GPS until the user confirms Allow.
   ///
-  /// Call on every fresh QR entry so a prior grant/cache cannot silently
-  /// complete the gate — the user must tap Allow Location.
+  /// Call on every fresh QR entry so a prior browser grant/cache cannot silently
+  /// complete the gate. The screen shows an in-app permission dialog first.
   void prepareFreshScan() {
     ref.read(locationDeviceDataSourceProvider).clearCachedPosition();
     state = const LocationValidationInitial();
   }
 
-  /// Clears any prior deny/error and re-runs permission + GPS validation.
-  ///
-  /// Invoked from the Allow Location / Retry user gesture so the browser
-  /// permission prompt can appear. Always uses [forceRefresh] semantics for
-  /// the QR gate (no stale cache).
+  /// Clears GPS cache and runs permission + GPS after the in-app Allow tap.
   Future<void> resetAndValidate({bool forceRefresh = true}) async {
     ref.read(locationDeviceDataSourceProvider).clearCachedPosition();
     state = const LocationValidationInitial();
@@ -96,7 +92,7 @@ class LocationValidationNotifier extends Notifier<LocationValidationState> {
     );
 
     try {
-      // 1. Always re-invoke permission API (QR Allow tap / Retry).
+      // 1. Always re-invoke permission API after in-app Allow (user gesture).
       state = const LocationValidationRequestingPermission();
       final permissionService = ref.read(permissionServiceProvider);
       await permissionService.requestLocationPermission(forcePrompt: true);

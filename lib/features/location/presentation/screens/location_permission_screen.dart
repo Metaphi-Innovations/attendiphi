@@ -129,6 +129,7 @@ class _LocationPermissionScreenState
   bool _locationStarted = false;
   bool _gateApplied = false;
   bool _gateInFlight = false;
+  bool _permissionDialogOpen = false;
 
   /// Live Supabase venue when fetch succeeds; otherwise router / DefaultLocationX.
   LocationConfig get _displayLocation => _resolvedLocation ?? widget.location;
@@ -152,8 +153,8 @@ class _LocationPermissionScreenState
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // After Settings → Location ON, keep the Allow/Retry CTA so the next tap
-    // is a user gesture the browser can use for its permission prompt.
+    // After Settings → Location ON, keep the in-app Allow dialog as the
+    // user gesture so the browser can show its permission prompt.
     if (state == AppLifecycleState.resumed && mounted) {
       ref.invalidate(checkInRestrictionsConfigProvider);
     }
@@ -166,13 +167,65 @@ class _LocationPermissionScreenState
         .applyLocation(live);
   }
 
-  /// Fresh QR entry: clear GPS cache and wait for in-app Allow (no silent fetch).
+  /// Fresh QR entry: clear cache and show the in-app Allow dialog (no silent GPS).
   void _prepareLocationGateIfNeeded({bool force = false}) {
     if (!force && (_locationStarted || !mounted)) return;
     _locationStarted = true;
     ref
         .read(locationValidationFamilyProvider(widget.location).notifier)
         .prepareFreshScan();
+    // Two frames: (1) leave device-check loading scaffold, (2) present dialog.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _showPermissionDialog();
+      });
+    });
+  }
+
+  /// Guaranteed ask on every QR scan — native browser dialog may also appear
+  /// after Allow when the site permission is still Ask/Deny.
+  Future<void> _showPermissionDialog() async {
+    if (!mounted || _permissionDialogOpen) return;
+    // Don't interrupt an in-flight acquire or success navigation.
+    final current = ref.read(locationValidationFamilyProvider(widget.location));
+    if (current is LocationValidationRequestingPermission ||
+        current is LocationValidationFetchingPosition ||
+        current is LocationValidationSuccess) {
+      return;
+    }
+
+    _permissionDialogOpen = true;
+    final allowed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text(AppStrings.locationPermissionDialogTitle),
+          content: const Text(AppStrings.locationPermissionDialogBody),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text(AppStrings.locationPermissionNotNow),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              icon: const Icon(Icons.my_location_rounded, size: 18),
+              label: const Text(AppStrings.locationPermissionAllow),
+            ),
+          ],
+        );
+      },
+    );
+    _permissionDialogOpen = false;
+    if (!mounted) return;
+    if (allowed == true) {
+      _onAllowLocation();
+    }
   }
 
   /// User gesture: browser may show Allow; then acquire a live GPS fix.
@@ -395,19 +448,28 @@ class _LocationPermissionScreenState
       data: (config) => config.dateRestrictionEnabled,
       orElse: () => lastKnown?.dateRestrictionEnabled ?? true,
     );
-    final deviceRestrictionEnabled = configAsync.maybeWhen(
-      data: (config) => config.deviceRestrictionEnabled,
-      orElse: () => lastKnown?.deviceRestrictionEnabled ?? true,
-    );
-    final configReady = configAsync.hasValue || lastKnown != null;
 
-    // First emission after build: apply gates once config is known.
-    if (!_gateApplied && configReady) {
+    // First emission after build: apply gates once live config is known.
+    // Prefer hasValue so we don't briefly enforce date=ON defaults (Thu-only)
+    // before the stream emits and skip the Allow dialog on non-Thursdays.
+    if (!_gateApplied && configAsync.hasValue) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _gateApplied) return;
+        final config = configAsync.requireValue;
+        _applyRestrictionsGate(
+          dateRestrictionEnabled: config.dateRestrictionEnabled,
+          deviceRestrictionEnabled: config.deviceRestrictionEnabled,
+        );
+      });
+    } else if (!_gateApplied &&
+        !configAsync.hasValue &&
+        lastKnown != null &&
+        configAsync.isLoading) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || _gateApplied) return;
         _applyRestrictionsGate(
-          dateRestrictionEnabled: dateRestrictionEnabled,
-          deviceRestrictionEnabled: deviceRestrictionEnabled,
+          dateRestrictionEnabled: lastKnown.dateRestrictionEnabled,
+          deviceRestrictionEnabled: lastKnown.deviceRestrictionEnabled,
         );
       });
     }
@@ -1047,7 +1109,7 @@ class _LocationPermissionScreenState
     return Text(
       state is LocationValidationFetchingPosition
           ? AppStrings.locationFetchingPosition
-          : 'Requesting permission to verify your physical presence...',
+          : AppStrings.locationRequestingPermission,
       style: theme.textTheme.bodyMedium?.copyWith(
         color: theme.colorScheme.onSurfaceVariant,
       ),
@@ -1060,19 +1122,13 @@ class _LocationPermissionScreenState
     LocationValidationState state,
     bool isBusy,
   ) {
-    if (state is LocationValidationError) {
+    if (state is LocationValidationError ||
+        state is LocationValidationOutsideRadius) {
+      // Re-open the every-scan ask (no silent GPS).
       return AppButton.primary(
         label: AppStrings.locationPermissionAllow,
         icon: Icons.my_location_rounded,
-        onPressed: _onAllowLocation,
-      );
-    }
-
-    if (state is LocationValidationOutsideRadius) {
-      return AppButton.primary(
-        label: AppStrings.locationPermissionAllow,
-        icon: Icons.my_location_rounded,
-        onPressed: _onAllowLocation,
+        onPressed: _showPermissionDialog,
       );
     }
 
@@ -1088,7 +1144,7 @@ class _LocationPermissionScreenState
       return AppButton.primary(
         label: AppStrings.locationPermissionAllow,
         icon: Icons.my_location_rounded,
-        onPressed: _onAllowLocation,
+        onPressed: _showPermissionDialog,
       );
     }
 

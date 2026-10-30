@@ -386,7 +386,7 @@ void main() {
     );
 
     testWidgets(
-      'fresh QR shows Allow Location before any GPS attempt',
+      'fresh QR shows in-app Allow dialog before any permission request',
       (tester) async {
         var permissionRequests = 0;
         await tester.pumpWidget(
@@ -427,17 +427,19 @@ void main() {
             ),
           ),
         );
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 400));
+        for (var i = 0; i < 6; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
 
-        expect(find.text(AppStrings.locationPermissionAllow), findsOneWidget);
-        expect(find.text(AppStrings.locationPermissionAwaitingAllow), findsOneWidget);
+        expect(find.text(AppStrings.locationPermissionDialogTitle), findsOneWidget);
+        expect(find.text(AppStrings.locationPermissionDialogBody), findsOneWidget);
+        expect(find.text(AppStrings.locationPermissionAllow), findsWidgets);
         expect(permissionRequests, 0);
       },
     );
 
     testWidgets(
-      'permission deny after Allow shows guidance and Allow Location CTA',
+      'Allow in dialog then deny shows guidance and Allow Location CTA',
       (tester) async {
         await tester.pumpWidget(
           ProviderScope(
@@ -475,22 +477,26 @@ void main() {
             ),
           ),
         );
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 400));
+        for (var i = 0; i < 6; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
 
-        expect(find.text(AppStrings.locationPermissionAllow), findsOneWidget);
-        await tester.tap(find.text(AppStrings.locationPermissionAllow));
+        expect(find.text(AppStrings.locationPermissionDialogTitle), findsOneWidget);
+        await tester.tap(find.text(AppStrings.locationPermissionAllow).last);
         await tester.pump();
-        await tester.pump(const Duration(milliseconds: 400));
+        for (var i = 0; i < 8; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
 
         expect(find.text(AppStrings.locationPermissionPermanentlyDenied), findsNothing);
         expect(find.text(AppStrings.locationPermissionDenied), findsOneWidget);
+        expect(find.text(AppStrings.locationRetry), findsNothing);
         expect(find.text(AppStrings.locationPermissionAllow), findsOneWidget);
       },
     );
 
     testWidgets(
-      'OS location off shows turn-on guidance with Allow Location CTA',
+      'OS location off after Allow shows turn-on guidance with Allow CTA',
       (tester) async {
         await tester.pumpWidget(
           ProviderScope(
@@ -528,18 +534,80 @@ void main() {
             ),
           ),
         );
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 400));
+        for (var i = 0; i < 6; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
 
-        expect(find.text(AppStrings.locationPermissionAllow), findsOneWidget);
-        await tester.tap(find.text(AppStrings.locationPermissionAllow));
+        await tester.tap(find.text(AppStrings.locationPermissionAllow).last);
         await tester.pump();
-        await tester.pump(const Duration(milliseconds: 400));
+        for (var i = 0; i < 8; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
 
         expect(find.text(AppStrings.locationPermissionPermanentlyDenied), findsNothing);
         expect(find.textContaining('Location is blocked'), findsNothing);
         expect(find.text(AppStrings.locationServiceDisabled), findsOneWidget);
+        expect(find.text(AppStrings.locationRetry), findsNothing);
         expect(find.text(AppStrings.locationPermissionAllow), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'remounted QR scan shows the Allow dialog again',
+      (tester) async {
+        Widget buildScreen({required Key key}) {
+          return ProviderScope(
+            overrides: [
+              checkInRestrictionsConfigProvider.overrideWith(
+                (ref) => Stream.value(
+                  const CheckInRestrictionsConfig(
+                    locationRestrictionEnabled: true,
+                    dateRestrictionEnabled: false,
+                    deviceRestrictionEnabled: false,
+                  ),
+                ),
+              ),
+              locationConfigFamilyProvider(testLocation.id).overrideWith(
+                (ref) async => testLocation,
+              ),
+              permissionServiceProvider.overrideWithValue(
+                PermissionService(
+                  isWebOverride: true,
+                  isLocationServiceEnabled: () async => true,
+                  checkPermission: () async => LocationPermission.whileInUse,
+                  requestPermission: () async => LocationPermission.whileInUse,
+                ),
+              ),
+            ],
+            child: MaterialApp(
+              home: Scaffold(
+                body: LocationPermissionScreen(
+                  key: key,
+                  location: testLocation,
+                  sessionDateStr: '2026-10-30',
+                  nowProvider: () => DateTime(2026, 10, 30, 11, 0),
+                ),
+              ),
+            ),
+          );
+        }
+
+        await tester.pumpWidget(buildScreen(key: const ValueKey('scan-1')));
+        for (var i = 0; i < 6; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        expect(find.text(AppStrings.locationPermissionDialogTitle), findsOneWidget);
+
+        // Dismiss without allowing, then remount as a new QR scan.
+        await tester.tap(find.text(AppStrings.locationPermissionNotNow));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+
+        await tester.pumpWidget(buildScreen(key: const ValueKey('scan-2')));
+        for (var i = 0; i < 6; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        expect(find.text(AppStrings.locationPermissionDialogTitle), findsOneWidget);
       },
     );
 
