@@ -435,12 +435,11 @@ final baseDashboardRecordsProvider = Provider<AsyncValue<List<CheckInSubmission>
         dateRestrictionEnabled: dateRestrictionEnabled,
       );
 
-  final daySubmissions = records.where((r) {
-    final rec = r.timestamp;
-    return rec.year == targetDate.year &&
-        rec.month == targetDate.month &&
-        rec.day == targetDate.day;
-  }).toList();
+  // [checkInsStreamProvider] is already scoped by session_date. Do NOT
+  // re-filter by timestamp calendar day — admin Verify/Edit stamps wall-clock
+  // time (and older rows may have timestamp ≠ session_date), which hid updates
+  // (e.g. viewing 28 Oct while write stamped 30 Oct).
+  final daySubmissions = records;
 
   final resultRows = <CheckInSubmission>[];
 

@@ -444,6 +444,46 @@ void main() {
     );
 
     test(
+      'Not Checked In → Member keeps session day when stamped on another day',
+      () {
+        final placeholder = CheckInSubmission(
+          id: 'not_checked_in_emp_omkar_457',
+          locationId: '',
+          locationName: '—',
+          userName: omkar.name,
+          userPhone: omkar.phone,
+          type: CheckInType.notCheckedIn,
+          userLatitude: 0,
+          userLongitude: 0,
+          gpsAccuracy: 0,
+          distanceMeters: 0,
+          timestamp: DateTime(2026, 10, 28),
+          memberId: omkar.id,
+        );
+        final stamped = DateTime(2026, 10, 30, 16, 21);
+
+        final updated = prepareAdminEditedCheckIn(
+          original: placeholder,
+          selectedType: CheckInType.member,
+          nameField: omkar.name,
+          phoneField: omkar.phone,
+          venueField: '—',
+          coveredMemberName: omkar.name,
+          coveredMemberId: omkar.id,
+          now: stamped,
+          isVerified: true,
+          newCheckInId: 'real-uuid-member-2',
+          fallbackLocationId: 'location_x',
+          fallbackLocationName: 'Jade Luxury Banquets, Mumbai',
+        );
+
+        expect(updated.type, CheckInType.member);
+        expect(updated.timestamp, DateTime(2026, 10, 28, 16, 21));
+        expect(updated.editedAt, stamped);
+      },
+    );
+
+    test(
       'adminPersistedTimestamp keeps real QR time; stamps placeholders',
       () {
         final qr = original;
@@ -467,9 +507,18 @@ void main() {
           timestamp: DateTime(2026, 10, 8),
           memberId: omkar.id,
         );
+        // Same calendar day → session day + stamped clock equals stamped.
         expect(
           adminPersistedTimestamp(original: placeholder, stamped: stamped),
           stamped,
+        );
+        // Later wall-clock day must keep the session calendar day (8 Oct).
+        expect(
+          adminPersistedTimestamp(
+            original: placeholder,
+            stamped: DateTime(2026, 10, 30, 16, 21),
+          ),
+          DateTime(2026, 10, 8, 16, 21),
         );
       },
     );

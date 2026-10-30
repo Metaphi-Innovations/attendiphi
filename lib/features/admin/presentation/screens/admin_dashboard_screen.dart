@@ -987,17 +987,25 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
 
                                 Navigator.pop(dialogCtx);
 
+                                // Optimistic UI before network — same path as Verify.
+                                ref
+                                    .read(
+                                      dashboardCheckInOverridesProvider
+                                          .notifier,
+                                    )
+                                    .apply(updated, replaceId: record.id);
+                                ref
+                                    .read(paginatedCheckInsProvider.notifier)
+                                    .updateCheckInItem(
+                                      updated,
+                                      replaceId: record.id,
+                                    );
+
                                 try {
                                   final repo = ref.read(
                                     checkInRepositoryProvider,
                                   );
                                   await repo.updateCheckIn(updated);
-                                  ref
-                                      .read(paginatedCheckInsProvider.notifier)
-                                      .updateCheckInItem(
-                                        updated,
-                                        replaceId: record.id,
-                                      );
 
                                   if (mounted) {
                                     ScaffoldMessenger.of(
@@ -1013,6 +1021,29 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                                     );
                                   }
                                 } catch (e) {
+                                  ref
+                                      .read(
+                                        dashboardCheckInOverridesProvider
+                                            .notifier,
+                                      )
+                                      .remove(updated.id);
+                                  if (!CheckInSubmission.isPlaceholderId(
+                                        record.id,
+                                      ) &&
+                                      !record.type.isNotCheckedIn) {
+                                    ref
+                                        .read(
+                                          dashboardCheckInOverridesProvider
+                                              .notifier,
+                                        )
+                                        .apply(record);
+                                  }
+                                  ref
+                                      .read(paginatedCheckInsProvider.notifier)
+                                      .updateCheckInItem(
+                                        record,
+                                        replaceId: updated.id,
+                                      );
                                   if (mounted) {
                                     ScaffoldMessenger.of(
                                       this.context,
