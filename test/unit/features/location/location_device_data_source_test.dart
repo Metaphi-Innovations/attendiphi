@@ -127,8 +127,8 @@ void main() {
       );
       expect(fresh.latitude, 19.9);
       expect(liveCalls, 1);
-      // Fresh QR / Retry always re-invokes requestPermission.
-      expect(permissionRequests, 1);
+      // Already granted + caller prompted: skip redundant requestPermission.
+      expect(permissionRequests, 0);
     });
 
     test('clearCachedPosition drops in-memory fix', () async {
@@ -452,7 +452,37 @@ void main() {
       );
     });
 
-    test('web keeps the more accurate fix across retries', () async {
+    test('web accepts first good-enough fix on short retry', () async {
+      var calls = 0;
+      final limits = <int>[];
+      final ds = LocationDeviceDataSourceImpl(
+        clock: () => now,
+        isWebOverride: true,
+        isLocationServiceEnabled: () async => true,
+        checkPermission: () async => LocationPermission.whileInUse,
+        getLastKnownPosition: () async => null,
+        getCurrentPositionFn: (settings) async {
+          calls++;
+          limits.add(settings.timeLimit?.inSeconds ?? -1);
+          // Primary exceeds web cap; short retry is usable (no 3rd attempt).
+          if (calls == 1) {
+            return _pos(timestamp: now, accuracy: 1800, lat: 1);
+          }
+          return _pos(timestamp: now, accuracy: 220, lat: 19.2);
+        },
+      );
+
+      final pos = await ds.getCurrentPosition(permissionAlreadyGranted: true);
+      expect(calls, 2);
+      expect(limits, [
+        LocationDeviceDataSourceImpl.webMediumGpsTimeoutSeconds,
+        LocationDeviceDataSourceImpl.webHighGpsTimeoutSeconds,
+      ]);
+      expect(pos.accuracy, 220);
+      expect(pos.latitude, 19.2);
+    });
+
+    test('web does not run a third live attempt after retry miss', () async {
       var calls = 0;
       final ds = LocationDeviceDataSourceImpl(
         clock: () => now,
@@ -462,21 +492,15 @@ void main() {
         getLastKnownPosition: () async => null,
         getCurrentPositionFn: (_) async {
           calls++;
-          // First two readings exceed the web cap; third is usable.
-          if (calls == 1) {
-            return _pos(timestamp: now, accuracy: 1800, lat: 1);
-          }
-          if (calls == 2) {
-            return _pos(timestamp: now, accuracy: 1400, lat: 2);
-          }
-          return _pos(timestamp: now, accuracy: 220, lat: 19.2);
+          return _pos(timestamp: now, accuracy: 1800, lat: 1.0 + calls);
         },
       );
 
-      final pos = await ds.getCurrentPosition(permissionAlreadyGranted: true);
-      expect(calls, 3);
-      expect(pos.accuracy, 220);
-      expect(pos.latitude, 19.2);
+      await expectLater(
+        ds.getCurrentPosition(permissionAlreadyGranted: true),
+        throwsA(isA<LocationAccuracyTooLowException>()),
+      );
+      expect(calls, 2);
     });
 
     test(
@@ -510,7 +534,8 @@ void main() {
           throwsA(isA<LocationTimeoutException>()),
         );
         expect(lastKnownCalls, 0);
-        expect(liveCalls, greaterThan(0));
+        // Primary + one short retry only.
+        expect(liveCalls, 2);
       },
     );
 

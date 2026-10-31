@@ -13,9 +13,9 @@ abstract class LocationDeviceDataSource {
   /// Returns the current GPS position.
   ///
   /// [permissionAlreadyGranted] means the caller just finished a permission
-  /// prompt; we still re-check status (web can report stale denied).
-  /// [forceRefresh] skips in-memory cache and last-known fast path, and
-  /// always re-invokes [Geolocator.requestPermission] before acquiring.
+  /// prompt; we still re-check status (web can report stale denied) and skip
+  /// a redundant [Geolocator.requestPermission] when already granted.
+  /// [forceRefresh] skips in-memory cache and last-known fast path only.
   Future<Position> getCurrentPosition({
     bool permissionAlreadyGranted = false,
     bool forceRefresh = false,
@@ -50,8 +50,8 @@ bool isGpsPositionFresh(
 
 /// Geolocator implementation of [LocationDeviceDataSource].
 ///
-/// Web uses longer first-fix timeouts than native — mobile browsers often
-/// need several seconds after Allow before a position is ready.
+/// Web: one primary live fix + one short retry (no serial 10s×3 stack).
+/// Native: medium then high with short timeouts.
 class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
   LocationDeviceDataSourceImpl({
     Future<bool> Function()? isLocationServiceEnabled,
@@ -106,12 +106,14 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
   /// Native high timeout.
   static const int nativeHighGpsTimeoutSeconds = 3;
 
-  /// Web first-fix timeouts — browsers are slower after Allow.
-  static const int webMediumGpsTimeoutSeconds = 10;
+  /// Web primary live fix — keep under ~6s for typical Allow → form.
+  static const int webMediumGpsTimeoutSeconds = 6;
 
-  /// Web high-accuracy attempt.
-  static const int webHighGpsTimeoutSeconds = 10;
+  /// Web short retry only after a miss (not a third full attempt).
+  static const int webHighGpsTimeoutSeconds = 3;
 
+  /// Before: web worst case ≈ 400ms + 10s + 500ms + 10s + 10s ≈ 31s.
+  /// After: web worst case ≈ 6s + 3s = 9s (no artificial delays).
   int get _mediumTimeoutSeconds =>
       _isWeb ? webMediumGpsTimeoutSeconds : nativeMediumGpsTimeoutSeconds;
 
@@ -160,16 +162,16 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
       }
     }
 
-    // 2. Permissions first (so web can show Allow), then services check.
+    // 2. Permissions first, then services check.
     // Never map OS Location-off → “blocked for this site”.
-    // Fresh QR / Retry (forceRefresh) always re-invokes requestPermission so
-    // the browser permission API runs even when a prior grant is cached.
+    // Caller (PermissionService.forcePrompt) already prompted on Allow —
+    // skip a second requestPermission when status is already granted.
     var permission = await _checkPermission();
     var granted =
         permission == LocationPermission.always ||
         permission == LocationPermission.whileInUse;
 
-    if (!granted || forceRefresh) {
+    if (!granted) {
       AppLogger.info(
         'Requesting location permission (current=$permission, '
         'alreadyGrantedFlag=$permissionAlreadyGranted, '
@@ -213,11 +215,6 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
       tag: 'LocationDeviceDataSource',
     );
 
-    // Web: permission dialog often resolves before the GPS stack is ready.
-    if (_isWeb) {
-      await Future<void>.delayed(const Duration(milliseconds: 400));
-    }
-
     try {
       // 3. Fresh last-known first (native only).
       // geolocator_web throws UnsupportedError for getLastKnownPosition, which
@@ -241,7 +238,7 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
       }
 
       // 4. Live fix. Web must use high accuracy: geolocator_web maps medium
-      // to enableHighAccuracy false.
+      // to enableHighAccuracy false. Accept the first good-enough fix.
       final firstAccuracy = _isWeb
           ? LocationAccuracy.high
           : LocationAccuracy.medium;
@@ -250,23 +247,15 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
         timeLimitSeconds: _mediumTimeoutSeconds,
       );
 
-      // Web: one quick retry after a miss (common after first Allow).
-      if (_isWeb && (pos == null || !_isAccuracyAcceptable(pos))) {
-        await Future<void>.delayed(const Duration(milliseconds: 500));
-        final retryHigh = await _tryCurrentPosition(
-          accuracy: LocationAccuracy.high,
-          timeLimitSeconds: _mediumTimeoutSeconds,
-        );
-        pos = _preferBetter(pos, retryHigh);
-      }
-
-      // 5. High-accuracy if the first fix is missing or too coarse.
+      // 5. One short follow-up only when the first fix misses / is too coarse.
+      // Web: short retry (3s). Native: high-accuracy second attempt (3s).
+      // No third serial attempt — keeps web worst case at primary+retry.
       if (pos == null || !_isAccuracyAcceptable(pos)) {
-        final high = await _tryCurrentPosition(
+        final retry = await _tryCurrentPosition(
           accuracy: LocationAccuracy.high,
           timeLimitSeconds: _highTimeoutSeconds,
         );
-        pos = _preferBetter(pos, high);
+        pos = _preferBetter(pos, retry);
       }
 
       // 6. Last resort: still-usable last-known within cache TTL.
