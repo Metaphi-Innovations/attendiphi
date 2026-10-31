@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart' show Position;
 
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/errors/error_handler.dart';
@@ -58,25 +59,32 @@ class LocationValidationNotifier extends Notifier<LocationValidationState> {
     );
   }
 
-  /// Clears GPS cache and returns to idle — no GPS until the user confirms Allow.
-  ///
-  /// Call on every fresh QR entry so a prior browser grant/cache cannot silently
-  /// complete the gate. The screen shows an in-app permission dialog first.
-  void prepareFreshScan() {
+  /// Permission + GPS started on QR entry, consumed by [validateLocation].
+  Future<Position>? _pendingFix;
+
+  /// Fresh QR entry: drop the previous scan's fix and start permission + GPS
+  /// immediately (browser shows its own prompt when the site is Ask), in
+  /// parallel with the screen's date/device gates.
+  void startScan() {
     ref.read(locationDeviceDataSourceProvider).clearCachedPosition();
     state = const LocationValidationInitial();
+    final fix = _acquirePosition();
+    // Errors surface when validateLocation awaits; gated-out scans drop it.
+    fix.ignore();
+    _pendingFix = fix;
   }
 
-  /// Clears GPS cache and runs permission + GPS after the in-app Allow tap.
-  Future<void> resetAndValidate({bool forceRefresh = true}) async {
-    ref.read(locationDeviceDataSourceProvider).clearCachedPosition();
-    state = const LocationValidationInitial();
-    await validateLocation(forceRefresh: forceRefresh);
+  Future<Position> _acquirePosition() async {
+    await ref.read(permissionServiceProvider).requestLocationPermission();
+    return ref.read(getCurrentPositionUseCaseProvider)(
+      permissionAlreadyGranted: true,
+      forceRefresh: true,
+    );
   }
 
   /// Initiates location permission check and proximity validation against the target venue.
   /// When Super Admin restrictions are OFF, GPS/radius never blocks check-in.
-  Future<void> validateLocation({bool forceRefresh = true}) async {
+  Future<void> validateLocation() async {
     // Match QR form: wait for config. While loading, do not treat as ON (M5).
     final configReady = ref.read(restrictionsConfigReadyProvider);
     // Enforce radius/permission only when location restriction is ON.
@@ -86,24 +94,19 @@ class LocationValidationNotifier extends Notifier<LocationValidationState> {
 
     AppLogger.info(
       'Validating location for venue: ${_location.name} (${_location.id}) '
-      '(enforceProximity=$enforceProximity, configReady=$configReady, '
-      'forceRefresh=$forceRefresh)',
+      '(enforceProximity=$enforceProximity, configReady=$configReady)',
       tag: 'LocationValidationNotifier',
     );
 
     try {
-      // 1. Always re-invoke permission API after in-app Allow (user gesture).
-      state = const LocationValidationRequestingPermission();
-      final permissionService = ref.read(permissionServiceProvider);
-      await permissionService.requestLocationPermission(forcePrompt: true);
-
-      // 2. Obtain GPS with a forced live fix (no in-memory cache).
-      state = const LocationValidationFetchingPosition();
-      final getCurrentPosition = ref.read(getCurrentPositionUseCaseProvider);
-      final position = await getCurrentPosition(
-        permissionAlreadyGranted: true,
-        forceRefresh: forceRefresh,
-      );
+      // 1–2. Permission (browser prompt only when Ask) + live GPS. Reuse the
+      // fix already in flight from startScan so gates don't delay GPS.
+      final pending = _pendingFix;
+      _pendingFix = null;
+      state = pending != null
+          ? const LocationValidationFetchingPosition()
+          : const LocationValidationRequestingPermission();
+      final position = await (pending ?? _acquirePosition());
 
       // 3. Validate proximity (Haversine). When restrictions OFF, outside radius is OK.
       final validateProximity = ref.read(validateUserProximityUseCaseProvider);

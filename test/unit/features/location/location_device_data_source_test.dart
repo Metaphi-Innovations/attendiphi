@@ -354,9 +354,9 @@ void main() {
       );
     });
 
-    test('web uses high accuracy and the web medium timeout', () async {
-      final limits = <int>[];
-      final accuracies = <LocationAccuracy>[];
+    test('web races a network fix against high accuracy', () async {
+      final limits = <LocationAccuracy, int>{};
+      final maxAges = <Duration>[];
       final ds = LocationDeviceDataSourceImpl(
         clock: () => now,
         isWebOverride: true,
@@ -364,16 +364,68 @@ void main() {
         checkPermission: () async => LocationPermission.whileInUse,
         getLastKnownPosition: () async => null,
         getCurrentPositionFn: (settings) async {
-          limits.add(settings.timeLimit?.inSeconds ?? -1);
-          accuracies.add(settings.accuracy);
           expect(settings, isA<WebSettings>());
+          limits[settings.accuracy] = settings.timeLimit?.inSeconds ?? -1;
+          maxAges.add((settings as WebSettings).maximumAge);
           return _pos(timestamp: now, accuracy: 25, lat: 19.4);
         },
       );
 
       await ds.getCurrentPosition(permissionAlreadyGranted: true);
-      expect(limits, [LocationDeviceDataSourceImpl.webMediumGpsTimeoutSeconds]);
-      expect(accuracies, [LocationAccuracy.high]);
+      expect(limits, {
+        LocationAccuracy.medium:
+            LocationDeviceDataSourceImpl.webMediumGpsTimeoutSeconds,
+        LocationAccuracy.high:
+            LocationDeviceDataSourceImpl.webHighGpsTimeoutSeconds,
+      });
+      expect(
+        maxAges,
+        everyElement(
+          const Duration(
+            seconds: LocationDeviceDataSourceImpl.webMaximumAgeSeconds,
+          ),
+        ),
+      );
+    });
+
+    test('web returns the first precise fix without waiting', () async {
+      final high = Completer<Position>();
+      final ds = LocationDeviceDataSourceImpl(
+        clock: () => now,
+        isWebOverride: true,
+        isLocationServiceEnabled: () async => true,
+        checkPermission: () async => LocationPermission.whileInUse,
+        getLastKnownPosition: () async => null,
+        getCurrentPositionFn: (settings) {
+          if (settings.accuracy == LocationAccuracy.high) return high.future;
+          return Future.value(_pos(timestamp: now, accuracy: 30, lat: 19.3));
+        },
+      );
+
+      final pos = await ds.getCurrentPosition(permissionAlreadyGranted: true);
+      expect(pos.latitude, 19.3);
+      expect(high.isCompleted, isFalse);
+    });
+
+    test('web coarse network fix waits for a better high fix', () async {
+      final ds = LocationDeviceDataSourceImpl(
+        clock: () => now,
+        isWebOverride: true,
+        isLocationServiceEnabled: () async => true,
+        checkPermission: () async => LocationPermission.whileInUse,
+        getLastKnownPosition: () async => null,
+        getCurrentPositionFn: (settings) async {
+          if (settings.accuracy == LocationAccuracy.high) {
+            await Future<void>.delayed(const Duration(milliseconds: 50));
+            return _pos(timestamp: now, accuracy: 15, lat: 19.6);
+          }
+          return _pos(timestamp: now, accuracy: 800, lat: 1);
+        },
+      );
+
+      final pos = await ds.getCurrentPosition(permissionAlreadyGranted: true);
+      expect(pos.latitude, 19.6);
+      expect(pos.accuracy, 15);
     });
 
     test(
@@ -393,7 +445,6 @@ void main() {
             );
           },
           getCurrentPositionFn: (settings) async {
-            expect(settings.accuracy, LocationAccuracy.high);
             return _pos(timestamp: now, accuracy: 20, lat: 19.5);
           },
         );
@@ -452,9 +503,7 @@ void main() {
       );
     });
 
-    test('web accepts first good-enough fix on short retry', () async {
-      var calls = 0;
-      final limits = <int>[];
+    test('web keeps the more accurate of two coarse fixes', () async {
       final ds = LocationDeviceDataSourceImpl(
         clock: () => now,
         isWebOverride: true,
@@ -462,27 +511,19 @@ void main() {
         checkPermission: () async => LocationPermission.whileInUse,
         getLastKnownPosition: () async => null,
         getCurrentPositionFn: (settings) async {
-          calls++;
-          limits.add(settings.timeLimit?.inSeconds ?? -1);
-          // Primary exceeds web cap; short retry is usable (no 3rd attempt).
-          if (calls == 1) {
-            return _pos(timestamp: now, accuracy: 1800, lat: 1);
+          if (settings.accuracy == LocationAccuracy.high) {
+            return _pos(timestamp: now, accuracy: 220, lat: 19.2);
           }
-          return _pos(timestamp: now, accuracy: 220, lat: 19.2);
+          return _pos(timestamp: now, accuracy: 1800, lat: 1);
         },
       );
 
       final pos = await ds.getCurrentPosition(permissionAlreadyGranted: true);
-      expect(calls, 2);
-      expect(limits, [
-        LocationDeviceDataSourceImpl.webMediumGpsTimeoutSeconds,
-        LocationDeviceDataSourceImpl.webHighGpsTimeoutSeconds,
-      ]);
       expect(pos.accuracy, 220);
       expect(pos.latitude, 19.2);
     });
 
-    test('web does not run a third live attempt after retry miss', () async {
+    test('web makes only the two raced live calls', () async {
       var calls = 0;
       final ds = LocationDeviceDataSourceImpl(
         clock: () => now,
@@ -534,7 +575,7 @@ void main() {
           throwsA(isA<LocationTimeoutException>()),
         );
         expect(lastKnownCalls, 0);
-        // Primary + one short retry only.
+        // Network + high race only.
         expect(liveCalls, 2);
       },
     );

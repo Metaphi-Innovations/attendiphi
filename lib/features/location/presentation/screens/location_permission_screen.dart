@@ -129,7 +129,6 @@ class _LocationPermissionScreenState
   bool _locationStarted = false;
   bool _gateApplied = false;
   bool _gateInFlight = false;
-  bool _permissionDialogOpen = false;
 
   /// Live Supabase venue when fetch succeeds; otherwise router / DefaultLocationX.
   LocationConfig get _displayLocation => _resolvedLocation ?? widget.location;
@@ -145,18 +144,28 @@ class _LocationPermissionScreenState
     );
     // Pull fresh Super Admin flags so One device = one check-in OFF/ON
     // is not stuck on a keepAlive poll snapshot from an earlier visit.
+    // Start permission + GPS now so the gates don't delay the first fix.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       ref.invalidate(checkInRestrictionsConfigProvider);
+      ref
+          .read(locationValidationFamilyProvider(widget.location).notifier)
+          .startScan();
     });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // After Settings → Location ON, keep the in-app Allow dialog as the
-    // user gesture so the browser can show its permission prompt.
-    if (state == AppLifecycleState.resumed && mounted) {
-      ref.invalidate(checkInRestrictionsConfigProvider);
+    if (state != AppLifecycleState.resumed || !mounted) return;
+    ref.invalidate(checkInRestrictionsConfigProvider);
+    // Back from Settings (Location on / site allowed): fetch again.
+    final current = ref.read(locationValidationFamilyProvider(widget.location));
+    if (_locationStarted && current is LocationValidationError) {
+      final notifier = ref.read(
+        locationValidationFamilyProvider(widget.location).notifier,
+      );
+      notifier.startScan();
+      notifier.validateLocation();
     }
   }
 
@@ -167,76 +176,16 @@ class _LocationPermissionScreenState
         .applyLocation(live);
   }
 
-  /// Fresh QR entry: clear cache and show the in-app Allow dialog (no silent GPS).
-  void _prepareLocationGateIfNeeded({bool force = false}) {
-    if (!force && (_locationStarted || !mounted)) return;
+  /// Gates passed: finish the fix started on mount, check radius, go to form.
+  void _prepareLocationGateIfNeeded() {
+    if (_locationStarted || !mounted) return;
     _locationStarted = true;
-    ref
-        .read(locationValidationFamilyProvider(widget.location).notifier)
-        .prepareFreshScan();
-    // Two frames: (1) leave device-check loading scaffold, (2) present dialog.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _showPermissionDialog();
-      });
-    });
-  }
-
-  /// Guaranteed ask on every QR scan — native browser dialog may also appear
-  /// after Allow when the site permission is still Ask/Deny.
-  Future<void> _showPermissionDialog() async {
-    if (!mounted || _permissionDialogOpen) return;
-    // Don't interrupt an in-flight acquire or success navigation.
-    final current = ref.read(locationValidationFamilyProvider(widget.location));
-    if (current is LocationValidationRequestingPermission ||
-        current is LocationValidationFetchingPosition ||
-        current is LocationValidationSuccess) {
-      return;
-    }
-
-    _permissionDialogOpen = true;
-    final allowed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Text(AppStrings.locationPermissionDialogTitle),
-          content: const Text(AppStrings.locationPermissionDialogBody),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text(AppStrings.locationPermissionNotNow),
-            ),
-            FilledButton.icon(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              icon: const Icon(Icons.my_location_rounded, size: 18),
-              label: const Text(AppStrings.locationPermissionAllow),
-            ),
-          ],
-        );
-      },
-    );
-    _permissionDialogOpen = false;
-    if (!mounted) return;
-    if (allowed == true) {
-      _onAllowLocation();
-    }
-  }
-
-  /// User gesture: browser may show Allow; then acquire a live GPS fix.
-  void _onAllowLocation() {
-    if (!mounted) return;
     if (!_pulseController.isAnimating) {
       _pulseController.repeat();
     }
     ref
         .read(locationValidationFamilyProvider(widget.location).notifier)
-        .resetAndValidate(forceRefresh: true);
+        .validateLocation();
   }
 
   void _goToCheckInForm(ProximityResult proximity) {
@@ -1083,7 +1032,7 @@ class _LocationPermissionScreenState
             ] else if (isServicesOff) ...[
               const SizedBox(height: 10),
               Text(
-                'After Location is on, tap Allow Location below.',
+                'After Location is on, come back here or scan the QR again.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                   height: 1.4,
@@ -1096,20 +1045,10 @@ class _LocationPermissionScreenState
       );
     }
 
-    if (state is LocationValidationInitial) {
-      return Text(
-        AppStrings.locationPermissionAwaitingAllow,
-        style: theme.textTheme.bodyMedium?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-        textAlign: TextAlign.center,
-      );
-    }
-
     return Text(
-      state is LocationValidationFetchingPosition
-          ? AppStrings.locationFetchingPosition
-          : AppStrings.locationRequestingPermission,
+      state is LocationValidationRequestingPermission
+          ? AppStrings.locationRequestingPermission
+          : AppStrings.locationFetchingPosition,
       style: theme.textTheme.bodyMedium?.copyWith(
         color: theme.colorScheme.onSurfaceVariant,
       ),
@@ -1124,12 +1063,7 @@ class _LocationPermissionScreenState
   ) {
     if (state is LocationValidationError ||
         state is LocationValidationOutsideRadius) {
-      // Re-open the every-scan ask (no silent GPS).
-      return AppButton.primary(
-        label: AppStrings.locationPermissionAllow,
-        icon: Icons.my_location_rounded,
-        onPressed: _showPermissionDialog,
-      );
+      return const SizedBox.shrink();
     }
 
     if (state is LocationValidationSuccess) {
@@ -1137,14 +1071,6 @@ class _LocationPermissionScreenState
         label: 'Continue to Check-In',
         icon: Icons.arrow_forward_rounded,
         onPressed: () => _goToCheckInForm(state.result),
-      );
-    }
-
-    if (state is LocationValidationInitial) {
-      return AppButton.primary(
-        label: AppStrings.locationPermissionAllow,
-        icon: Icons.my_location_rounded,
-        onPressed: _showPermissionDialog,
       );
     }
 

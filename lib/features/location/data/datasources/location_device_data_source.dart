@@ -50,7 +50,7 @@ bool isGpsPositionFresh(
 
 /// Geolocator implementation of [LocationDeviceDataSource].
 ///
-/// Web: one primary live fix + one short retry (no serial 10s×3 stack).
+/// Web: network fix (3s) raced against high accuracy (6s); worst case ≈ 6s.
 /// Native: medium then high with short timeouts.
 class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
   LocationDeviceDataSourceImpl({
@@ -106,14 +106,15 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
   /// Native high timeout.
   static const int nativeHighGpsTimeoutSeconds = 3;
 
-  /// Web primary live fix — keep under ~6s for typical Allow → form.
-  static const int webMediumGpsTimeoutSeconds = 6;
+  /// Web network/Wi‑Fi fix (enableHighAccuracy: false), raced with high.
+  static const int webMediumGpsTimeoutSeconds = 3;
 
-  /// Web short retry only after a miss (not a third full attempt).
-  static const int webHighGpsTimeoutSeconds = 3;
+  /// Web high-accuracy fix, raced with the network fix. Worst case ≈ 6s.
+  static const int webHighGpsTimeoutSeconds = 6;
 
-  /// Before: web worst case ≈ 400ms + 10s + 500ms + 10s + 10s ≈ 31s.
-  /// After: web worst case ≈ 6s + 3s = 9s (no artificial delays).
+  /// Browser may return a fix it already holds that is at most this old.
+  static const int webMaximumAgeSeconds = 30;
+
   int get _mediumTimeoutSeconds =>
       _isWeb ? webMediumGpsTimeoutSeconds : nativeMediumGpsTimeoutSeconds;
 
@@ -164,8 +165,7 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
 
     // 2. Permissions first, then services check.
     // Never map OS Location-off → “blocked for this site”.
-    // Caller (PermissionService.forcePrompt) already prompted on Allow —
-    // skip a second requestPermission when status is already granted.
+    // Request only when not granted (caller may already have prompted).
     var permission = await _checkPermission();
     var granted =
         permission == LocationPermission.always ||
@@ -237,25 +237,23 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
         return _remember(lastKnown);
       }
 
-      // 4. Live fix. Web must use high accuracy: geolocator_web maps medium
-      // to enableHighAccuracy false. Accept the first good-enough fix.
-      final firstAccuracy = _isWeb
-          ? LocationAccuracy.high
-          : LocationAccuracy.medium;
-      Position? pos = await _tryCurrentPosition(
-        accuracy: firstAccuracy,
-        timeLimitSeconds: _mediumTimeoutSeconds,
-      );
-
-      // 5. One short follow-up only when the first fix misses / is too coarse.
-      // Web: short retry (3s). Native: high-accuracy second attempt (3s).
-      // No third serial attempt — keeps web worst case at primary+retry.
-      if (pos == null || !_isAccuracyAcceptable(pos)) {
-        final retry = await _tryCurrentPosition(
-          accuracy: LocationAccuracy.high,
-          timeLimitSeconds: _highTimeoutSeconds,
+      // 4. Live fix.
+      Position? pos;
+      if (_isWeb) {
+        pos = await _raceWebFix();
+      } else {
+        pos = await _tryCurrentPosition(
+          accuracy: LocationAccuracy.medium,
+          timeLimitSeconds: _mediumTimeoutSeconds,
         );
-        pos = _preferBetter(pos, retry);
+        // 5. Native: one high-accuracy follow-up when medium misses.
+        if (pos == null || !_isAccuracyAcceptable(pos)) {
+          final high = await _tryCurrentPosition(
+            accuracy: LocationAccuracy.high,
+            timeLimitSeconds: _highTimeoutSeconds,
+          );
+          pos = _preferBetter(pos, high);
+        }
       }
 
       // 6. Last resort: still-usable last-known within cache TTL.
@@ -284,8 +282,8 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
         throw LocationTimeoutException(
           userMessage: _isWeb
               ? 'Still getting your location. Make sure Location is allowed '
-                    'for this site (Precise Location on iPhone), wait a moment, '
-                    'then tap Retry.'
+                    'for this site, wait a moment, '
+                    'then scan the QR again.'
               : 'Unable to determine your location. Please check your GPS '
                     'and try again.',
           technicalMessage:
@@ -303,7 +301,7 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
           userMessage: _isWeb
               ? 'Browser location accuracy is too coarse '
                     '(±${pos.accuracy.round()}m; need ≤${_maxAccuracyMeters.round()}m). '
-                    'Try a phone on the venue Wi‑Fi/GPS, or move near a window and tap Retry.'
+                    'Try a phone on the venue Wi‑Fi/GPS, or move near a window and scan the QR again.'
               : 'Your GPS signal is too weak for accurate verification. '
                     'Please move to an open area and try again.',
           technicalMessage:
@@ -353,17 +351,50 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
     }
   }
 
+  /// Runs a network fix and a high-accuracy fix in parallel.
+  ///
+  /// Returns the first fix that is precise (≤ [AppConstants.maxGpsAccuracyMeters])
+  /// immediately. A coarser fix waits for the other request so a wide Wi‑Fi
+  /// circle cannot wrongly push a member outside the venue radius; once both
+  /// settle, the more accurate one wins (web cap is applied by the caller).
+  Future<Position?> _raceWebFix() {
+    final done = Completer<Position?>();
+    Position? best;
+    var pending = 2;
+
+    void onResult(Position? pos) {
+      if (done.isCompleted) return;
+      best = _preferBetter(best, pos);
+      if (pos != null && pos.accuracy <= AppConstants.maxGpsAccuracyMeters) {
+        done.complete(pos);
+        return;
+      }
+      pending--;
+      if (pending == 0) done.complete(best);
+    }
+
+    _tryCurrentPosition(
+      accuracy: LocationAccuracy.medium,
+      timeLimitSeconds: _mediumTimeoutSeconds,
+    ).then(onResult);
+    _tryCurrentPosition(
+      accuracy: LocationAccuracy.high,
+      timeLimitSeconds: _highTimeoutSeconds,
+    ).then(onResult);
+    return done.future;
+  }
+
   Future<Position?> _tryCurrentPosition({
     required LocationAccuracy accuracy,
     required int timeLimitSeconds,
   }) async {
     final limit = Duration(seconds: timeLimitSeconds);
-    // Web live fixes always ask for high accuracy. geolocator_web turns
-    // LocationAccuracy.medium into enableHighAccuracy: false.
+    // geolocator_web maps medium → enableHighAccuracy: false (network fix)
+    // and high → true (GPS).
     final LocationSettings settings = _isWeb
         ? WebSettings(
-            accuracy: LocationAccuracy.high,
-            maximumAge: Duration.zero,
+            accuracy: accuracy,
+            maximumAge: const Duration(seconds: webMaximumAgeSeconds),
             timeLimit: limit,
           )
         : LocationSettings(accuracy: accuracy, timeLimit: limit);

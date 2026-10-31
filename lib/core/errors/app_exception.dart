@@ -57,7 +57,7 @@ class LocationServiceDisabledException extends AppException {
   const LocationServiceDisabledException({
     super.userMessage =
         'Location is turned off on this phone. Turn on Location (and Precise Location '
-        'if shown) in Settings, then tap Allow Location again.',
+        'if shown) in Settings, then scan the QR again.',
     super.technicalMessage = 'Device location services disabled.',
     super.originalError,
     super.stackTrace,
@@ -79,7 +79,7 @@ class LocationTimeoutException extends AppException {
   const LocationTimeoutException({
     super.userMessage =
         'Still getting your location. Wait a moment outdoors, enable Precise '
-        'Location if prompted, then tap Retry.',
+        'Location if prompted, then scan the QR again.',
     super.technicalMessage = 'Location request timed out.',
     super.originalError,
     super.stackTrace,
