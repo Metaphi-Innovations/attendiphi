@@ -130,7 +130,6 @@ class _LocationPermissionScreenState
   bool _locationStarted = false;
   bool _gateApplied = false;
   bool _gateInFlight = false;
-  bool _dialogOpen = false;
 
   /// Live Supabase venue when fetch succeeds; otherwise router / DefaultLocationX.
   LocationConfig get _displayLocation => _resolvedLocation ?? widget.location;
@@ -200,68 +199,7 @@ class _LocationPermissionScreenState
       s is LocationValidationFetchingPosition ||
       s is LocationValidationValidatingVenue;
 
-  /// Device Location off: how to turn it on, then retry from a tap.
-  /// The app cannot enable GPS; this is guidance only.
-  Future<void> _showServiceOffDialog() async {
-    if (!mounted || _dialogOpen) return;
-    _dialogOpen = true;
-    var showHowTo = false;
-    final retry = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            final theme = Theme.of(context);
-            return AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              title: const Text(AppStrings.locationServiceOffTitle),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(AppStrings.locationServiceOffBody),
-                    const SizedBox(height: 12),
-                    const _NumberedSteps(
-                      steps: AppStrings.locationServiceOffSteps,
-                    ),
-                    if (showHowTo) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        AppStrings.locationServiceHowToDetails,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                          height: 1.4,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              actionsOverflowDirection: VerticalDirection.up,
-              actions: [
-                TextButton(
-                  onPressed: () => setDialogState(() => showHowTo = !showHowTo),
-                  child: const Text(AppStrings.locationServiceHowTo),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(true),
-                  child: const Text(AppStrings.locationServiceOffRetry),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-    _dialogOpen = false;
-    if (!mounted) return;
-    if (retry == true) _startVerification();
-  }
-
-  /// User tap (Allow / Retry): status check, prompt if allowed, live GPS fix.
+  /// User tap (Allow / Retry): status check, system prompt if needed, live GPS.
   void _startVerification() {
     if (!mounted) return;
     _notifier.resetAndValidate(forceRefresh: true);
@@ -537,12 +475,6 @@ class _LocationPermissionScreenState
           _pulseController.stop();
         }
         if (_hasCheckedIn || _existingSubmission != null) return;
-        if (next is LocationValidationServiceDisabled &&
-            prev is! LocationValidationServiceDisabled) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _showServiceOffDialog();
-          });
-        }
         if (next is LocationValidationSuccess) {
           // Brief success flash, then navigate — keep short for snappy QR flow.
           Future.delayed(const Duration(milliseconds: 120), () {
@@ -1091,7 +1023,6 @@ class _LocationPermissionScreenState
       return const _MessagePanel(
         title: AppStrings.locationServiceOffTitle,
         message: AppStrings.locationServiceOffBody,
-        steps: AppStrings.locationServiceOffSteps,
       );
     }
 
@@ -1177,37 +1108,13 @@ class _LocationPermissionScreenState
       );
     }
 
-    if (state is LocationValidationServiceDisabled) {
-      return Column(
-        children: [
-          AppButton.primary(
-            label: AppStrings.locationServiceOffRetry,
-            icon: Icons.refresh_rounded,
-            onPressed: _startVerification,
-          ),
-          const SizedBox(height: 8),
-          AppButton.text(
-            label: AppStrings.locationServiceHowTo,
-            onPressed: _showServiceOffDialog,
-          ),
-        ],
-      );
-    }
-
-    if (state is LocationValidationPermissionDenied) {
-      return Column(
-        children: [
-          AppButton.primary(
-            label: AppStrings.locationPermissionAllow,
-            icon: Icons.my_location_rounded,
-            onPressed: _startVerification,
-          ),
-          const SizedBox(height: 8),
-          AppButton.text(
-            label: AppStrings.locationServiceHowTo,
-            onPressed: _showServiceOffDialog,
-          ),
-        ],
+    if (state is LocationValidationServiceDisabled ||
+        state is LocationValidationPermissionDenied) {
+      // After Location is on, this tap is the gesture for the system popup.
+      return AppButton.primary(
+        label: AppStrings.locationPermissionAllow,
+        icon: Icons.my_location_rounded,
+        onPressed: _startVerification,
       );
     }
 

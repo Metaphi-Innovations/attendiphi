@@ -257,7 +257,7 @@ void main() {
       expect(s.result.isVerified, isFalse);
     });
 
-    test('13. retry after GPS activation (native resume) verifies once', () async {
+    test('13. after GPS on, resume shows Allow path; tap verifies', () async {
       final env = _Env(gpsOn: false);
       final device = _FakeDevice(() async => _fix());
       final c = _container(env, device);
@@ -267,11 +267,15 @@ void main() {
 
       env.gpsOn = true;
       await notifierOf(c).recheckAfterResume();
+      expect(stateOf(c), isA<LocationValidationInitial>());
+      expect(device.calls, 0);
+
+      await notifierOf(c).validateLocation();
       expect(stateOf(c), isA<LocationValidationSuccess>());
       expect(device.calls, 1);
     });
 
-    test('13b. web services-off: resume does not auto-run, Retry does', () async {
+    test('13b. web services-off: resume waits for Allow tap', () async {
       final env = _Env(isWeb: true);
       final device = _FakeDevice(
         () async => throw const LocationServiceDisabledException(),
@@ -282,12 +286,14 @@ void main() {
       expect(stateOf(c), isA<LocationValidationServiceDisabled>());
 
       device.handler = () async => _fix();
+      // Web reports site permission granted even when GPS was off.
       await notifierOf(c).recheckAfterResume();
-      expect(stateOf(c), isA<LocationValidationServiceDisabled>());
+      expect(stateOf(c), isA<LocationValidationInitial>());
       expect(device.calls, 1);
 
       await notifierOf(c).validateLocation();
       expect(stateOf(c), isA<LocationValidationSuccess>());
+      expect(device.calls, 2);
     });
 
     test('14. retry after browser permission change (Block → Allow)', () async {

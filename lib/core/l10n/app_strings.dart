@@ -74,26 +74,14 @@ class AppStrings {
     'Return to this tab — check-in will continue automatically.',
   ];
 
-  // Device Location (GPS) off.
+  // Device Location (GPS) off — short, user-centric copy.
   static const locationServiceOffTitle = 'Location is Turned Off';
   static const locationServiceOffBody =
-      'Attendiphi needs your device location to verify that you are at the '
-      'check-in venue. Please enable Location Services to continue.';
-  static const locationServiceOffSteps = [
-    'Swipe down from the top of your phone.',
-    'Open Quick Settings.',
-    'Turn ON Location.',
-    'Return to Attendiphi.',
-    'Tap Retry.',
-  ];
-  static const locationServiceOffRetry = "I've Enabled Location – Retry";
-  static const locationServiceHowTo = 'How to Enable Location';
-  static const locationServiceHowToDetails =
-      'Android: Settings → Location → turn on "Use location". '
-      'iPhone: Settings → Privacy & Security → Location Services → On, then '
-      'allow your browser. Desktop: turn on Location Services in system settings.';
+      'Please turn on Location on your phone, then tap Allow Location to '
+      'continue check-in.';
   static const locationServiceDisabled =
-      'Location is turned off on this device. Turn on Location, then tap Retry.';
+      'Please turn on Location on your phone, then tap Allow Location to '
+      'continue check-in.';
 
   // Progress.
   static const locationCheckingService = 'Checking location settings...';

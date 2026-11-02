@@ -591,7 +591,6 @@ void main() {
         expect(find.text(AppStrings.locationPermissionBlockedTitle), findsNothing);
         expect(find.text(AppStrings.locationServiceOffTitle), findsNothing);
         expect(find.text(AppStrings.locationPermissionAllow), findsOneWidget);
-        expect(find.text(AppStrings.locationServiceHowTo), findsOneWidget);
         expect(find.textContaining('scan the QR again'), findsNothing);
         expect(find.textContaining('reload'), findsNothing);
       });
@@ -657,57 +656,48 @@ void main() {
         expect(prompts, 0);
       });
 
-      testWidgets('GPS off shows the Location is Turned Off dialog; Retry '
-          'after enabling verifies', (tester) async {
-        var gpsOn = false;
+      testWidgets('GPS off shows enable message + Allow Location; after '
+          'enabling, Allow verifies', (tester) async {
+        final gpsOn = <bool>[false];
         final device = _FakeDeviceLocation(
           _position(testLocation.latitude, testLocation.longitude),
         );
+        final service = PermissionService(
+          isWebOverride: false,
+          isLocationServiceEnabled: () async => gpsOn.first,
+          checkPermission: () async => LocationPermission.whileInUse,
+        );
+        final container = ProviderContainer(
+          overrides: gpsOverrides(service: service, device: device),
+        );
+        addTearDown(container.dispose);
         await tester.pumpWidget(
-          gpsHarness(
-            service: PermissionService(
-              isWebOverride: false,
-              isLocationServiceEnabled: () async => gpsOn,
-              checkPermission: () async => LocationPermission.whileInUse,
+          UncontrolledProviderScope(
+            container: container,
+            child: MaterialApp(
+              home: Scaffold(
+                body: LocationPermissionScreen(
+                  location: testLocation,
+                  sessionDateStr: '2026-10-30',
+                  nowProvider: () => DateTime(2026, 10, 30, 11, 0),
+                ),
+              ),
             ),
-            device: device,
-          ),
-        );
-        await settle(tester);
-
-        final dialog = find.byType(AlertDialog);
-        expect(dialog, findsOneWidget);
-        expect(
-          find.descendant(
-            of: dialog,
-            matching: find.text(AppStrings.locationServiceOffTitle),
-          ),
-          findsOneWidget,
-        );
-        expect(find.text(AppStrings.locationServiceOffBody), findsWidgets);
-        for (final step in AppStrings.locationServiceOffSteps) {
-          expect(find.text(step), findsWidgets);
-        }
-
-        await tester.tap(
-          find.descendant(
-            of: dialog,
-            matching: find.text(AppStrings.locationServiceHowTo),
-          ),
-        );
-        await tester.pump();
-        expect(find.text(AppStrings.locationServiceHowToDetails), findsOneWidget);
-
-        gpsOn = true;
-        await tester.tap(
-          find.descendant(
-            of: dialog,
-            matching: find.text(AppStrings.locationServiceOffRetry),
           ),
         );
         await settle(tester);
 
         expect(find.byType(AlertDialog), findsNothing);
+        expect(find.text(AppStrings.locationServiceOffTitle), findsOneWidget);
+        expect(find.text(AppStrings.locationServiceOffBody), findsOneWidget);
+        expect(find.text(AppStrings.locationPermissionAllow), findsOneWidget);
+        expect(device.calls, 0);
+
+        gpsOn[0] = true;
+        await tester.ensureVisible(find.text(AppStrings.locationPermissionAllow));
+        await tester.tap(find.text(AppStrings.locationPermissionAllow));
+        await settle(tester, 12);
+
         expect(device.calls, 1);
         expect(find.text('Continue to Check-In'), findsOneWidget);
       });

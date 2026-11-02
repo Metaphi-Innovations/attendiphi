@@ -203,12 +203,13 @@ class LocationValidationNotifier extends Notifier<LocationValidationState> {
           await _verify(forceRefresh: true);
         }
       case LocationAccessStatus.granted:
-        // Web cannot read device Location, so "granted" says nothing about a
-        // services-off error there; keep the GPS-off recovery CTA.
-        final causeResolved =
-            current is! LocationValidationServiceDisabled ||
-            ref.read(permissionServiceProvider).canDetectServiceState;
-        if (causeResolved && !_resumeRecoveryUsed) {
+        // GPS was off: wait for Allow Location tap (system popup gesture).
+        if (current is LocationValidationServiceDisabled) {
+          state = const LocationValidationInitial();
+          break;
+        }
+        // Blocked → Allow: continue automatically.
+        if (!_resumeRecoveryUsed) {
           _resumeRecoveryUsed = true;
           await _verify(forceRefresh: true);
         }
