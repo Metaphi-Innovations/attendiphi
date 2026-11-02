@@ -34,11 +34,18 @@ class AppStrings {
   static const locationPermissionPermanentlyDenied =
       'Location is blocked for this site. Enable it in the browser, then reload or scan the QR again to continue check-in.';
   static const locationPermissionOpenSettings = 'Open Settings';
+  static const locationPermissionAllow = 'Allow Location';
+  static const locationPermissionDialogTitle = 'Location required';
+  static const locationPermissionDialogBody =
+      'We need your location to verify you are at the venue.';
+  static const locationPermissionNotNow = 'Not now';
+  static const locationPermissionAwaitingAllow =
+      'Tap Allow Location to verify you are at the venue. Your browser may also ask for permission.';
   static const locationPermissionWebHelp =
-      'On web: tap the lock/tune icon next to the URL → Site settings → Location → Allow (or Ask), then reload or scan the QR again.';
+      'On web: tap the lock/tune icon next to the URL → Site settings → Location → Allow (or Ask), then tap Allow Location again.';
   static const locationServiceDisabled =
       'Location is turned off on this phone. Turn on Location (and Precise Location '
-      'if shown) in Settings, then scan the QR again.';
+      'if shown) in Settings, then tap Allow Location again.';
   static const locationFetchingPosition = 'Getting your location...';
   static const locationRequestingPermission =
       'Requesting location permission...';
