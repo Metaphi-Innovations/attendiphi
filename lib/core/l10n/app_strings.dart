@@ -30,15 +30,11 @@ class AppStrings {
   static const locationPermissionGrant = 'Grant Permission';
   static const locationPermissionOpenSettings = 'Open Settings';
   static const locationPermissionAllow = 'Allow Location';
-  static const locationPermissionCancel = 'Cancel';
-
-  // Allow dialog (permission not decided yet).
-  static const locationPermissionDialogTitle = 'Allow Location Access';
-  static const locationPermissionDialogBody =
-      'Please allow Attendiphi to access your location so we can verify your '
-      'presence at the venue.';
+  // Single screen CTA (permission not decided yet). No in-app Allow dialog —
+  // the CTA itself is the user gesture that opens the browser/OS prompt.
   static const locationPermissionAwaitingAllow =
-      'Tap Allow Location so we can verify you are at the venue.';
+      'Tap Allow Location so we can verify you are at the venue. Your browser '
+      'will ask for permission.';
 
   // Permission not granted, cause ambiguous (dismissed prompt, or the phone's
   // Location was off). Must not claim either one.

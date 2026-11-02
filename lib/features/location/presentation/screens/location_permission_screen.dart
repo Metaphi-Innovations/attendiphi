@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,7 +12,6 @@ import '../../../../app/theme/app_radius.dart';
 import '../../../../app/theme/app_spacing.dart';
 import '../../../../core/errors/error_handler.dart';
 import '../../../../core/l10n/app_strings.dart';
-import '../../../../core/permissions/permission_service.dart';
 import '../../../../core/responsive/responsive_breakpoints.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_card.dart';
@@ -162,17 +163,11 @@ class _LocationPermissionScreenState
   LocationValidationNotifier get _notifier =>
       ref.read(locationValidationFamilyProvider(widget.location).notifier);
 
-  /// Back from Settings / Quick Settings: re-read status only. A browser
-  /// prompt still needs a tap, so a reset-to-Ask site shows the Allow dialog.
+  /// Back from Settings / Quick Settings: re-read status only. Never prompts.
+  /// Block→Ask returns to Initial so the user taps the single Allow CTA.
   Future<void> _recheckAfterResume() async {
     if (!_locationStarted || _hasCheckedIn) return;
-    final status = await _notifier.recheckAfterResume();
-    if (!mounted) return;
-    if (status == LocationAccessStatus.needsPrompt &&
-        ref.read(locationValidationFamilyProvider(widget.location))
-            is LocationValidationInitial) {
-      _showPermissionDialog();
-    }
+    await _notifier.recheckAfterResume();
   }
 
   void _syncLiveVenue(LocationConfig live) {
@@ -183,27 +178,19 @@ class _LocationPermissionScreenState
   }
 
   /// Fresh QR entry: clear cache, read location status (no prompt), then
-  /// verify straight away when already allowed, or ask with the Allow dialog.
+  /// verify immediately when already allowed. Ask stays on Initial with one CTA.
   void _prepareLocationGateIfNeeded({bool force = false}) {
     if (!force && (_locationStarted || !mounted)) return;
     _locationStarted = true;
     _notifier.prepareFreshScan();
-    // Two frames: (1) leave device-check loading scaffold, (2) present dialog.
+    // Two frames: leave device-check loading, then run the status check.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        _runEntryCheck();
+        unawaited(_notifier.checkAccessOnEntry());
       });
     });
-  }
-
-  Future<void> _runEntryCheck() async {
-    final status = await _notifier.checkAccessOnEntry();
-    if (!mounted) return;
-    if (status == LocationAccessStatus.needsPrompt) {
-      _showPermissionDialog();
-    }
   }
 
   bool _isBusy(LocationValidationState s) =>
@@ -212,47 +199,8 @@ class _LocationPermissionScreenState
       s is LocationValidationFetchingPosition ||
       s is LocationValidationValidatingVenue;
 
-  /// In-app ask before the browser / OS prompt, so the prompt runs from a tap.
-  Future<void> _showPermissionDialog() async {
-    if (!mounted || _dialogOpen) return;
-    final current = ref.read(locationValidationFamilyProvider(widget.location));
-    if (_isBusy(current) || current is LocationValidationSuccess) return;
-
-    _dialogOpen = true;
-    final allowed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Text(AppStrings.locationPermissionDialogTitle),
-          content: const Text(AppStrings.locationPermissionDialogBody),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text(AppStrings.locationPermissionCancel),
-            ),
-            FilledButton.icon(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              icon: const Icon(Icons.my_location_rounded, size: 18),
-              label: const Text(AppStrings.locationPermissionAllow),
-            ),
-          ],
-        );
-      },
-    );
-    _dialogOpen = false;
-    if (!mounted) return;
-    if (allowed == true) {
-      _startVerification();
-    } else {
-      _notifier.continueWithoutLocationIfAllowed();
-    }
-  }
-
   /// Device Location off: how to turn it on, then retry from a tap.
+  /// The app cannot enable GPS; this is guidance only.
   Future<void> _showServiceOffDialog() async {
     if (!mounted || _dialogOpen) return;
     _dialogOpen = true;
@@ -1220,10 +1168,11 @@ class _LocationPermissionScreenState
     }
 
     if (state is LocationValidationInitial) {
+      // User gesture → browser/OS system location prompt (no in-app dialog).
       return AppButton.primary(
         label: AppStrings.locationPermissionAllow,
         icon: Icons.my_location_rounded,
-        onPressed: _showPermissionDialog,
+        onPressed: _startVerification,
       );
     }
 

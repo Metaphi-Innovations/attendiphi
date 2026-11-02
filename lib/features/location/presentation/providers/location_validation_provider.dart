@@ -100,8 +100,8 @@ class LocationValidationNotifier extends Notifier<LocationValidationState> {
   /// Entry check for a fresh QR session. Never prompts.
   ///
   /// - granted → verifies immediately (no prompt needed)
-  /// - needsPrompt → stays [LocationValidationInitial]; the screen shows the
-  ///   Allow dialog so the browser prompt runs from a user gesture
+  /// - needsPrompt → stays [LocationValidationInitial]; the screen shows one
+  ///   Allow Location CTA so the browser prompt runs from that user gesture
   /// - blocked / serviceDisabled → matching error state (or bypass when the
   ///   location restriction is OFF)
   Future<LocationAccessStatus?> checkAccessOnEntry() async {
