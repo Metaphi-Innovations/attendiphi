@@ -37,6 +37,7 @@ void main() {
     userLatitude: 19.0829,
     userLongitude: 72.9129,
     gpsAccuracy: 10.0,
+    isVerified: true,
   );
 
   setUpAll(() {

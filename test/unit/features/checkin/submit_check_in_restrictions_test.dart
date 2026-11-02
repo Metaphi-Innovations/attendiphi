@@ -36,6 +36,7 @@ void main() {
     userLatitude: 19.0829,
     userLongitude: 72.9129,
     gpsAccuracy: 10.0,
+    isVerified: true,
   );
 
   setUpAll(() {
@@ -80,6 +81,97 @@ void main() {
     ).thenAnswer((_) async {});
     when(() => mockDispatchService.dispatchAdminCheckInNotification(any()))
         .thenAnswer((_) async {});
+  });
+
+  group('SubmitCheckIn location verification gate', () {
+    const fabricated = ProximityResult(
+      distanceMeters: 10,
+      isWithinRadius: true,
+      allowedRadiusMeters: 500,
+      userLatitude: 19.0829524,
+      userLongitude: 72.9129274,
+      gpsAccuracy: 5,
+    );
+
+    for (final type in [CheckInType.member, CheckInType.substitute]) {
+      test('location ON rejects unverified proximity (${type.name})', () async {
+        final usecase = SubmitCheckIn(
+          mockRepository,
+          notificationDispatchService: mockDispatchService,
+          nowProvider: () => DateTime(2026, 9, 3, 10, 0), // Thursday
+        );
+
+        await expectLater(
+          usecase(
+            name: 'Rahul Sharma',
+            phone: '9876543210',
+            type: type,
+            location: testLocation,
+            proximityResult: fabricated,
+            photoBase64: 'abc',
+            sessionDateStr: '2026-09-03',
+            dateRestrictionEnabled: false,
+            locationRestrictionEnabled: true,
+            deviceRestrictionEnabled: false,
+          ),
+          throwsA(isA<CheckInSubmissionFailedException>()),
+        );
+        verifyNever(
+          () => mockRepository.submitCheckIn(
+            any(),
+            enforceThursday: any(named: 'enforceThursday'),
+            sessionDateYmd: any(named: 'sessionDateYmd'),
+            claimDeviceId: any(named: 'claimDeviceId'),
+            claimMemberId: any(named: 'claimMemberId'),
+            sessionToken: any(named: 'sessionToken'),
+          ),
+        );
+      });
+    }
+
+    test('location OFF accepts the unverified placeholder', () async {
+      final usecase = SubmitCheckIn(
+        mockRepository,
+        notificationDispatchService: mockDispatchService,
+        nowProvider: () => DateTime(2026, 9, 22, 10, 0),
+      );
+
+      final submission = await usecase(
+        name: 'Rahul Sharma',
+        phone: '9876543210',
+        type: CheckInType.member,
+        location: testLocation,
+        proximityResult: fabricated,
+        sessionDateStr: '2026-09-03',
+        dateRestrictionEnabled: false,
+        locationRestrictionEnabled: false,
+        deviceRestrictionEnabled: false,
+      );
+      expect(submission.userLatitude, fabricated.userLatitude);
+    });
+
+    test('substitute photo is still required with a verified fix', () async {
+      final usecase = SubmitCheckIn(
+        mockRepository,
+        notificationDispatchService: mockDispatchService,
+        nowProvider: () => DateTime(2026, 9, 3, 10, 0),
+      );
+
+      await expectLater(
+        usecase(
+          name: 'Rahul Sharma',
+          phone: '9876543210',
+          type: CheckInType.substitute,
+          location: testLocation,
+          proximityResult: testProximity,
+          sessionDateStr: '2026-09-03',
+          dateRestrictionEnabled: false,
+          locationRestrictionEnabled: true,
+          deviceRestrictionEnabled: false,
+        ),
+        throwsA(isA<MissingSubstitutePhotoException>()),
+      );
+    });
   });
 
   group('SubmitCheckIn restrictions toggle', () {

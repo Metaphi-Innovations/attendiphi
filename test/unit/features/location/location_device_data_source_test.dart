@@ -297,8 +297,9 @@ void main() {
       );
     });
 
-    test('web deniedForever is recoverable soft deny (not blocked)', () async {
+    test('web deniedForever is blocked and never re-requests', () async {
       var requestCalls = 0;
+      var fixes = 0;
       final ds = LocationDeviceDataSourceImpl(
         clock: () => now,
         isWebOverride: true,
@@ -309,35 +310,88 @@ void main() {
           return LocationPermission.deniedForever;
         },
         getLastKnownPosition: () async => null,
+        getCurrentPositionFn: (_) async {
+          fixes++;
+          return _pos(timestamp: now);
+        },
+      );
+
+      await expectLater(
+        ds.getCurrentPosition(),
+        throwsA(isA<LocationPermissionPermanentlyDeniedException>()),
+      );
+      expect(requestCalls, 0);
+      expect(fixes, 0);
+    });
+
+    test('native services off wins over a denied permission', () async {
+      final ds = LocationDeviceDataSourceImpl(
+        clock: () => now,
+        isWebOverride: false,
+        isLocationServiceEnabled: () async => false,
+        checkPermission: () async => LocationPermission.denied,
+        requestPermission: () async => LocationPermission.denied,
+        getLastKnownPosition: () async => null,
         getCurrentPositionFn: (_) async => _pos(timestamp: now),
       );
 
       await expectLater(
         ds.getCurrentPosition(),
-        throwsA(isA<LocationPermissionDeniedException>()),
+        throwsA(isA<LocationServiceDisabledException>()),
       );
-      expect(requestCalls, 1);
     });
 
-    test(
-      'services off after deny prefers LocationServiceDisabledException',
-      () async {
-        final ds = LocationDeviceDataSourceImpl(
+    group('web acquisition errors are classified, not reported as timeout', () {
+      LocationDeviceDataSourceImpl webDs({
+        required Object error,
+        LocationPermission after = LocationPermission.whileInUse,
+      }) {
+        var checks = 0;
+        return LocationDeviceDataSourceImpl(
           clock: () => now,
           isWebOverride: true,
-          isLocationServiceEnabled: () async => false,
-          checkPermission: () async => LocationPermission.deniedForever,
-          requestPermission: () async => LocationPermission.deniedForever,
+          isLocationServiceEnabled: () async => true,
+          checkPermission: () async =>
+              checks++ == 0 ? LocationPermission.whileInUse : after,
           getLastKnownPosition: () async => null,
-          getCurrentPositionFn: (_) async => _pos(timestamp: now),
+          getCurrentPositionFn: (_) async => throw error,
         );
+      }
 
+      test('PERMISSION_DENIED while site granted → services disabled', () async {
         await expectLater(
-          ds.getCurrentPosition(),
+          webDs(error: const PermissionDeniedException('x'))
+              .getCurrentPosition(permissionAlreadyGranted: true),
           throwsA(isA<LocationServiceDisabledException>()),
         );
-      },
-    );
+      });
+
+      test('PERMISSION_DENIED with site now denied → blocked', () async {
+        await expectLater(
+          webDs(
+            error: const PermissionDeniedException('x'),
+            after: LocationPermission.deniedForever,
+          ).getCurrentPosition(permissionAlreadyGranted: true),
+          throwsA(isA<LocationPermissionPermanentlyDeniedException>()),
+        );
+      });
+
+      test('POSITION_UNAVAILABLE → unavailable', () async {
+        await expectLater(
+          webDs(error: const PositionUpdateException('x'))
+              .getCurrentPosition(permissionAlreadyGranted: true),
+          throwsA(isA<LocationUnavailableException>()),
+        );
+      });
+
+      test('timeouts only → timeout', () async {
+        await expectLater(
+          webDs(error: TimeoutException('x'))
+              .getCurrentPosition(permissionAlreadyGranted: true),
+          throwsA(isA<LocationTimeoutException>()),
+        );
+      });
+    });
 
     test('services disabled throws LocationServiceDisabledException', () async {
       final ds = LocationDeviceDataSourceImpl(

@@ -11,6 +11,7 @@ class ProximityResult {
     required this.userLatitude,
     required this.userLongitude,
     required this.gpsAccuracy,
+    this.isVerified = false,
   });
 
   final double distanceMeters;
@@ -19,6 +20,11 @@ class ProximityResult {
   final double userLatitude;
   final double userLongitude;
   final double gpsAccuracy;
+
+  /// True only when built from a real device fix that is inside the radius
+  /// with usable accuracy. Placeholder results (restriction OFF bypass) keep
+  /// the default `false` and must not satisfy an enforced location check.
+  final bool isVerified;
 }
 
 /// Usecase to calculate geographic distance and validate whether the user
@@ -44,11 +50,28 @@ class ValidateUserProximity {
 
     final isInside = rawDistance <= location.radiusMeters;
 
-    if (!isInside && enforceProximity) {
-      throw OutsideAllowedRadiusException(
-        distanceMeters: rawDistance,
-        allowedRadiusMeters: location.radiusMeters,
-      );
+    // An uncertainty circle wider than the venue radius cannot prove presence
+    // either way unless even its nearest edge is outside. Treat that as
+    // inconclusive (retry for a better fix) rather than widening the radius.
+    final accuracyConclusive = accuracy <= location.radiusMeters;
+
+    if (enforceProximity) {
+      if (!accuracyConclusive &&
+          rawDistance - accuracy <= location.radiusMeters) {
+        throw LocationAccuracyTooLowException(
+          accuracy: accuracy,
+          technicalMessage:
+              'Accuracy ${accuracy.toStringAsFixed(0)}m exceeds venue radius '
+              '${location.radiusMeters.toStringAsFixed(0)}m '
+              '(distance ${rawDistance.toStringAsFixed(0)}m).',
+        );
+      }
+      if (!isInside) {
+        throw OutsideAllowedRadiusException(
+          distanceMeters: rawDistance,
+          allowedRadiusMeters: location.radiusMeters,
+        );
+      }
     }
 
     final latMatches =
@@ -73,6 +96,7 @@ class ValidateUserProximity {
       userLatitude: userLat,
       userLongitude: userLon,
       gpsAccuracy: accuracy,
+      isVerified: isInside && accuracyConclusive,
     );
   }
 }

@@ -1,10 +1,14 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart'
     hide LocationServiceDisabledException;
+import 'package:go_router/go_router.dart';
+import 'package:qr_checkin/core/errors/app_exception.dart';
 import 'package:qr_checkin/core/l10n/app_strings.dart';
 import 'package:qr_checkin/core/permissions/permission_service.dart';
 import 'package:qr_checkin/core/utils/cookie_helper_stub.dart' as cookie_stub;
@@ -17,6 +21,7 @@ import 'package:qr_checkin/features/checkin/domain/entities/check_in_type.dart';
 import 'package:qr_checkin/features/checkin/domain/entities/public_device_session_attendance.dart';
 import 'package:qr_checkin/features/location/data/datasources/location_device_data_source.dart';
 import 'package:qr_checkin/features/location/domain/entities/location_config.dart';
+import 'package:qr_checkin/features/location/domain/usecases/validate_user_proximity.dart';
 import 'package:qr_checkin/features/location/presentation/providers/location_providers.dart';
 import 'package:qr_checkin/features/location/presentation/providers/location_validation_provider.dart';
 import 'package:qr_checkin/features/location/presentation/screens/location_permission_screen.dart';
@@ -51,9 +56,11 @@ class _FakeCheckInRemote extends Fake implements CheckInRemoteDataSource {
 }
 
 class _FakeDeviceLocation implements LocationDeviceDataSource {
-  _FakeDeviceLocation(this.position);
+  _FakeDeviceLocation(this.position, {this.pending, this.failFirst});
 
   final Position position;
+  final Completer<Position>? pending;
+  Object? failFirst;
   int calls = 0;
   int clears = 0;
 
@@ -63,6 +70,12 @@ class _FakeDeviceLocation implements LocationDeviceDataSource {
     bool forceRefresh = false,
   }) async {
     calls++;
+    final failure = failFirst;
+    if (failure != null) {
+      failFirst = null;
+      throw failure;
+    }
+    if (pending != null) return pending!.future;
     return position;
   }
 
@@ -419,296 +432,373 @@ void main() {
       },
     );
 
-    testWidgets(
-      'fresh QR shows in-app Allow dialog before any permission request',
-      (tester) async {
-        var permissionRequests = 0;
-        await tester.pumpWidget(
-          ProviderScope(
-            overrides: [
-              checkInRestrictionsConfigProvider.overrideWith(
-                (ref) => Stream.value(
-                  const CheckInRestrictionsConfig(
-                    locationRestrictionEnabled: true,
-                    dateRestrictionEnabled: false,
-                    deviceRestrictionEnabled: false,
-                  ),
-                ),
-              ),
-              locationConfigFamilyProvider(testLocation.id).overrideWith(
-                (ref) async => testLocation,
-              ),
-              permissionServiceProvider.overrideWithValue(
-                PermissionService(
-                  isWebOverride: true,
-                  isLocationServiceEnabled: () async => true,
-                  checkPermission: () async => LocationPermission.whileInUse,
-                  requestPermission: () async {
-                    permissionRequests++;
-                    return LocationPermission.whileInUse;
-                  },
-                ),
-              ),
-            ],
-            child: MaterialApp(
-              home: Scaffold(
-                body: LocationPermissionScreen(
-                  location: testLocation,
-                  sessionDateStr: '2026-10-30',
-                  nowProvider: () => DateTime(2026, 10, 30, 11, 0),
-                ),
+    group('smart location recovery', () {
+      List<Override> gpsOverrides({
+        required PermissionService service,
+        LocationDeviceDataSource? device,
+      }) => [
+        checkInRestrictionsConfigProvider.overrideWith(
+          (ref) => Stream.value(
+            const CheckInRestrictionsConfig(
+              locationRestrictionEnabled: true,
+              dateRestrictionEnabled: false,
+              deviceRestrictionEnabled: false,
+            ),
+          ),
+        ),
+        locationConfigFamilyProvider(testLocation.id).overrideWith(
+          (ref) async => testLocation,
+        ),
+        permissionServiceProvider.overrideWithValue(service),
+        if (device != null) locationDeviceDataSourceProvider.overrideWithValue(device),
+      ];
+
+      Widget gpsHarness({
+        required PermissionService service,
+        LocationDeviceDataSource? device,
+        Key? key,
+      }) {
+        return ProviderScope(
+          overrides: gpsOverrides(service: service, device: device),
+          child: MaterialApp(
+            home: Scaffold(
+              body: LocationPermissionScreen(
+                key: key,
+                location: testLocation,
+                sessionDateStr: '2026-10-30',
+                nowProvider: () => DateTime(2026, 10, 30, 11, 0),
               ),
             ),
           ),
         );
-        for (var i = 0; i < 6; i++) {
+      }
+
+      Future<void> settle(WidgetTester tester, [int frames = 8]) async {
+        for (var i = 0; i < frames; i++) {
           await tester.pump(const Duration(milliseconds: 50));
         }
+      }
+
+      testWidgets('undecided permission shows Allow Location Access dialog '
+          'without prompting', (tester) async {
+        var prompts = 0;
+        await tester.pumpWidget(
+          gpsHarness(
+            service: PermissionService(
+              isWebOverride: true,
+              checkPermission: () async => LocationPermission.denied,
+              getCurrentPositionFn: (_) async {
+                prompts++;
+                return _position(testLocation.latitude, testLocation.longitude);
+              },
+            ),
+          ),
+        );
+        await settle(tester);
 
         expect(find.text(AppStrings.locationPermissionDialogTitle), findsOneWidget);
         expect(find.text(AppStrings.locationPermissionDialogBody), findsOneWidget);
+        expect(find.text(AppStrings.locationPermissionCancel), findsOneWidget);
         expect(find.text(AppStrings.locationPermissionAllow), findsWidgets);
-        expect(permissionRequests, 0);
-      },
-    );
+        expect(prompts, 0);
+      });
 
-    testWidgets(
-      'Allow in dialog then deny shows guidance and Allow Location CTA',
-      (tester) async {
-        await tester.pumpWidget(
-          ProviderScope(
-            overrides: [
-              checkInRestrictionsConfigProvider.overrideWith(
-                (ref) => Stream.value(
-                  const CheckInRestrictionsConfig(
-                    locationRestrictionEnabled: true,
-                    dateRestrictionEnabled: false,
-                    deviceRestrictionEnabled: false,
-                  ),
-                ),
-              ),
-              locationConfigFamilyProvider(testLocation.id).overrideWith(
-                (ref) async => testLocation,
-              ),
-              permissionServiceProvider.overrideWithValue(
-                PermissionService(
-                  isWebOverride: true,
-                  isLocationServiceEnabled: () async => true,
-                  checkPermission: () async => LocationPermission.deniedForever,
-                  requestPermission: () async =>
-                      LocationPermission.deniedForever,
-                ),
-              ),
-            ],
-            child: MaterialApp(
-              home: Scaffold(
-                body: LocationPermissionScreen(
-                  location: testLocation,
-                  sessionDateStr: '2026-10-30',
-                  nowProvider: () => DateTime(2026, 10, 30, 11, 0),
-                ),
-              ),
-            ),
-          ),
-        );
-        for (var i = 0; i < 6; i++) {
-          await tester.pump(const Duration(milliseconds: 50));
-        }
-
-        expect(find.text(AppStrings.locationPermissionDialogTitle), findsOneWidget);
-        await tester.tap(find.text(AppStrings.locationPermissionAllow).last);
-        await tester.pump();
-        for (var i = 0; i < 8; i++) {
-          await tester.pump(const Duration(milliseconds: 50));
-        }
-
-        expect(find.text(AppStrings.locationPermissionPermanentlyDenied), findsNothing);
-        expect(find.text(AppStrings.locationPermissionDenied), findsOneWidget);
-        expect(find.text(AppStrings.locationRetry), findsNothing);
-        expect(find.text(AppStrings.locationPermissionAllow), findsOneWidget);
-      },
-    );
-
-    testWidgets(
-      'OS location off after Allow shows turn-on guidance with Allow CTA',
-      (tester) async {
-        await tester.pumpWidget(
-          ProviderScope(
-            overrides: [
-              checkInRestrictionsConfigProvider.overrideWith(
-                (ref) => Stream.value(
-                  const CheckInRestrictionsConfig(
-                    locationRestrictionEnabled: true,
-                    dateRestrictionEnabled: false,
-                    deviceRestrictionEnabled: false,
-                  ),
-                ),
-              ),
-              locationConfigFamilyProvider(testLocation.id).overrideWith(
-                (ref) async => testLocation,
-              ),
-              permissionServiceProvider.overrideWithValue(
-                PermissionService(
-                  isWebOverride: true,
-                  isLocationServiceEnabled: () async => false,
-                  checkPermission: () async => LocationPermission.deniedForever,
-                  requestPermission: () async =>
-                      LocationPermission.deniedForever,
-                ),
-              ),
-            ],
-            child: MaterialApp(
-              home: Scaffold(
-                body: LocationPermissionScreen(
-                  location: testLocation,
-                  sessionDateStr: '2026-10-30',
-                  nowProvider: () => DateTime(2026, 10, 30, 11, 0),
-                ),
-              ),
-            ),
-          ),
-        );
-        for (var i = 0; i < 6; i++) {
-          await tester.pump(const Duration(milliseconds: 50));
-        }
-
-        await tester.tap(find.text(AppStrings.locationPermissionAllow).last);
-        await tester.pump();
-        for (var i = 0; i < 8; i++) {
-          await tester.pump(const Duration(milliseconds: 50));
-        }
-
-        expect(find.text(AppStrings.locationPermissionPermanentlyDenied), findsNothing);
-        expect(find.textContaining('Location is blocked'), findsNothing);
-        expect(find.text(AppStrings.locationServiceDisabled), findsOneWidget);
-        expect(find.text(AppStrings.locationRetry), findsNothing);
-        expect(find.text(AppStrings.locationPermissionAllow), findsOneWidget);
-      },
-    );
-
-    testWidgets(
-      'Allow then grant fetches GPS and shows success CTA',
-      (tester) async {
+      testWidgets('already granted verifies without a dialog', (tester) async {
         final device = _FakeDeviceLocation(
           _position(testLocation.latitude, testLocation.longitude),
         );
-        var permissionRequests = 0;
         await tester.pumpWidget(
-          ProviderScope(
-            overrides: [
-              checkInRestrictionsConfigProvider.overrideWith(
-                (ref) => Stream.value(
-                  const CheckInRestrictionsConfig(
-                    locationRestrictionEnabled: true,
-                    dateRestrictionEnabled: false,
-                    deviceRestrictionEnabled: false,
-                  ),
-                ),
-              ),
-              locationConfigFamilyProvider(testLocation.id).overrideWith(
-                (ref) async => testLocation,
-              ),
-              permissionServiceProvider.overrideWithValue(
-                PermissionService(
-                  isWebOverride: true,
-                  isLocationServiceEnabled: () async => true,
-                  checkPermission: () async => LocationPermission.denied,
-                  requestPermission: () async {
-                    permissionRequests++;
-                    return LocationPermission.whileInUse;
-                  },
-                ),
-              ),
-              locationDeviceDataSourceProvider.overrideWithValue(device),
-            ],
-            child: MaterialApp(
-              home: Scaffold(
-                body: LocationPermissionScreen(
-                  location: testLocation,
-                  sessionDateStr: '2026-10-30',
-                  nowProvider: () => DateTime(2026, 10, 30, 11, 0),
-                ),
-              ),
+          gpsHarness(
+            service: PermissionService(
+              isWebOverride: true,
+              checkPermission: () async => LocationPermission.whileInUse,
+            ),
+            device: device,
+          ),
+        );
+        await settle(tester);
+
+        expect(find.text(AppStrings.locationPermissionDialogTitle), findsNothing);
+        expect(device.calls, 1);
+        expect(find.text('Continue to Check-In'), findsOneWidget);
+      });
+
+      testWidgets('Allow then dismissed prompt shows neutral denied UI', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          gpsHarness(
+            service: PermissionService(
+              isWebOverride: true,
+              checkPermission: () async => LocationPermission.denied,
+              getCurrentPositionFn: (_) async =>
+                  throw const PermissionDeniedException('denied'),
             ),
           ),
         );
-        for (var i = 0; i < 6; i++) {
-          await tester.pump(const Duration(milliseconds: 50));
-        }
-
-        expect(permissionRequests, 0);
-        expect(device.calls, 0);
+        await settle(tester);
         await tester.tap(find.text(AppStrings.locationPermissionAllow).last);
-        await tester.pump();
-        for (var i = 0; i < 8; i++) {
-          await tester.pump(const Duration(milliseconds: 50));
+        await settle(tester);
+
+        expect(find.text(AppStrings.locationPermissionDenied), findsOneWidget);
+        expect(find.text(AppStrings.locationPermissionBlockedTitle), findsNothing);
+        expect(find.text(AppStrings.locationServiceOffTitle), findsNothing);
+        expect(find.text(AppStrings.locationPermissionAllow), findsOneWidget);
+        expect(find.text(AppStrings.locationServiceHowTo), findsOneWidget);
+        expect(find.textContaining('scan the QR again'), findsNothing);
+        expect(find.textContaining('reload'), findsNothing);
+      });
+
+      testWidgets('blocked site shows settings guidance and Retry rechecks '
+          'without prompting', (tester) async {
+        var prompts = 0;
+        var permission = LocationPermission.deniedForever;
+        final device = _FakeDeviceLocation(
+          _position(testLocation.latitude, testLocation.longitude),
+        );
+        await tester.pumpWidget(
+          gpsHarness(
+            service: PermissionService(
+              isWebOverride: true,
+              checkPermission: () async => permission,
+              requestPermission: () async {
+                prompts++;
+                return permission;
+              },
+              getCurrentPositionFn: (_) async {
+                prompts++;
+                return _position(0, 0);
+              },
+            ),
+            device: device,
+          ),
+        );
+        await settle(tester);
+
+        expect(find.text(AppStrings.locationPermissionBlockedTitle), findsOneWidget);
+        expect(find.text(AppStrings.locationPermissionPermanentlyDenied), findsOneWidget);
+        // Test platform is Android → Android Chrome steps.
+        expect(find.text(AppStrings.locationBlockedAndroidHeading), findsOneWidget);
+        for (final step in AppStrings.locationBlockedAndroidSteps) {
+          expect(find.text(step), findsOneWidget);
+        }
+        expect(find.text(AppStrings.locationPermissionDialogTitle), findsNothing);
+
+        await tester.ensureVisible(find.text(AppStrings.locationRetryShort));
+        await tester.tap(find.text(AppStrings.locationRetryShort));
+        await settle(tester);
+        expect(find.text(AppStrings.locationPermissionBlockedTitle), findsOneWidget);
+        expect(prompts, 0);
+
+        // User allows in site settings, then taps Retry.
+        permission = LocationPermission.whileInUse;
+        await tester.ensureVisible(find.text(AppStrings.locationRetryShort));
+        await tester.tap(find.text(AppStrings.locationRetryShort));
+        await settle(tester);
+        expect(find.text('Continue to Check-In'), findsOneWidget);
+        expect(prompts, 0);
+      });
+
+      testWidgets('GPS off shows the Location is Turned Off dialog; Retry '
+          'after enabling verifies', (tester) async {
+        var gpsOn = false;
+        final device = _FakeDeviceLocation(
+          _position(testLocation.latitude, testLocation.longitude),
+        );
+        await tester.pumpWidget(
+          gpsHarness(
+            service: PermissionService(
+              isWebOverride: false,
+              isLocationServiceEnabled: () async => gpsOn,
+              checkPermission: () async => LocationPermission.whileInUse,
+            ),
+            device: device,
+          ),
+        );
+        await settle(tester);
+
+        final dialog = find.byType(AlertDialog);
+        expect(dialog, findsOneWidget);
+        expect(
+          find.descendant(
+            of: dialog,
+            matching: find.text(AppStrings.locationServiceOffTitle),
+          ),
+          findsOneWidget,
+        );
+        expect(find.text(AppStrings.locationServiceOffBody), findsWidgets);
+        for (final step in AppStrings.locationServiceOffSteps) {
+          expect(find.text(step), findsWidgets);
         }
 
-        expect(permissionRequests, 1);
+        await tester.tap(
+          find.descendant(
+            of: dialog,
+            matching: find.text(AppStrings.locationServiceHowTo),
+          ),
+        );
+        await tester.pump();
+        expect(find.text(AppStrings.locationServiceHowToDetails), findsOneWidget);
+
+        gpsOn = true;
+        await tester.tap(
+          find.descendant(
+            of: dialog,
+            matching: find.text(AppStrings.locationServiceOffRetry),
+          ),
+        );
+        await settle(tester);
+
+        expect(find.byType(AlertDialog), findsNothing);
         expect(device.calls, 1);
         expect(find.text('Continue to Check-In'), findsOneWidget);
-        expect(find.text('Outside Allowed Radius'), findsNothing);
-      },
-    );
+      });
 
-    testWidgets(
-      'remounted QR scan shows the Allow dialog again',
-      (tester) async {
-        Widget buildScreen({required Key key}) {
-          return ProviderScope(
-            overrides: [
-              checkInRestrictionsConfigProvider.overrideWith(
-                (ref) => Stream.value(
-                  const CheckInRestrictionsConfig(
-                    locationRestrictionEnabled: true,
-                    dateRestrictionEnabled: false,
-                    deviceRestrictionEnabled: false,
-                  ),
-                ),
-              ),
-              locationConfigFamilyProvider(testLocation.id).overrideWith(
-                (ref) async => testLocation,
-              ),
-              permissionServiceProvider.overrideWithValue(
-                PermissionService(
-                  isWebOverride: true,
-                  isLocationServiceEnabled: () async => true,
-                  checkPermission: () async => LocationPermission.whileInUse,
-                  requestPermission: () async => LocationPermission.whileInUse,
-                ),
-              ),
-            ],
-            child: MaterialApp(
-              home: Scaffold(
-                body: LocationPermissionScreen(
-                  key: key,
-                  location: testLocation,
-                  sessionDateStr: '2026-10-30',
-                  nowProvider: () => DateTime(2026, 10, 30, 11, 0),
-                ),
-              ),
+      testWidgets('loading UI while fetching, then verified', (tester) async {
+        final gate = Completer<Position>();
+        final device = _FakeDeviceLocation(
+          _position(testLocation.latitude, testLocation.longitude),
+          pending: gate,
+        );
+        await tester.pumpWidget(
+          gpsHarness(
+            service: PermissionService(
+              isWebOverride: true,
+              checkPermission: () async => LocationPermission.whileInUse,
             ),
-          );
-        }
+            device: device,
+          ),
+        );
+        await settle(tester);
 
-        await tester.pumpWidget(buildScreen(key: const ValueKey('scan-1')));
-        for (var i = 0; i < 6; i++) {
-          await tester.pump(const Duration(milliseconds: 50));
-        }
+        expect(find.text(AppStrings.locationFetchingPosition), findsWidgets);
+        expect(find.text('Continue to Check-In'), findsNothing);
+
+        gate.complete(_position(testLocation.latitude, testLocation.longitude));
+        await settle(tester);
+        expect(find.text('Continue to Check-In'), findsOneWidget);
+      });
+
+      testWidgets('timeout shows Retry; Retry recovers without rescan', (
+        tester,
+      ) async {
+        final device = _FakeDeviceLocation(
+          _position(testLocation.latitude, testLocation.longitude),
+          failFirst: const LocationTimeoutException(),
+        );
+        await tester.pumpWidget(
+          gpsHarness(
+            service: PermissionService(
+              isWebOverride: true,
+              checkPermission: () async => LocationPermission.whileInUse,
+            ),
+            device: device,
+          ),
+        );
+        await settle(tester);
+
+        expect(find.text(AppStrings.locationTimeout), findsOneWidget);
+        await tester.ensureVisible(find.text(AppStrings.locationRetryShort));
+        await tester.tap(find.text(AppStrings.locationRetryShort));
+        await settle(tester);
+
+        expect(device.calls, 2);
+        expect(find.text('Continue to Check-In'), findsOneWidget);
+      });
+
+      testWidgets('outside radius shows panel and Retry Location, no bypass', (
+        tester,
+      ) async {
+        final device = _FakeDeviceLocation(_position(19.0760, 72.8777));
+        await tester.pumpWidget(
+          gpsHarness(
+            service: PermissionService(
+              isWebOverride: true,
+              checkPermission: () async => LocationPermission.whileInUse,
+            ),
+            device: device,
+          ),
+        );
+        await settle(tester);
+
+        expect(find.text('Outside Allowed Radius'), findsOneWidget);
+        expect(find.text(AppStrings.locationRetry), findsOneWidget);
+        expect(find.text('Continue to Check-In'), findsNothing);
+      });
+
+      testWidgets('verified fix navigates to the form with the same QR token', (
+        tester,
+      ) async {
+        final device = _FakeDeviceLocation(
+          _position(testLocation.latitude, testLocation.longitude),
+        );
+        final router = GoRouter(
+          initialLocation: '/checkin/tok-abc',
+          routes: [
+            GoRoute(
+              path: '/checkin/:sessionToken',
+              builder: (context, state) {
+                final token = state.pathParameters['sessionToken']!;
+                final extra = state.extra;
+                if (extra is Map && extra['proximity'] is ProximityResult) {
+                  final p = extra['proximity'] as ProximityResult;
+                  return Text('FORM $token verified=${p.isVerified}');
+                }
+                return Scaffold(
+                  body: LocationPermissionScreen(
+                    location: testLocation,
+                    sessionToken: token,
+                    sessionDateStr: '2026-10-30',
+                    nowProvider: () => DateTime(2026, 10, 30, 11, 0),
+                  ),
+                );
+              },
+            ),
+          ],
+        );
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: gpsOverrides(
+              service: PermissionService(
+                isWebOverride: true,
+                checkPermission: () async => LocationPermission.whileInUse,
+              ),
+              device: device,
+            ),
+            child: MaterialApp.router(routerConfig: router),
+          ),
+        );
+        await settle(tester, 12);
+
+        expect(find.text('FORM tok-abc verified=true'), findsOneWidget);
+      });
+
+      testWidgets('remounted QR scan runs the entry check again', (
+        tester,
+      ) async {
+        PermissionService service() => PermissionService(
+          isWebOverride: true,
+          checkPermission: () async => LocationPermission.denied,
+        );
+
+        await tester.pumpWidget(
+          gpsHarness(service: service(), key: const ValueKey('scan-1')),
+        );
+        await settle(tester, 6);
         expect(find.text(AppStrings.locationPermissionDialogTitle), findsOneWidget);
 
-        // Dismiss without allowing, then remount as a new QR scan.
-        await tester.tap(find.text(AppStrings.locationPermissionNotNow));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 100));
+        await tester.tap(find.text(AppStrings.locationPermissionCancel));
+        await settle(tester, 2);
+        expect(find.text(AppStrings.locationPermissionAwaitingAllow), findsOneWidget);
 
-        await tester.pumpWidget(buildScreen(key: const ValueKey('scan-2')));
-        for (var i = 0; i < 6; i++) {
-          await tester.pump(const Duration(milliseconds: 50));
-        }
+        await tester.pumpWidget(
+          gpsHarness(service: service(), key: const ValueKey('scan-2')),
+        );
+        await settle(tester, 6);
         expect(find.text(AppStrings.locationPermissionDialogTitle), findsOneWidget);
-      },
-    );
+      });
+    });
 
     testWidgets('skips Thursday/expired gates when restrictions are OFF', (
       tester,

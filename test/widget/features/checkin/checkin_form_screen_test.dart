@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:geolocator/geolocator.dart'
+    hide LocationServiceDisabledException;
 import 'package:qr_checkin/core/l10n/app_strings.dart';
+import 'package:qr_checkin/core/permissions/permission_service.dart';
 import 'package:qr_checkin/core/utils/cookie_helper_stub.dart' as cookie_stub;
 import 'package:qr_checkin/core/widgets/app_button.dart';
 import 'package:qr_checkin/features/app_config/domain/entities/check_in_restrictions_config.dart';
@@ -21,6 +24,8 @@ import 'package:qr_checkin/features/employee/presentation/providers/employee_pro
 import 'package:qr_checkin/features/location/domain/entities/location_config.dart';
 import 'package:qr_checkin/features/location/domain/usecases/validate_user_proximity.dart';
 import 'package:qr_checkin/features/location/presentation/providers/location_providers.dart';
+import 'package:qr_checkin/features/location/presentation/providers/location_validation_provider.dart';
+import 'package:qr_checkin/features/location/presentation/screens/location_permission_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeCheckInRemote extends Fake implements CheckInRemoteDataSource {
@@ -72,6 +77,7 @@ void main() {
     userLatitude: 18.9888622,
     userLongitude: 72.8152475,
     gpsAccuracy: 5.0,
+    isVerified: true,
   );
 
   final testEmployees = [
@@ -743,6 +749,89 @@ void main() {
 
       // Submit button is present with Check-In label
       expect(find.widgetWithText(AppButton, 'Check-In'), findsOneWidget);
+    });
+  });
+
+  group('CheckInFormScreen location gate', () {
+    final permissionOverride = permissionServiceProvider.overrideWithValue(
+      PermissionService(
+        isWebOverride: true,
+        checkPermission: () async => LocationPermission.denied,
+      ),
+    );
+
+    Future<void> pumpForm(
+      WidgetTester tester, {
+      ProximityResult? proximity,
+      bool restrictionsEnabled = true,
+    }) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            ...baseOverrides(restrictionsEnabled: restrictionsEnabled),
+            permissionOverride,
+          ],
+          child: MaterialApp(
+            home: CheckInFormScreen(
+              locationId: 'test_venue',
+              initialLocation: testLocation,
+              proximityResult: proximity,
+              sessionDateStr: '2026-09-03',
+              sessionToken: 'tok-123',
+              nowProvider: () => DateTime(2026, 9, 3, 10, 0),
+            ),
+          ),
+        ),
+      );
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+    }
+
+    testWidgets('restriction ON without proximity shows location gate', (
+      tester,
+    ) async {
+      await pumpForm(tester);
+
+      expect(find.byType(LocationPermissionScreen), findsOneWidget);
+      expect(find.widgetWithText(AppButton, 'Check-In'), findsNothing);
+    });
+
+    testWidgets('restriction ON rejects fabricated (unverified) proximity', (
+      tester,
+    ) async {
+      await pumpForm(
+        tester,
+        proximity: const ProximityResult(
+          distanceMeters: 10,
+          isWithinRadius: true,
+          allowedRadiusMeters: 500,
+          userLatitude: 18.9888622,
+          userLongitude: 72.8152475,
+          gpsAccuracy: 5,
+        ),
+      );
+
+      expect(find.byType(LocationPermissionScreen), findsOneWidget);
+      expect(find.widgetWithText(AppButton, 'Check-In'), findsNothing);
+    });
+
+    testWidgets('restriction ON with verified proximity shows the form', (
+      tester,
+    ) async {
+      await pumpForm(tester, proximity: testProximity);
+
+      expect(find.byType(LocationPermissionScreen), findsNothing);
+      expect(find.text(AppStrings.checkInFormTitle), findsWidgets);
+    });
+
+    testWidgets('restriction OFF keeps the bypass (form opens)', (
+      tester,
+    ) async {
+      await pumpForm(tester, restrictionsEnabled: false);
+
+      expect(find.byType(LocationPermissionScreen), findsNothing);
+      expect(find.text(AppStrings.checkInFormTitle), findsWidgets);
     });
   });
 }

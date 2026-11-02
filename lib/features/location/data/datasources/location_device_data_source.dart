@@ -3,10 +3,14 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart'
     hide LocationServiceDisabledException;
+import 'package:geolocator/geolocator.dart'
+    as geo
+    show LocationServiceDisabledException;
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/logger/app_logger.dart';
+import '../../../../core/permissions/permission_service.dart';
 
 /// Contract for fetching live device GPS position.
 abstract class LocationDeviceDataSource {
@@ -163,50 +167,48 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
       }
     }
 
-    // 2. Permissions first, then services check.
-    // Never map OS Location-off → “blocked for this site”.
-    // Request only when not granted (caller may already have prompted).
+    // 2. Permission and services.
+    // Web: geolocator's requestPermission maps every browser error to
+    // deniedForever and its services check is always true, so web never
+    // requests here (PermissionService prompts first) and classifies the
+    // acquisition errors below instead.
     var permission = await _checkPermission();
     var granted =
         permission == LocationPermission.always ||
         permission == LocationPermission.whileInUse;
 
-    if (!granted) {
-      AppLogger.info(
-        'Requesting location permission (current=$permission, '
-        'alreadyGrantedFlag=$permissionAlreadyGranted, '
-        'forceRefresh=$forceRefresh, web=$_isWeb)',
-        tag: 'LocationDeviceDataSource',
-      );
-      permission = await _requestPermission();
-      granted =
-          permission == LocationPermission.always ||
-          permission == LocationPermission.whileInUse;
-    }
+    if (_isWeb) {
+      if (permission == LocationPermission.deniedForever) {
+        throw const LocationPermissionPermanentlyDeniedException(
+          technicalMessage: 'Web site permission denied (blocked).',
+        );
+      }
+    } else {
+      if (!granted) {
+        AppLogger.info(
+          'Requesting location permission (current=$permission, '
+          'alreadyGrantedFlag=$permissionAlreadyGranted, '
+          'forceRefresh=$forceRefresh)',
+          tag: 'LocationDeviceDataSource',
+        );
+        permission = await _requestPermission();
+        granted =
+            permission == LocationPermission.always ||
+            permission == LocationPermission.whileInUse;
+      }
 
-    if (!granted) {
-      final serviceEnabled = await _isLocationServiceEnabled();
-      if (!serviceEnabled) {
+      if (!await _isLocationServiceEnabled()) {
         throw const LocationServiceDisabledException();
       }
-      if (permission == LocationPermission.deniedForever) {
-        // Web often reports deniedForever when Location was off or site is Ask.
-        if (_isWeb) {
-          throw const LocationPermissionDeniedException(
-            technicalMessage:
-                'Web LocationPermission.deniedForever after requestPermission '
-                '(recoverable; Retry re-prompts).',
-          );
+      if (!granted) {
+        if (permission == LocationPermission.deniedForever) {
+          throw const LocationPermissionPermanentlyDeniedException();
         }
-        throw const LocationPermissionPermanentlyDeniedException();
+        throw const LocationPermissionDeniedException();
       }
-      throw const LocationPermissionDeniedException();
     }
 
-    final serviceEnabled = await _isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      throw const LocationServiceDisabledException();
-    }
+    final failures = <Object>[];
 
     AppLogger.info(
       'GPS acquire start (web=$_isWeb, forceRefresh=$forceRefresh, '
@@ -240,17 +242,19 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
       // 4. Live fix.
       Position? pos;
       if (_isWeb) {
-        pos = await _raceWebFix();
+        pos = await _raceWebFix(failures);
       } else {
         pos = await _tryCurrentPosition(
           accuracy: LocationAccuracy.medium,
           timeLimitSeconds: _mediumTimeoutSeconds,
+          failures: failures,
         );
         // 5. Native: one high-accuracy follow-up when medium misses.
         if (pos == null || !_isAccuracyAcceptable(pos)) {
           final high = await _tryCurrentPosition(
             accuracy: LocationAccuracy.high,
             timeLimitSeconds: _highTimeoutSeconds,
+            failures: failures,
           );
           pos = _preferBetter(pos, high);
         }
@@ -276,19 +280,11 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
 
       if (pos == null) {
         AppLogger.warning(
-          'GPS unavailable after ${elapsedMs}ms (web=$_isWeb)',
+          'GPS unavailable after ${elapsedMs}ms (web=$_isWeb, '
+          'failures=$failures)',
           tag: 'LocationDeviceDataSource',
         );
-        throw LocationTimeoutException(
-          userMessage: _isWeb
-              ? 'Still getting your location. Make sure Location is allowed '
-                    'for this site, wait a moment, '
-                    'then scan the QR again.'
-              : 'Unable to determine your location. Please check your GPS '
-                    'and try again.',
-          technicalMessage:
-              'GPS position timed out after ${elapsedMs}ms (web=$_isWeb).',
-        );
+        throw await _classifyAcquisitionFailure(failures, elapsedMs);
       }
       if (!_isAccuracyAcceptable(pos)) {
         AppLogger.warning(
@@ -298,12 +294,6 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
         );
         throw LocationAccuracyTooLowException(
           accuracy: pos.accuracy,
-          userMessage: _isWeb
-              ? 'Browser location accuracy is too coarse '
-                    '(±${pos.accuracy.round()}m; need ≤${_maxAccuracyMeters.round()}m). '
-                    'Try a phone on the venue Wi‑Fi/GPS, or move near a window and scan the QR again.'
-              : 'Your GPS signal is too weak for accurate verification. '
-                    'Please move to an open area and try again.',
           technicalMessage:
               'GPS accuracy too low: ${pos.accuracy.toStringAsFixed(1)}m '
               '(max ${_maxAccuracyMeters.toStringAsFixed(0)}m, web=$_isWeb).',
@@ -357,7 +347,7 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
   /// immediately. A coarser fix waits for the other request so a wide Wi‑Fi
   /// circle cannot wrongly push a member outside the venue radius; once both
   /// settle, the more accurate one wins (web cap is applied by the caller).
-  Future<Position?> _raceWebFix() {
+  Future<Position?> _raceWebFix(List<Object> failures) {
     final done = Completer<Position?>();
     Position? best;
     var pending = 2;
@@ -376,17 +366,51 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
     _tryCurrentPosition(
       accuracy: LocationAccuracy.medium,
       timeLimitSeconds: _mediumTimeoutSeconds,
+      failures: failures,
     ).then(onResult);
     _tryCurrentPosition(
       accuracy: LocationAccuracy.high,
       timeLimitSeconds: _highTimeoutSeconds,
+      failures: failures,
     ).then(onResult);
     return done.future;
+  }
+
+  /// Turns the collected per-attempt errors into the most specific exception.
+  /// A permission or device error wins over a plain timeout.
+  Future<AppException> _classifyAcquisitionFailure(
+    List<Object> failures,
+    int elapsedMs,
+  ) async {
+    if (failures.any((e) => e is PermissionDeniedException)) {
+      if (!_isWeb) return const LocationPermissionDeniedException();
+      LocationPermission after;
+      try {
+        after = await _checkPermission();
+      } catch (_) {
+        after = LocationPermission.unableToDetermine;
+      }
+      return classifyLocationDenial(after);
+    }
+    if (failures.any((e) => e is geo.LocationServiceDisabledException)) {
+      return const LocationServiceDisabledException();
+    }
+    if (failures.any((e) => e is PositionUpdateException)) {
+      return LocationUnavailableException(
+        technicalMessage:
+            'Position unavailable after ${elapsedMs}ms (web=$_isWeb).',
+      );
+    }
+    return LocationTimeoutException(
+      technicalMessage:
+          'GPS position timed out after ${elapsedMs}ms (web=$_isWeb).',
+    );
   }
 
   Future<Position?> _tryCurrentPosition({
     required LocationAccuracy accuracy,
     required int timeLimitSeconds,
+    required List<Object> failures,
   }) async {
     final limit = Duration(seconds: timeLimitSeconds);
     // geolocator_web maps medium → enableHighAccuracy: false (network fix)
@@ -412,6 +436,7 @@ class LocationDeviceDataSourceImpl implements LocationDeviceDataSource {
       );
       return await future.timeout(limit);
     } catch (e) {
+      failures.add(e);
       AppLogger.info(
         'GPS ${settings.accuracy} fix missed within ${timeLimitSeconds}s: $e',
         tag: 'LocationDeviceDataSource',

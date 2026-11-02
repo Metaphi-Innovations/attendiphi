@@ -8,9 +8,9 @@ import '../../../../app/router/route_names.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_radius.dart';
 import '../../../../app/theme/app_spacing.dart';
-import '../../../../core/errors/app_exception.dart';
 import '../../../../core/errors/error_handler.dart';
 import '../../../../core/l10n/app_strings.dart';
+import '../../../../core/permissions/permission_service.dart';
 import '../../../../core/responsive/responsive_breakpoints.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_card.dart';
@@ -129,7 +129,7 @@ class _LocationPermissionScreenState
   bool _locationStarted = false;
   bool _gateApplied = false;
   bool _gateInFlight = false;
-  bool _permissionDialogOpen = false;
+  bool _dialogOpen = false;
 
   /// Live Supabase venue when fetch succeeds; otherwise router / DefaultLocationX.
   LocationConfig get _displayLocation => _resolvedLocation ?? widget.location;
@@ -153,10 +153,25 @@ class _LocationPermissionScreenState
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // After Settings → Location ON, keep the in-app Allow dialog as the
-    // user gesture so the browser can show its permission prompt.
     if (state == AppLifecycleState.resumed && mounted) {
       ref.invalidate(checkInRestrictionsConfigProvider);
+      _recheckAfterResume();
+    }
+  }
+
+  LocationValidationNotifier get _notifier =>
+      ref.read(locationValidationFamilyProvider(widget.location).notifier);
+
+  /// Back from Settings / Quick Settings: re-read status only. A browser
+  /// prompt still needs a tap, so a reset-to-Ask site shows the Allow dialog.
+  Future<void> _recheckAfterResume() async {
+    if (!_locationStarted || _hasCheckedIn) return;
+    final status = await _notifier.recheckAfterResume();
+    if (!mounted) return;
+    if (status == LocationAccessStatus.needsPrompt &&
+        ref.read(locationValidationFamilyProvider(widget.location))
+            is LocationValidationInitial) {
+      _showPermissionDialog();
     }
   }
 
@@ -167,36 +182,43 @@ class _LocationPermissionScreenState
         .applyLocation(live);
   }
 
-  /// Fresh QR entry: clear cache and show the in-app Allow dialog (no silent GPS).
+  /// Fresh QR entry: clear cache, read location status (no prompt), then
+  /// verify straight away when already allowed, or ask with the Allow dialog.
   void _prepareLocationGateIfNeeded({bool force = false}) {
     if (!force && (_locationStarted || !mounted)) return;
     _locationStarted = true;
-    ref
-        .read(locationValidationFamilyProvider(widget.location).notifier)
-        .prepareFreshScan();
+    _notifier.prepareFreshScan();
     // Two frames: (1) leave device-check loading scaffold, (2) present dialog.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        _showPermissionDialog();
+        _runEntryCheck();
       });
     });
   }
 
-  /// Guaranteed ask on every QR scan — native browser dialog may also appear
-  /// after Allow when the site permission is still Ask/Deny.
-  Future<void> _showPermissionDialog() async {
-    if (!mounted || _permissionDialogOpen) return;
-    // Don't interrupt an in-flight acquire or success navigation.
-    final current = ref.read(locationValidationFamilyProvider(widget.location));
-    if (current is LocationValidationRequestingPermission ||
-        current is LocationValidationFetchingPosition ||
-        current is LocationValidationSuccess) {
-      return;
+  Future<void> _runEntryCheck() async {
+    final status = await _notifier.checkAccessOnEntry();
+    if (!mounted) return;
+    if (status == LocationAccessStatus.needsPrompt) {
+      _showPermissionDialog();
     }
+  }
 
-    _permissionDialogOpen = true;
+  bool _isBusy(LocationValidationState s) =>
+      s is LocationValidationCheckingService ||
+      s is LocationValidationRequestingPermission ||
+      s is LocationValidationFetchingPosition ||
+      s is LocationValidationValidatingVenue;
+
+  /// In-app ask before the browser / OS prompt, so the prompt runs from a tap.
+  Future<void> _showPermissionDialog() async {
+    if (!mounted || _dialogOpen) return;
+    final current = ref.read(locationValidationFamilyProvider(widget.location));
+    if (_isBusy(current) || current is LocationValidationSuccess) return;
+
+    _dialogOpen = true;
     final allowed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -210,7 +232,7 @@ class _LocationPermissionScreenState
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text(AppStrings.locationPermissionNotNow),
+              child: const Text(AppStrings.locationPermissionCancel),
             ),
             FilledButton.icon(
               onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -221,22 +243,79 @@ class _LocationPermissionScreenState
         );
       },
     );
-    _permissionDialogOpen = false;
+    _dialogOpen = false;
     if (!mounted) return;
     if (allowed == true) {
-      _onAllowLocation();
+      _startVerification();
+    } else {
+      _notifier.continueWithoutLocationIfAllowed();
     }
   }
 
-  /// User gesture: browser/OS shows Allow; then acquire a live GPS fix.
-  void _onAllowLocation() {
+  /// Device Location off: how to turn it on, then retry from a tap.
+  Future<void> _showServiceOffDialog() async {
+    if (!mounted || _dialogOpen) return;
+    _dialogOpen = true;
+    var showHowTo = false;
+    final retry = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final theme = Theme.of(context);
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: const Text(AppStrings.locationServiceOffTitle),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(AppStrings.locationServiceOffBody),
+                    const SizedBox(height: 12),
+                    const _NumberedSteps(
+                      steps: AppStrings.locationServiceOffSteps,
+                    ),
+                    if (showHowTo) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        AppStrings.locationServiceHowToDetails,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actionsOverflowDirection: VerticalDirection.up,
+              actions: [
+                TextButton(
+                  onPressed: () => setDialogState(() => showHowTo = !showHowTo),
+                  child: const Text(AppStrings.locationServiceHowTo),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                  child: const Text(AppStrings.locationServiceOffRetry),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    _dialogOpen = false;
     if (!mounted) return;
-    if (!_pulseController.isAnimating) {
-      _pulseController.repeat();
-    }
-    ref
-        .read(locationValidationFamilyProvider(widget.location).notifier)
-        .resetAndValidate(forceRefresh: true);
+    if (retry == true) _startVerification();
+  }
+
+  /// User tap (Allow / Retry): status check, prompt if allowed, live GPS fix.
+  void _startVerification() {
+    if (!mounted) return;
+    _notifier.resetAndValidate(forceRefresh: true);
   }
 
   void _goToCheckInForm(ProximityResult proximity) {
@@ -503,7 +582,18 @@ class _LocationPermissionScreenState
     ref.listen<LocationValidationState>(
       locationValidationFamilyProvider(widget.location),
       (prev, next) {
+        if (_isBusy(next)) {
+          if (!_pulseController.isAnimating) _pulseController.repeat();
+        } else if (_pulseController.isAnimating) {
+          _pulseController.stop();
+        }
         if (_hasCheckedIn || _existingSubmission != null) return;
+        if (next is LocationValidationServiceDisabled &&
+            prev is! LocationValidationServiceDisabled) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _showServiceOffDialog();
+          });
+        }
         if (next is LocationValidationSuccess) {
           // Brief success flash, then navigate — keep short for snappy QR flow.
           Future.delayed(const Duration(milliseconds: 120), () {
@@ -514,9 +604,7 @@ class _LocationPermissionScreenState
       },
     );
 
-    final isBusy =
-        validationState is LocationValidationRequestingPermission ||
-        validationState is LocationValidationFetchingPosition;
+    final isBusy = _isBusy(validationState);
 
     // When date restriction OFF: PAST / UPCOMING / any weekday QR is allowed.
     final showNotThursday = dateRestrictionEnabled && !_isTodayThursday;
@@ -1050,50 +1138,45 @@ class _LocationPermissionScreenState
       );
     }
 
-    if (state is LocationValidationError) {
-      final isPermissionDeny =
-          state.exception is LocationPermissionDeniedException ||
-          state.exception is LocationPermissionPermanentlyDeniedException;
-      final isServicesOff =
-          state.exception is LocationServiceDisabledException;
-      return Container(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        decoration: BoxDecoration(
-          color: AppColors.errorLight.withAlpha(40),
-          borderRadius: AppRadius.mdAll,
-          border: Border.all(color: AppColors.error),
-        ),
-        child: Column(
-          children: [
-            Text(
-              ErrorHandler.getUserMessage(state.exception),
-              style: const TextStyle(color: AppColors.error),
-              textAlign: TextAlign.center,
-            ),
-            if (isPermissionDeny && kIsWeb) ...[
-              const SizedBox(height: 10),
-              Text(
-                AppStrings.locationPermissionWebHelp,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  height: 1.4,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ] else if (isServicesOff) ...[
-              const SizedBox(height: 10),
-              Text(
-                'After Location is on, tap Allow Location below.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  height: 1.4,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ],
-        ),
+    if (state is LocationValidationServiceDisabled) {
+      return const _MessagePanel(
+        title: AppStrings.locationServiceOffTitle,
+        message: AppStrings.locationServiceOffBody,
+        steps: AppStrings.locationServiceOffSteps,
       );
+    }
+
+    if (state is LocationValidationPermissionBlocked) {
+      if (!ref.read(permissionServiceProvider).isWeb) {
+        return const _MessagePanel(
+          title: AppStrings.locationPermissionBlockedTitle,
+          message: AppStrings.locationPermissionBlockedNative,
+        );
+      }
+      final (heading, steps) = switch (defaultTargetPlatform) {
+        TargetPlatform.android => (
+          AppStrings.locationBlockedAndroidHeading,
+          AppStrings.locationBlockedAndroidSteps,
+        ),
+        TargetPlatform.iOS => (
+          AppStrings.locationBlockedIosHeading,
+          AppStrings.locationBlockedIosSteps,
+        ),
+        _ => (
+          AppStrings.locationBlockedDesktopHeading,
+          AppStrings.locationBlockedDesktopSteps,
+        ),
+      };
+      return _MessagePanel(
+        title: AppStrings.locationPermissionBlockedTitle,
+        message: AppStrings.locationPermissionPermanentlyDenied,
+        stepsHeading: heading,
+        steps: steps,
+      );
+    }
+
+    if (state is LocationValidationError) {
+      return _MessagePanel(message: ErrorHandler.getUserMessage(state.exception));
     }
 
     if (state is LocationValidationInitial) {
@@ -1107,9 +1190,7 @@ class _LocationPermissionScreenState
     }
 
     return Text(
-      state is LocationValidationFetchingPosition
-          ? AppStrings.locationFetchingPosition
-          : AppStrings.locationRequestingPermission,
+      _busyLabel(state),
       style: theme.textTheme.bodyMedium?.copyWith(
         color: theme.colorScheme.onSurfaceVariant,
       ),
@@ -1117,21 +1198,19 @@ class _LocationPermissionScreenState
     );
   }
 
+  String _busyLabel(LocationValidationState state) => switch (state) {
+    LocationValidationCheckingService() => AppStrings.locationCheckingService,
+    LocationValidationRequestingPermission() =>
+      AppStrings.locationRequestingPermission,
+    LocationValidationValidatingVenue() => AppStrings.locationVerifyingVenue,
+    _ => AppStrings.locationFetchingPosition,
+  };
+
   Widget _buildActionButtons(
     BuildContext context,
     LocationValidationState state,
     bool isBusy,
   ) {
-    if (state is LocationValidationError ||
-        state is LocationValidationOutsideRadius) {
-      // Re-open the every-scan ask (user gesture → system popup).
-      return AppButton.primary(
-        label: AppStrings.locationPermissionAllow,
-        icon: Icons.my_location_rounded,
-        onPressed: _showPermissionDialog,
-      );
-    }
-
     if (state is LocationValidationSuccess) {
       return AppButton.primary(
         label: 'Continue to Check-In',
@@ -1148,10 +1227,179 @@ class _LocationPermissionScreenState
       );
     }
 
+    if (state is LocationValidationServiceDisabled) {
+      return Column(
+        children: [
+          AppButton.primary(
+            label: AppStrings.locationServiceOffRetry,
+            icon: Icons.refresh_rounded,
+            onPressed: _startVerification,
+          ),
+          const SizedBox(height: 8),
+          AppButton.text(
+            label: AppStrings.locationServiceHowTo,
+            onPressed: _showServiceOffDialog,
+          ),
+        ],
+      );
+    }
+
+    if (state is LocationValidationPermissionDenied) {
+      return Column(
+        children: [
+          AppButton.primary(
+            label: AppStrings.locationPermissionAllow,
+            icon: Icons.my_location_rounded,
+            onPressed: _startVerification,
+          ),
+          const SizedBox(height: 8),
+          AppButton.text(
+            label: AppStrings.locationServiceHowTo,
+            onPressed: _showServiceOffDialog,
+          ),
+        ],
+      );
+    }
+
+    if (state is LocationValidationPermissionBlocked) {
+      return Column(
+        children: [
+          AppButton.primary(
+            label: AppStrings.locationRetryShort,
+            icon: Icons.refresh_rounded,
+            onPressed: _startVerification,
+          ),
+          if (!ref.read(permissionServiceProvider).isWeb) ...[
+            const SizedBox(height: 8),
+            AppButton.text(
+              label: AppStrings.locationPermissionOpenSettings,
+              onPressed: _notifier.openSettings,
+            ),
+          ],
+        ],
+      );
+    }
+
+    if (state is LocationValidationOutsideRadius) {
+      return AppButton.primary(
+        label: AppStrings.locationRetry,
+        icon: Icons.my_location_rounded,
+        onPressed: _startVerification,
+      );
+    }
+
+    if (state is LocationValidationError) {
+      return AppButton.primary(
+        label: AppStrings.locationRetryShort,
+        icon: Icons.refresh_rounded,
+        onPressed: _startVerification,
+      );
+    }
+
     return AppButton.primary(
-      label: 'Verifying GPS Location...',
+      label: _busyLabel(state),
       isLoading: isBusy,
       onPressed: null,
+    );
+  }
+}
+
+/// Error-styled panel with optional title and numbered steps.
+class _MessagePanel extends StatelessWidget {
+  const _MessagePanel({
+    required this.message,
+    this.title,
+    this.stepsHeading,
+    this.steps = const [],
+  });
+
+  final String? title;
+  final String message;
+  final String? stepsHeading;
+  final List<String> steps;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.errorLight.withAlpha(40),
+        borderRadius: AppRadius.mdAll,
+        border: Border.all(color: AppColors.error),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (title != null) ...[
+            Row(
+              children: [
+                const Icon(Icons.location_off_rounded, color: AppColors.error),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title!,
+                    style: const TextStyle(
+                      color: AppColors.error,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
+          Text(
+            message,
+            style: title == null
+                ? const TextStyle(color: AppColors.error)
+                : theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+          ),
+          if (steps.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            if (stepsHeading != null) ...[
+              Text(
+                stepsHeading!,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 6),
+            ],
+            _NumberedSteps(steps: steps),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _NumberedSteps extends StatelessWidget {
+  const _NumberedSteps({required this.steps});
+
+  final List<String> steps;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.4);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < steps.length; i++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(width: 22, child: Text('${i + 1}.', style: style)),
+                Expanded(child: Text(steps[i], style: style)),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

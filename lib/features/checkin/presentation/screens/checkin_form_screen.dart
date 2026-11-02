@@ -27,6 +27,7 @@ import '../../../location/domain/default_location_x.dart';
 import '../../../location/domain/entities/location_config.dart';
 import '../../../location/domain/usecases/validate_user_proximity.dart';
 import '../../../location/presentation/providers/location_providers.dart';
+import '../../../location/presentation/screens/location_permission_screen.dart';
 import '../../data/datasources/device_checkin_service.dart';
 import '../../domain/entities/check_in_submission.dart';
 import '../../domain/entities/check_in_type.dart';
@@ -578,6 +579,10 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     return loaded ?? DefaultLocationX.current();
   }
 
+  /// Real verified result when present. The venue-coord placeholder is only
+  /// reachable with the location restriction OFF: [build] swaps in the
+  /// location gate when it is ON and nothing verified was passed, and
+  /// SubmitCheckIn rejects unverified results under the restriction.
   ProximityResult get _effectiveProximity {
     if (widget.proximityResult != null) return widget.proximityResult!;
     final location = _effectiveLocation;
@@ -971,6 +976,18 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       return const Scaffold(body: Center(child: MetaPhiLoadingIndicator()));
     }
 
+    if (ref.watch(locationRestrictionEnabledProvider) &&
+        widget.proximityResult?.isVerified != true) {
+      return LocationPermissionScreen(
+        key: ValueKey('form-location-gate-${widget.locationId}'),
+        location: _effectiveLocation,
+        adminId: widget.adminId,
+        sessionDateStr: widget.sessionDateStr,
+        sessionToken: widget.sessionToken,
+        nowProvider: widget.nowProvider,
+      );
+    }
+
     final dateRestrictionEnabled = configAsync.maybeWhen(
       data: (config) => config.dateRestrictionEnabled,
       orElse: () => lastKnown?.dateRestrictionEnabled ?? true,
@@ -1194,16 +1211,7 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
         locationAsync.asData?.value ??
         DefaultLocationX.current();
 
-    final proximity =
-        widget.proximityResult ??
-        ProximityResult(
-          distanceMeters: 10.0,
-          isWithinRadius: true,
-          allowedRadiusMeters: location.radiusMeters,
-          userLatitude: location.latitude,
-          userLongitude: location.longitude,
-          gpsAccuracy: 5.0,
-        );
+    final proximity = _effectiveProximity;
     final canSubmit = _canSubmit(formState);
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     if (_anyMemberTypeaheadOpen && keyboardInset != _lastKeyboardInset) {

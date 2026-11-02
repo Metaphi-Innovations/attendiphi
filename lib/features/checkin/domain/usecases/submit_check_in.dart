@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/errors/app_exception.dart';
+import '../../../../core/l10n/app_strings.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../location/domain/entities/location_config.dart';
 import '../../../location/domain/usecases/validate_user_proximity.dart';
@@ -64,6 +65,16 @@ class SubmitCheckIn {
     final locationOn = locationRestrictionEnabled ?? restrictionsEnabled;
     final deviceOn = deviceRestrictionEnabled ?? restrictionsEnabled;
     final enforceServerRestrictions = dateOn || locationOn;
+
+    // 0. Location restriction ON requires a real, verified fix.
+    if (locationOn && !proximityResult.isVerified) {
+      throw const CheckInSubmissionFailedException(
+        userMessage: AppStrings.locationVerificationRequired,
+        technicalMessage:
+            'Location restriction ON but proximity result is not verified.',
+      );
+    }
+
     // 1. Validate Form Fields
     final nameError = Validators.validateName(name);
     if (nameError != null) {
