@@ -15,6 +15,7 @@ import '../../../../core/responsive/responsive_breakpoints.dart';
 import '../../../../core/utils/file_download_helper.dart';
 import '../../../../core/widgets/app_card.dart';
 import '../../../app_config/presentation/providers/check_in_restrictions_provider.dart';
+import '../../../location/domain/default_location_x.dart';
 import '../../../location/domain/entities/location_config.dart';
 import '../../domain/check_in_session_token.dart';
 
@@ -27,18 +28,11 @@ import '../../domain/check_in_session_token.dart';
 /// - Full interactive Standee preview with "View QR" and "Download QR" options.
 /// - Bulk "Download All This Month" capability.
 class VenueQrDisplayScreen extends ConsumerStatefulWidget {
-  const VenueQrDisplayScreen({
+  VenueQrDisplayScreen({
     super.key,
-    this.location = const LocationConfig(
-      id: 'location_x',
-      name: 'Jade Luxury Banquets, Mumbai',
-      latitude: 18.9888622,
-      longitude: 72.8152475,
-      radiusMeters: 500.0,
-      address: 'Jade Luxury Banquets, Nehru Centre, Dr Annie Besant Rd, Worli, Mumbai, Maharashtra 400018',
-    ),
+    LocationConfig? location,
     this.initialDate,
-  });
+  }) : location = location ?? DefaultLocationX.current();
 
   final LocationConfig location;
   final DateTime? initialDate;

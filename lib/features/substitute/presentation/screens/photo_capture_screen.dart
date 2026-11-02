@@ -85,7 +85,12 @@ class _PhotoCaptureScreenState extends ConsumerState<PhotoCaptureScreen> {
 
     try {
       final compressed = await ImageUtils.compressImageBytes(captured);
-      final bytes = compressed ?? captured;
+      // Normalize to JPEG so Storage MIME allow-list never sees web PNG /
+      // octet-stream leftovers from the capture pipeline.
+      final bytes = ImageUtils.toJpegBytes(compressed ?? captured);
+      if (bytes.isEmpty) {
+        throw StateError('jpeg encode produced empty bytes');
+      }
       final base64 = ImageUtils.bytesToBase64(bytes);
       if (!mounted) return;
       ref.read(checkInFormProvider.notifier).setPhotoBase64(base64);

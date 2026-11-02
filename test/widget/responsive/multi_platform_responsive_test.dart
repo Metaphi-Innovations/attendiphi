@@ -13,6 +13,7 @@ import 'package:qr_checkin/features/checkin/presentation/screens/checkin_result_
 import 'package:qr_checkin/features/employee/domain/entities/employee.dart';
 import 'package:qr_checkin/features/employee/presentation/providers/employee_providers.dart';
 import 'package:qr_checkin/features/location/domain/entities/location_config.dart';
+import 'package:qr_checkin/features/location/presentation/providers/location_providers.dart';
 import 'package:qr_checkin/features/location/presentation/screens/location_permission_screen.dart';
 import 'package:qr_checkin/features/qr_checkin/presentation/widgets/qr_overlay.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -152,6 +153,9 @@ void main() {
                   const CheckInRestrictionsConfig(locationRestrictionEnabled: true, dateRestrictionEnabled: true, deviceRestrictionEnabled: true),
                 ),
               ),
+              locationConfigFamilyProvider(testLocation.id).overrideWith(
+                (ref) async => testLocation,
+              ),
             ],
             child: MaterialApp(
               theme: AppTheme.light,
@@ -167,7 +171,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 200));
 
         expect(find.text('Jade Luxury Banquets, Mumbai'), findsOneWidget);
-        expect(find.textContaining('Allowed Perimeter:'), findsOneWidget);
+        expect(find.textContaining('Allowed Perimeter:'), findsNothing);
         expect(tester.takeException(), isNull);
       },
     );

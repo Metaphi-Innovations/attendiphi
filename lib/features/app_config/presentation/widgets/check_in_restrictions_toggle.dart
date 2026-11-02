@@ -151,38 +151,7 @@ class CheckInRestrictionsToggle extends ConsumerWidget {
     WidgetRef ref,
     bool nextEnabled,
   ) async {
-    if (!nextEnabled) {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Turn OFF check-in restrictions?'),
-          content: const Text(
-            'This weakens production controls:\n'
-            '• Check-in works any day of the week\n'
-            '• Any QR session date is accepted\n'
-            '• Same device can check in multiple times\n'
-            '• Location / GPS proximity is not required\n\n'
-            'Phone uniqueness stays on.\n'
-            'Use only for testing. Turn restrictions back ON afterward.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFD97706),
-              ),
-              child: const Text('Turn OFF'),
-            ),
-          ],
-        ),
-      );
-      if (confirmed != true) return;
-    }
-
+    // No confirmation — Super Admin toggles apply immediately.
     await ref
         .read(checkInRestrictionsNotifierProvider.notifier)
         .setEnabled(nextEnabled);
@@ -244,22 +213,20 @@ class _GranularRestrictionsDialogState
   bool _savingDate = false;
   bool _savingDevice = false;
 
+  /// Optimistic switch values so taps flip immediately (controlled Switch
+  /// otherwise stays on the old provider value until the write finishes).
+  bool? _optimisticLocation;
+  bool? _optimisticDate;
+  bool? _optimisticDevice;
+
   bool get _busy => _savingLocation || _savingDate || _savingDevice;
 
   Future<void> _onLocationChanged(bool next) async {
     if (_busy) return;
-    if (!next) {
-      final confirmed = await _confirmTurnOff(
-        title: 'Turn off location restriction?',
-        body:
-            'Location will still be fetched when the browser allows, but '
-            'check-in will not be blocked if GPS is denied or outside the '
-            'venue radius.',
-      );
-      if (confirmed != true || !mounted) return;
-    }
-
-    setState(() => _savingLocation = true);
+    setState(() {
+      _savingLocation = true;
+      _optimisticLocation = next;
+    });
     try {
       await ref
           .read(checkInRestrictionsNotifierProvider.notifier)
@@ -267,24 +234,21 @@ class _GranularRestrictionsDialogState
       if (!mounted) return;
       CheckInRestrictionsToggle._showWriteResult(context, ref);
     } finally {
-      if (mounted) setState(() => _savingLocation = false);
+      if (mounted) {
+        setState(() {
+          _savingLocation = false;
+          _optimisticLocation = null;
+        });
+      }
     }
   }
 
   Future<void> _onDateChanged(bool next) async {
     if (_busy) return;
-    if (!next) {
-      final confirmed = await _confirmTurnOff(
-        title: 'Turn off date restriction?',
-        body:
-            'Date gates will turn off: everyday QR standees and check-in on '
-            'any day. Daily Attendance / Overview will show every day’s '
-            'sessions.',
-      );
-      if (confirmed != true || !mounted) return;
-    }
-
-    setState(() => _savingDate = true);
+    setState(() {
+      _savingDate = true;
+      _optimisticDate = next;
+    });
     try {
       await ref
           .read(checkInRestrictionsNotifierProvider.notifier)
@@ -292,23 +256,21 @@ class _GranularRestrictionsDialogState
       if (!mounted) return;
       CheckInRestrictionsToggle._showWriteResult(context, ref);
     } finally {
-      if (mounted) setState(() => _savingDate = false);
+      if (mounted) {
+        setState(() {
+          _savingDate = false;
+          _optimisticDate = null;
+        });
+      }
     }
   }
 
   Future<void> _onDeviceChanged(bool next) async {
     if (_busy) return;
-    if (!next) {
-      final confirmed = await _confirmTurnOff(
-        title: 'Turn off one device = one check-in?',
-        body:
-            'Shared phones and tablets will be able to check in multiple '
-            'members on the same session day (venue standee mode).',
-      );
-      if (confirmed != true || !mounted) return;
-    }
-
-    setState(() => _savingDevice = true);
+    setState(() {
+      _savingDevice = true;
+      _optimisticDevice = next;
+    });
     try {
       await ref
           .read(checkInRestrictionsNotifierProvider.notifier)
@@ -316,41 +278,27 @@ class _GranularRestrictionsDialogState
       if (!mounted) return;
       CheckInRestrictionsToggle._showWriteResult(context, ref);
     } finally {
-      if (mounted) setState(() => _savingDevice = false);
+      if (mounted) {
+        setState(() {
+          _savingDevice = false;
+          _optimisticDevice = null;
+        });
+      }
     }
-  }
-
-  Future<bool?> _confirmTurnOff({
-    required String title,
-    required String body,
-  }) {
-    return showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: Text(body),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFD97706),
-            ),
-            child: const Text('Turn OFF'),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final locationOn = ref.watch(locationRestrictionEnabledProvider);
-    final dateOn = ref.watch(dateRestrictionEnabledProvider);
-    final deviceOn = ref.watch(deviceRestrictionEnabledProvider);
+    // Local optimistic values flip the switch immediately on tap.
+    final locationOn = _optimisticLocation != null
+        ? _optimisticLocation!
+        : ref.watch(locationRestrictionEnabledProvider);
+    final dateOn = _optimisticDate != null
+        ? _optimisticDate!
+        : ref.watch(dateRestrictionEnabledProvider);
+    final deviceOn = _optimisticDevice != null
+        ? _optimisticDevice!
+        : ref.watch(deviceRestrictionEnabledProvider);
     final busy = _busy;
 
     return AlertDialog(

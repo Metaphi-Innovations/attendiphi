@@ -1,3 +1,5 @@
+import '../l10n/app_strings.dart';
+
 /// Sealed exception hierarchy for the QR Check-In application.
 ///
 /// Each exception carries a [userMessage] for display and a
@@ -28,22 +30,21 @@ sealed class AppException implements Exception {
 
 // ── Location ──────────────────────────────────────────────────────────────
 
-/// Location permission was denied by the user.
+/// Location permission was not granted and the cause is ambiguous (prompt
+/// dismissed, or the browser could not tell device Location was off).
 class LocationPermissionDeniedException extends AppException {
   const LocationPermissionDeniedException({
-    super.userMessage =
-        'Location was denied. Enable location for this site to verify you are at the venue.',
+    super.userMessage = AppStrings.locationPermissionDenied,
     super.technicalMessage = 'Location permission denied by user.',
     super.originalError,
     super.stackTrace,
   });
 }
 
-/// Location permission was permanently denied (requires settings).
+/// Location permission is blocked for this site / app (requires settings).
 class LocationPermissionPermanentlyDeniedException extends AppException {
   const LocationPermissionPermanentlyDeniedException({
-    super.userMessage =
-        'Location is blocked for this site. Enable it in the browser, then reload or scan the QR again to continue check-in.',
+    super.userMessage = AppStrings.locationPermissionPermanentlyDenied,
     super.technicalMessage =
         'Location permission permanently denied. Requires settings change.',
     super.originalError,
@@ -54,8 +55,7 @@ class LocationPermissionPermanentlyDeniedException extends AppException {
 /// Device location services are turned off.
 class LocationServiceDisabledException extends AppException {
   const LocationServiceDisabledException({
-    super.userMessage =
-        'Location services are turned off. Please enable them to continue.',
+    super.userMessage = AppStrings.locationServiceDisabled,
     super.technicalMessage = 'Device location services disabled.',
     super.originalError,
     super.stackTrace,
@@ -65,7 +65,7 @@ class LocationServiceDisabledException extends AppException {
 /// Unable to obtain a GPS position.
 class LocationUnavailableException extends AppException {
   const LocationUnavailableException({
-    super.userMessage = 'Unable to determine your location. Please check your GPS and try again.',
+    super.userMessage = AppStrings.locationUnavailable,
     super.technicalMessage = 'GPS position unavailable.',
     super.originalError,
     super.stackTrace,
@@ -75,7 +75,7 @@ class LocationUnavailableException extends AppException {
 /// GPS location request timed out.
 class LocationTimeoutException extends AppException {
   const LocationTimeoutException({
-    super.userMessage = 'Unable to determine your location. Please check your GPS and try again.',
+    super.userMessage = AppStrings.locationTimeout,
     super.technicalMessage = 'Location request timed out.',
     super.originalError,
     super.stackTrace,
@@ -86,9 +86,7 @@ class LocationTimeoutException extends AppException {
 class LocationAccuracyTooLowException extends AppException {
   LocationAccuracyTooLowException({
     required double accuracy,
-    super.userMessage =
-        'Your GPS signal is too weak for accurate verification. '
-        'Please move to an open area and try again.',
+    super.userMessage = AppStrings.locationAccuracyTooLow,
     String? technicalMessage,
     super.originalError,
     super.stackTrace,

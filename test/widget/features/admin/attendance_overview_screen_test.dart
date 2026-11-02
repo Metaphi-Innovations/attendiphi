@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:qr_checkin/features/admin/presentation/providers/attendance_overview_provider.dart';
+import 'package:intl/intl.dart';
 import 'package:qr_checkin/features/admin/presentation/providers/admin_auth_provider.dart';
+import 'package:qr_checkin/features/admin/presentation/providers/attendance_overview_provider.dart';
 import 'package:qr_checkin/features/admin/presentation/screens/attendance_overview_screen.dart';
 import 'package:qr_checkin/features/checkin/domain/entities/check_in_submission.dart';
 import 'package:qr_checkin/features/checkin/domain/entities/check_in_type.dart';
@@ -71,6 +72,10 @@ void main() {
         overviewCheckInsStreamProvider.overrideWith(
           (ref) => Stream.value(testSubmissions),
         ),
+        // Pin to September so fixture check-ins (Sep 3) are visible by default.
+        attendanceOverviewFilterProvider.overrideWith(
+          () => _FixedMonthFilterNotifier(DateTime(2026, 9, 1)),
+        ),
       ],
       child: const MaterialApp(home: AttendanceOverviewScreen()),
     );
@@ -116,7 +121,7 @@ void main() {
       expect(find.text('Atharva Patil'), findsOneWidget);
       expect(find.text('Rinku Sharma'), findsOneWidget);
 
-      // Thursday headers displayed
+      // Thursday headers displayed (September fixture month)
       expect(find.text('03 Sep'), findsWidgets);
       expect(find.text('10 Sep'), findsWidgets);
 
@@ -181,5 +186,50 @@ void main() {
         expect(find.textContaining('%'), findsWidgets);
       },
     );
+
+    testWidgets('defaults to current month, not all Thursdays', (tester) async {
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            adminAuthProvider.overrideWith(
+              () => MockAuthenticatedAdminAuthNotifier(kWidgetTestSuperAdmin),
+            ),
+            employeesStreamProvider.overrideWith(
+              (ref) => Stream.value(testMembers),
+            ),
+            overviewCheckInsStreamProvider.overrideWith(
+              (ref) => Stream.value(testSubmissions),
+            ),
+          ],
+          child: const MaterialApp(home: AttendanceOverviewScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final expected = attendanceOverviewDefaultMonth();
+      expect(
+        find.text(DateFormat('MMMM yyyy').format(expected)),
+        findsOneWidget,
+      );
+      // Full-year Sep header should not appear when current month is not Sep.
+      if (expected.month != 9) {
+        expect(find.text('03 Sep'), findsNothing);
+      }
+    });
   });
+}
+
+class _FixedMonthFilterNotifier extends AttendanceOverviewFilterNotifier {
+  _FixedMonthFilterNotifier(this._month);
+
+  final DateTime _month;
+
+  @override
+  AttendanceOverviewFilterState build() {
+    return AttendanceOverviewFilterState(selectedMonth: _month);
+  }
 }

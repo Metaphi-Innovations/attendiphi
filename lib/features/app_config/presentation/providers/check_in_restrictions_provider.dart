@@ -26,49 +26,80 @@ final appConfigRepositoryProvider = Provider<AppConfigRepository>((ref) {
   return AppConfigRepositoryImpl(ref.watch(appConfigRemoteDataSourceProvider));
 });
 
+/// Last successfully loaded or written config.
+///
+/// Survives [checkInRestrictionsConfigProvider] reload so Super Admin toggles
+/// do not snap back to defaults (ON) while the stream is restarting.
+class LastKnownCheckInRestrictions extends Notifier<CheckInRestrictionsConfig?> {
+  @override
+  CheckInRestrictionsConfig? build() {
+    ref.keepAlive();
+    return null;
+  }
+
+  void set(CheckInRestrictionsConfig? config) => state = config;
+}
+
+final lastKnownCheckInRestrictionsProvider = NotifierProvider<
+    LastKnownCheckInRestrictions, CheckInRestrictionsConfig?>(
+  LastKnownCheckInRestrictions.new,
+);
+
 /// Live stream of check-in restriction config. Missing doc ⇒ defaults (ON).
 ///
-/// Polls every ~20s; keepAlive so QR + admin share one subscription.
+/// Polls every ~5s; keepAlive so QR + admin share one subscription.
 final checkInRestrictionsConfigProvider =
     StreamProvider<CheckInRestrictionsConfig>((ref) {
       ref.keepAlive();
-      return ref.watch(appConfigRepositoryProvider).watchCheckInRestrictions();
+      final stream =
+          ref.watch(appConfigRepositoryProvider).watchCheckInRestrictions();
+      return stream.map((config) {
+        // Keep lastKnown in sync for reload fallback (post-write invalidate).
+        Future.microtask(() {
+          final last = ref.read(lastKnownCheckInRestrictionsProvider);
+          if (last != config) {
+            ref.read(lastKnownCheckInRestrictionsProvider.notifier).set(config);
+          }
+        });
+        return config;
+      });
     });
+
+CheckInRestrictionsConfig _resolvedRestrictions(
+  AsyncValue<CheckInRestrictionsConfig> async,
+  CheckInRestrictionsConfig? lastKnown,
+) {
+  final streamed = async.asData?.value;
+  if (streamed != null) return streamed;
+  return lastKnown ?? CheckInRestrictionsConfig.defaults;
+}
 
 /// True when any restriction is enabled (legacy combined).
 final restrictionsEnabledProvider = Provider<bool>((ref) {
   final async = ref.watch(checkInRestrictionsConfigProvider);
-  return async.maybeWhen(
-    data: (config) => config.restrictionsEnabled,
-    orElse: () => true,
-  );
+  final lastKnown = ref.watch(lastKnownCheckInRestrictionsProvider);
+  return _resolvedRestrictions(async, lastKnown).restrictionsEnabled;
 });
 
 /// GPS / proximity enforcement (block on deny or outside radius).
 final locationRestrictionEnabledProvider = Provider<bool>((ref) {
   final async = ref.watch(checkInRestrictionsConfigProvider);
-  return async.maybeWhen(
-    data: (config) => config.locationRestrictionEnabled,
-    orElse: () => true,
-  );
+  final lastKnown = ref.watch(lastKnownCheckInRestrictionsProvider);
+  return _resolvedRestrictions(async, lastKnown).locationRestrictionEnabled;
 });
 
 /// Thursday-only QR + session-day gate; OFF ⇒ everyday QR / attendance.
 final dateRestrictionEnabledProvider = Provider<bool>((ref) {
   final async = ref.watch(checkInRestrictionsConfigProvider);
-  return async.maybeWhen(
-    data: (config) => config.dateRestrictionEnabled,
-    orElse: () => true,
-  );
+  final lastKnown = ref.watch(lastKnownCheckInRestrictionsProvider);
+  return _resolvedRestrictions(async, lastKnown).dateRestrictionEnabled;
 });
 
 /// One device = one check-in per session day; OFF ⇒ shared venue tablets OK.
 final deviceRestrictionEnabledProvider = Provider<bool>((ref) {
   final async = ref.watch(checkInRestrictionsConfigProvider);
-  return async.maybeWhen(
-    data: (config) => config.deviceRestrictionEnabled,
-    orElse: () => true,
-  );
+  final lastKnown = ref.watch(lastKnownCheckInRestrictionsProvider);
+  return _resolvedRestrictions(async, lastKnown).deviceRestrictionEnabled;
 });
 
 /// True once the restrictions config stream has emitted (doc or default).
@@ -101,6 +132,17 @@ class CheckInRestrictionsNotifier extends AsyncNotifier<void> {
     await ref.read(checkInRestrictionsConfigProvider.future);
   }
 
+  void _rememberConfig(CheckInRestrictionsConfig config) {
+    ref.read(lastKnownCheckInRestrictionsProvider.notifier).set(config);
+  }
+
+  CheckInRestrictionsConfig _currentConfig() {
+    return _resolvedRestrictions(
+      ref.read(checkInRestrictionsConfigProvider),
+      ref.read(lastKnownCheckInRestrictionsProvider),
+    );
+  }
+
   /// Production-style master toggle: sets location + date + device together.
   Future<void> setEnabled(bool enabled) async {
     await _ensureSuperAdmin();
@@ -116,6 +158,14 @@ class CheckInRestrictionsNotifier extends AsyncNotifier<void> {
             updatedBy: admin.id,
             updatedByEmail: admin.email,
           );
+      // Remember before invalidate so switches do not snap to defaults (ON).
+      _rememberConfig(
+        CheckInRestrictionsConfig.fromLegacyMaster(enabled).copyWith(
+          updatedAt: DateTime.now().toUtc(),
+          updatedBy: admin.id,
+          updatedByEmail: admin.email,
+        ),
+      );
       await _refreshConfig();
     });
   }
@@ -141,6 +191,17 @@ class CheckInRestrictionsNotifier extends AsyncNotifier<void> {
             updatedBy: admin.id,
             updatedByEmail: admin.email,
           );
+      // Remember before invalidate so the device switch does not snap back ON.
+      _rememberConfig(
+        _currentConfig().copyWith(
+          locationRestrictionEnabled: locationRestrictionEnabled,
+          dateRestrictionEnabled: dateRestrictionEnabled,
+          deviceRestrictionEnabled: deviceRestrictionEnabled,
+          updatedAt: DateTime.now().toUtc(),
+          updatedBy: admin.id,
+          updatedByEmail: admin.email,
+        ),
+      );
       await _refreshConfig();
     });
   }

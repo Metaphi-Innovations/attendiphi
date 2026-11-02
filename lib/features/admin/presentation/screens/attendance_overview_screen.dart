@@ -290,7 +290,7 @@ class _AttendanceOverviewScreenState
               isDark,
               filterState,
               meetingMonths,
-              visibleThursdays.length,
+              allThursdays.length,
             ),
             const SizedBox(height: 12),
 
@@ -359,7 +359,7 @@ class _AttendanceOverviewScreenState
     bool isDark,
     AttendanceOverviewFilterState filterState,
     List<DateTime> meetingMonths,
-    int visibleDatesCount,
+    int allDatesCount,
   ) {
     final isMobile = context.isMobile;
 
@@ -421,7 +421,7 @@ class _AttendanceOverviewScreenState
           value: filterState.selectedMonth,
           isExpanded: isMobile,
           hint: Text(
-            'All Months ($visibleDatesCount Thursdays)',
+            'All Months ($allDatesCount dates)',
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
@@ -432,11 +432,11 @@ class _AttendanceOverviewScreenState
           dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
           borderRadius: BorderRadius.circular(12),
           items: [
-            const DropdownMenuItem<DateTime?>(
+            DropdownMenuItem<DateTime?>(
               value: null,
               child: Text(
-                'All Months (57 Thursdays)',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                'All Months ($allDatesCount dates)',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
               ),
             ),
             ...meetingMonths.map((m) {
@@ -675,9 +675,11 @@ class _AttendanceOverviewScreenState
                   pinnedRowCount: 1,
                   pinnedColumnCount: 1,
                   trailingPinnedColumnCount: 4,
+                  // Keep cache tight — large extents materialize thousands of
+                  // cells offscreen and tank scroll FPS on Flutter web.
                   // Package still exposes cacheExtent; SDK deprecates the name.
                   // ignore: deprecated_member_use
-                  cacheExtent: 320,
+                  cacheExtent: 96,
                   diagonalDragBehavior: DiagonalDragBehavior.free,
                   verticalDetails: ScrollableDetails.vertical(
                     controller: _verticalScrollController,
@@ -1005,6 +1007,9 @@ class _AttendanceOverviewScreenState
 }
 
 /// Lightweight status chip for the virtualized attendance matrix.
+///
+/// No [Tooltip] — wrapping every cell creates expensive overlays on Flutter
+/// web. Tap still opens the details dialog.
 class _MatrixStatusCell extends StatelessWidget {
   const _MatrixStatusCell({
     required this.attendance,
@@ -1047,40 +1052,32 @@ class _MatrixStatusCell extends StatelessWidget {
         label = '·';
     }
 
-    final tooltip = attendance.status == MemberAttendanceStatus.substitute
-        ? 'Substitute: ${attendance.substituteName ?? "Guest"}'
-        : attendance.status.label;
-
-    return Tooltip(
-      message: tooltip,
-      waitDuration: const Duration(milliseconds: 400),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Center(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: bg,
-              borderRadius: BorderRadius.circular(6),
-              border: attendance.status.isUpcoming
-                  ? Border.all(
-                      color: isDark
-                          ? const Color(0xFF334155)
-                          : const Color(0xFFE2E8F0),
-                    )
-                  : null,
-            ),
-            child: SizedBox(
-              width: 32,
-              height: 28,
-              child: Center(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: fg,
-                  ),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Center(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(6),
+            border: attendance.status.isUpcoming
+                ? Border.all(
+                    color: isDark
+                        ? const Color(0xFF334155)
+                        : const Color(0xFFE2E8F0),
+                  )
+                : null,
+          ),
+          child: SizedBox(
+            width: 32,
+            height: 28,
+            child: Center(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: fg,
                 ),
               ),
             ),

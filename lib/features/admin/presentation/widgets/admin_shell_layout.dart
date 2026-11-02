@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,13 +6,14 @@ import '../../../../app/router/route_names.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_radius.dart';
 import '../../../../core/responsive/responsive_breakpoints.dart';
-import '../../../../core/widgets/metaphi_loading_indicator.dart';
 import '../providers/admin_auth_provider.dart';
 import 'admin_inspection_banner.dart';
 
 /// Persistent Admin Shell with a permanent left sidebar (desktop/tablet)
-/// and adaptive drawer (mobile) that swaps content panels with a branded
-/// 2-second MetaPhi loading spinner on every page change.
+/// and adaptive drawer (mobile).
+///
+/// Tab switches use [StatefulNavigationShell.goBranch] without a full-screen
+/// loader so the indexed stack can show the already-mounted branch instantly.
 class AdminShellLayout extends ConsumerStatefulWidget {
   const AdminShellLayout({super.key, required this.navigationShell});
 
@@ -25,59 +24,7 @@ class AdminShellLayout extends ConsumerStatefulWidget {
 }
 
 class _AdminShellLayoutState extends ConsumerState<AdminShellLayout> {
-  bool _isPageTransitioning = false;
-  int _lastIndex = -1;
-  Timer? _transitionTimer;
-
   int get currentTab => widget.navigationShell.currentIndex;
-
-  @override
-  void initState() {
-    super.initState();
-    _lastIndex = widget.navigationShell.currentIndex;
-    _startPageLoadingTransition(widget.navigationShell.currentIndex);
-  }
-
-  @override
-  void didUpdateWidget(AdminShellLayout oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.navigationShell.currentIndex != _lastIndex) {
-      _startPageLoadingTransition(widget.navigationShell.currentIndex);
-    }
-  }
-
-  void _startPageLoadingTransition(int index) {
-    _lastIndex = index;
-    _transitionTimer?.cancel();
-
-    // Check if running in automated test suite
-    final isTest = WidgetsBinding.instance.runtimeType.toString().contains(
-      'TestWidgetsFlutterBinding',
-    );
-
-    if (isTest) {
-      _isPageTransitioning = false;
-      return;
-    }
-
-    setState(() {
-      _isPageTransitioning = true;
-    });
-
-    _transitionTimer = Timer(const Duration(seconds: 1), () {
-      if (mounted) {
-        setState(() {
-          _isPageTransitioning = false;
-        });
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _transitionTimer?.cancel();
-    super.dispose();
-  }
 
   void _onItemTapped(
     BuildContext context,
@@ -87,12 +34,14 @@ class _AdminShellLayoutState extends ConsumerState<AdminShellLayout> {
     if (isMobile) {
       Navigator.of(context, rootNavigator: false).pop();
     }
-    // Always open the branch root (e.g. /substitutes, not /substitutes/:id).
-    // initialLocation: false would restore a nested detail route left on the stack.
-    if (index != widget.navigationShell.currentIndex) {
-      _startPageLoadingTransition(index);
+    final current = widget.navigationShell.currentIndex;
+    if (index == current) {
+      // Re-tap active tab → reset nested stacks (e.g. substitute detail → list).
+      widget.navigationShell.goBranch(index, initialLocation: true);
+    } else {
+      // Switch tabs → restore prior branch state for instant return.
+      widget.navigationShell.goBranch(index, initialLocation: false);
     }
-    widget.navigationShell.goBranch(index, initialLocation: true);
   }
 
   String _getTabTitle(int tab) {
@@ -119,12 +68,10 @@ class _AdminShellLayoutState extends ConsumerState<AdminShellLayout> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final screenWidth = context.screenWidth;
     final showSidebar = screenWidth >= 768;
 
     if (!showSidebar) {
-      // Mobile Layout with Top App Bar, Drawer, and Body
       return Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -142,22 +89,7 @@ class _AdminShellLayoutState extends ConsumerState<AdminShellLayout> {
         body: Column(
           children: [
             const AdminInspectionBanner(),
-            Expanded(
-              child: Stack(
-                children: [
-                  Positioned.fill(child: widget.navigationShell),
-                  if (_isPageTransitioning)
-                    Positioned.fill(
-                      child: Container(
-                        color: isDark
-                            ? const Color(0xFF0F172A)
-                            : const Color(0xFFF8FAFC),
-                        child: const Center(child: MetaPhiLoadingIndicator()),
-                      ),
-                    ),
-                ],
-              ),
-            ),
+            Expanded(child: widget.navigationShell),
           ],
         ),
       );
@@ -165,12 +97,10 @@ class _AdminShellLayoutState extends ConsumerState<AdminShellLayout> {
 
     final sidebarWidth = screenWidth < 1024 ? 220.0 : 250.0;
 
-    // Desktop / Tablet Layout with Permanent Left Sidebar
     return Scaffold(
       body: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Sidebar
           SizedBox(
             width: sidebarWidth,
             child: Container(
@@ -186,30 +116,11 @@ class _AdminShellLayoutState extends ConsumerState<AdminShellLayout> {
               child: _buildSidebarContent(context, isMobile: false),
             ),
           ),
-
-          // Main Content View (Updates with MetaPhi loading spinner on tab click)
           Expanded(
             child: Column(
               children: [
                 const AdminInspectionBanner(),
-                Expanded(
-                  child: Stack(
-                    children: [
-                      Positioned.fill(child: widget.navigationShell),
-                      if (_isPageTransitioning)
-                        Positioned.fill(
-                          child: Container(
-                            color: isDark
-                                ? const Color(0xFF0F172A)
-                                : const Color(0xFFF8FAFC),
-                            child: const Center(
-                              child: MetaPhiLoadingIndicator(),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
+                Expanded(child: widget.navigationShell),
               ],
             ),
           ),
@@ -221,10 +132,19 @@ class _AdminShellLayoutState extends ConsumerState<AdminShellLayout> {
   Widget _buildSidebarContent(BuildContext context, {required bool isMobile}) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final currentAdmin = ref.watch(currentAdminUserProvider);
+    // Only rebuild sidebar chrome when display identity changes — not on every
+    // auth session tick (token refresh, sessionResolved, etc.).
+    final identity = ref.watch(
+      currentAdminUserProvider.select(
+        (admin) => (
+          name: admin?.name ?? 'Administrator',
+          roleLabel: admin?.role.label ?? 'Admin',
+        ),
+      ),
+    );
 
-    final adminName = currentAdmin?.name ?? 'Administrator';
-    final adminRoleLabel = currentAdmin?.role.label ?? 'Admin';
+    final adminName = identity.name;
+    final adminRoleLabel = identity.roleLabel;
     final initials = adminName.trim().isNotEmpty
         ? (adminName.trim().split(' ').length > 1
               ? '${adminName.trim().split(' ')[0][0]}${adminName.trim().split(' ')[1][0]}'
@@ -234,7 +154,6 @@ class _AdminShellLayoutState extends ConsumerState<AdminShellLayout> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Brand Header
         Padding(
           padding: EdgeInsets.fromLTRB(16, isMobile ? 18 : 24, 16, 16),
           child: Center(
@@ -249,7 +168,6 @@ class _AdminShellLayoutState extends ConsumerState<AdminShellLayout> {
 
         const SizedBox(height: 8),
 
-        // Shared Main Workspace Tabs (Accessible to both Super Admin and Admin)
         _SidebarNavItem(
           icon: Icons.dashboard_rounded,
           label: 'Daily Attendance',
@@ -299,7 +217,6 @@ class _AdminShellLayoutState extends ConsumerState<AdminShellLayout> {
           color: theme.dividerColor.withAlpha(isDark ? 40 : 25),
         ),
 
-        // Bottom User Profile & Logout
         Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -398,7 +315,7 @@ class _SidebarNavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    const activeColor = AppColors.primary; // Brand Indigo for Active Nav
+    const activeColor = AppColors.primary;
     final inactiveColor = Theme.of(context).colorScheme.onSurfaceVariant;
 
     return Padding(

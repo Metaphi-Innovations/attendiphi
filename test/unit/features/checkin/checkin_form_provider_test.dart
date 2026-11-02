@@ -37,21 +37,33 @@ void main() {
     userLatitude: 19.0829,
     userLongitude: 72.9129,
     gpsAccuracy: 10.0,
+    isVerified: true,
   );
 
   setUpAll(() {
     registerFallbackValue(FakeCheckInSubmission());
+    registerFallbackValue(CheckInType.member);
   });
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     mockRepository = MockCheckInRepository();
-    when(() => mockRepository.getIdentitySubmission(any(), any()))
-        .thenAnswer((_) async => null);
+    when(
+      () => mockRepository.getIdentitySubmission(
+        any(),
+        any(),
+        type: any(named: 'type'),
+      ),
+    ).thenAnswer((_) async => null);
     when(() => mockRepository.getDeviceSubmission(any(), any()))
         .thenAnswer((_) async => null);
-    when(() => mockRepository.hasIdentityCheckedIn(any(), any()))
-        .thenAnswer((_) async => false);
+    when(
+      () => mockRepository.hasIdentityCheckedIn(
+        any(),
+        any(),
+        type: any(named: 'type'),
+      ),
+    ).thenAnswer((_) async => false);
     when(
       () => mockRepository.claimDeviceSessionLock(
         deviceId: any(named: 'deviceId'),

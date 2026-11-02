@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,7 +10,6 @@ import '../../../../app/router/route_names.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_radius.dart';
 import '../../../../app/theme/app_spacing.dart';
-import '../../../../core/errors/app_exception.dart';
 import '../../../../core/errors/error_handler.dart';
 import '../../../../core/l10n/app_strings.dart';
 import '../../../../core/responsive/responsive_breakpoints.dart';
@@ -17,11 +18,14 @@ import '../../../../core/widgets/app_card.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/metaphi_loading_indicator.dart';
 import '../../../app_config/presentation/providers/check_in_restrictions_provider.dart';
+import '../../../checkin/data/datasources/device_checkin_service.dart';
 import '../../../checkin/domain/entities/check_in_submission.dart';
 import '../../../checkin/presentation/screens/checkin_result_screen.dart';
+import '../../../employee/presentation/providers/employee_providers.dart';
 import '../../../qr_checkin/domain/check_in_session_token.dart';
 import '../../domain/entities/location_config.dart';
 import '../../domain/usecases/validate_user_proximity.dart';
+import '../providers/location_providers.dart';
 import '../providers/location_validation_provider.dart';
 import '../providers/location_validation_state.dart';
 
@@ -56,6 +60,10 @@ class _LocationPermissionScreenState
   bool _isCheckingDevice = true;
   bool _hasCheckedIn = false;
   CheckInSubmission? _existingSubmission;
+
+  /// When device lock exists without a full local payload (result still hydrates).
+  String? _lockedCheckInId;
+  String? _lockedMemberId;
 
   /// Robust extraction of session date query parameter across Native and Web.
   String? get _effectiveSessionDateStr {
@@ -121,6 +129,11 @@ class _LocationPermissionScreenState
 
   bool _locationStarted = false;
   bool _gateApplied = false;
+  bool _gateInFlight = false;
+
+  /// Live Supabase venue when fetch succeeds; otherwise router / DefaultLocationX.
+  LocationConfig get _displayLocation => _resolvedLocation ?? widget.location;
+  LocationConfig? _resolvedLocation;
 
   @override
   void initState() {
@@ -130,53 +143,85 @@ class _LocationPermissionScreenState
       vsync: this,
       duration: const Duration(seconds: 2),
     );
+    // Pull fresh Super Admin flags so One device = one check-in OFF/ON
+    // is not stuck on a keepAlive poll snapshot from an earlier visit.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.invalidate(checkInRestrictionsConfigProvider);
+    });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // After Deny → browser/app settings → Allow, retry automatically on return.
     if (state == AppLifecycleState.resumed && mounted) {
-      final current = ref.read(
-        locationValidationFamilyProvider(widget.location),
-      );
-      if (current is LocationValidationError) {
-        _retryLocationPermission();
-      }
+      ref.invalidate(checkInRestrictionsConfigProvider);
+      _recheckAfterResume();
     }
   }
 
-  void _startLocationIfNeeded({bool force = false}) {
+  LocationValidationNotifier get _notifier =>
+      ref.read(locationValidationFamilyProvider(widget.location).notifier);
+
+  /// Back from Settings / Quick Settings: re-read status only. Never prompts.
+  /// Block→Ask returns to Initial so the user taps the single Allow CTA.
+  Future<void> _recheckAfterResume() async {
+    if (!_locationStarted || _hasCheckedIn) return;
+    await _notifier.recheckAfterResume();
+  }
+
+  void _syncLiveVenue(LocationConfig live) {
+    _resolvedLocation = live;
+    ref
+        .read(locationValidationFamilyProvider(widget.location).notifier)
+        .applyLocation(live);
+  }
+
+  /// Fresh QR entry: clear cache, then status check.
+  /// Granted or Ask → verification starts immediately (system popup when Ask).
+  /// GPS off / blocked → recovery UI; Allow Location CTA remains as fallback.
+  void _prepareLocationGateIfNeeded({bool force = false}) {
     if (!force && (_locationStarted || !mounted)) return;
     _locationStarted = true;
-    if (!_pulseController.isAnimating) {
-      _pulseController.repeat();
-    }
-    ref
-        .read(locationValidationFamilyProvider(widget.location).notifier)
-        .resetAndValidate();
+    _notifier.prepareFreshScan();
+    // Two frames: leave device-check loading, then run the status check.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(_notifier.checkAccessOnEntry());
+      });
+    });
   }
 
-  void _retryLocationPermission() {
+  bool _isBusy(LocationValidationState s) =>
+      s is LocationValidationCheckingService ||
+      s is LocationValidationRequestingPermission ||
+      s is LocationValidationFetchingPosition ||
+      s is LocationValidationValidatingVenue;
+
+  /// User tap (Allow / Retry): status check, system prompt if needed, live GPS.
+  void _startVerification() {
     if (!mounted) return;
-    if (!_pulseController.isAnimating) {
-      _pulseController.repeat();
-    }
-    ref
-        .read(locationValidationFamilyProvider(widget.location).notifier)
-        .resetAndValidate();
+    _notifier.resetAndValidate(forceRefresh: true);
   }
 
   void _goToCheckInForm(ProximityResult proximity) {
     if (!mounted) return;
+    // Device already checked in — never open the Member form.
+    if (_hasCheckedIn) return;
     // Widget tests may mount without GoRouter; skip navigation then.
     if (GoRouter.maybeOf(context) == null) return;
 
+    // Warm the members roster so the form typeahead is ready on first paint.
+    ref.read(employeesStreamProvider);
+
+    final venue = _displayLocation;
     final date = _effectiveSessionDateStr;
     var token = widget.sessionToken?.trim() ?? '';
     if (token.isEmpty && date != null && date.isNotEmpty) {
       try {
         token = CheckInSessionToken.create(
-          locationId: widget.location.id,
+          locationId: venue.id,
           sessionDate: date,
           adminId: widget.adminId,
         );
@@ -189,7 +234,7 @@ class _LocationPermissionScreenState
       // Preferred: opaque path, no cleartext date/location in the URL.
       context.go(
         RouteNames.checkinFormPath(token),
-        extra: {'proximity': proximity, 'location': widget.location},
+        extra: {'proximity': proximity, 'location': venue},
       );
       return;
     }
@@ -202,56 +247,96 @@ class _LocationPermissionScreenState
     ].join('&');
     final fullQuery = queryParams.isNotEmpty ? '?$queryParams' : '';
     context.go(
-      '${RouteNames.checkinFormPath(widget.location.id)}$fullQuery',
-      extra: {'proximity': proximity, 'location': widget.location},
+      '${RouteNames.checkinFormPath(venue.id)}$fullQuery',
+      extra: {'proximity': proximity, 'location': venue},
     );
   }
 
   Future<void> _applyRestrictionsGate({
     required bool dateRestrictionEnabled,
+    required bool deviceRestrictionEnabled,
   }) async {
-    if (!dateRestrictionEnabled) {
-      // Date gates off: any QR date / any weekday. Still fetch GPS (enforce
-      // is controlled separately by locationRestrictionEnabledProvider).
-      if (_hasCheckedIn || _existingSubmission != null) {
-        setState(() {
+    // Prevent overlapping applies (date-OFF listen re-fires while awaiting).
+    if (_gateInFlight) return;
+    _gateInFlight = true;
+    try {
+      // One device = one check-in: skip GPS + form; show first success screen.
+      if (deviceRestrictionEnabled) {
+        if (_hasCheckedIn) {
+          _gateApplied = true;
+          _isCheckingDevice = false;
+          return;
+        }
+        final attendance = await ref
+            .read(deviceCheckInServiceProvider)
+            .resolveSessionAttendance(
+              sessionDateStr: _effectiveSessionDateStr,
+              locationId: widget.location.id,
+            );
+        if (!mounted) return;
+        if (attendance.alreadyCheckedIn) {
+          setState(() {
+            _hasCheckedIn = true;
+            _existingSubmission = attendance.submission;
+            _lockedCheckInId = attendance.checkInId;
+            _lockedMemberId = attendance.submission?.memberId;
+            _isCheckingDevice = false;
+            _gateApplied = true;
+          });
+          return;
+        }
+      }
+
+      if (!dateRestrictionEnabled) {
+        // Date gates off: any QR date / any weekday. Still fetch GPS (enforce
+        // is controlled separately by locationRestrictionEnabledProvider).
+        // Never wipe a device-restriction success hit on re-entry.
+        if (!deviceRestrictionEnabled &&
+            (_hasCheckedIn || _existingSubmission != null)) {
+          setState(() {
+            _hasCheckedIn = false;
+            _existingSubmission = null;
+            _isCheckingDevice = false;
+            _gateApplied = true;
+          });
+        } else if (_isCheckingDevice || !_gateApplied) {
+          setState(() {
+            _isCheckingDevice = false;
+            _gateApplied = true;
+          });
+        } else {
+          _gateApplied = true;
+        }
+        _prepareLocationGateIfNeeded();
+        return;
+      }
+
+      if (_gateApplied && !_isCheckingDevice) {
+        // Already applied date gates for this visit.
+        return;
+      }
+
+      // Date restriction ON: Thursday + session-day gates.
+      // When device restriction is OFF, shared venue phones may check in many
+      // members — do not redirect based on a prior device submission.
+      if (!mounted) return;
+
+      setState(() {
+        if (!deviceRestrictionEnabled) {
           _hasCheckedIn = false;
           _existingSubmission = null;
-          _isCheckingDevice = false;
-          _gateApplied = true;
-        });
-      } else if (_isCheckingDevice || !_gateApplied) {
-        setState(() {
-          _isCheckingDevice = false;
-          _gateApplied = true;
-        });
+        }
+        _isCheckingDevice = false;
+        _gateApplied = true;
+      });
+
+      final canStartLocation =
+          _isTodayThursday && !_isSessionExpired && !_isSessionFuture;
+      if (canStartLocation) {
+        _prepareLocationGateIfNeeded();
       }
-      _startLocationIfNeeded();
-      return;
-    }
-
-    if (_gateApplied && !_isCheckingDevice) {
-      // Already applied date gates for this visit.
-      return;
-    }
-
-    // Date restriction ON: Thursday + session-day gates.
-    // Venue phones/tablets are shared: never redirect to "Attendance Recorded"
-    // based on this device's previous member. Phone + member locks enforce
-    // one check-in per person on submit.
-    if (!mounted) return;
-
-    setState(() {
-      _hasCheckedIn = false;
-      _existingSubmission = null;
-      _isCheckingDevice = false;
-      _gateApplied = true;
-    });
-
-    final canStartLocation =
-        _isTodayThursday && !_isSessionExpired && !_isSessionFuture;
-    if (canStartLocation) {
-      _startLocationIfNeeded();
+    } finally {
+      _gateInFlight = false;
     }
   }
 
@@ -265,34 +350,92 @@ class _LocationPermissionScreenState
   @override
   Widget build(BuildContext context) {
     final configAsync = ref.watch(checkInRestrictionsConfigProvider);
+    final liveVenueAsync = ref.watch(
+      locationConfigFamilyProvider(widget.location.id),
+    );
+
+    // Prefer live Supabase row for name/address/coords; keep router fallback.
+    ref.listen(locationConfigFamilyProvider(widget.location.id), (prev, next) {
+      next.whenData((live) {
+        if (!mounted) return;
+        final changed =
+            _resolvedLocation == null ||
+            _resolvedLocation!.name != live.name ||
+            _resolvedLocation!.address != live.address ||
+            _resolvedLocation!.latitude != live.latitude ||
+            _resolvedLocation!.longitude != live.longitude;
+        if (changed) {
+          setState(() => _syncLiveVenue(live));
+        } else {
+          _syncLiveVenue(live);
+        }
+      });
+    });
+    liveVenueAsync.whenData((live) {
+      if (_resolvedLocation == null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || _resolvedLocation != null) return;
+          setState(() => _syncLiveVenue(live));
+        });
+      }
+    });
 
     // Wait for live Super Admin toggle before enforcing date/device gates.
     ref.listen(checkInRestrictionsConfigProvider, (prev, next) {
       next.whenData((config) {
-        // Always re-apply when date gates OFF so any-date unlocks.
-        if (!config.dateRestrictionEnabled || !_gateApplied) {
+        final deviceChanged =
+            prev?.asData?.value.deviceRestrictionEnabled !=
+            config.deviceRestrictionEnabled;
+        // Stay on Attendance Recorded once device restriction claimed a hit.
+        if (_hasCheckedIn &&
+            config.deviceRestrictionEnabled &&
+            !deviceChanged) {
+          return;
+        }
+        // Re-apply when date gates OFF (any-date unlock), first load, or
+        // device policy flips.
+        if (!config.dateRestrictionEnabled || !_gateApplied || deviceChanged) {
           _applyRestrictionsGate(
             dateRestrictionEnabled: config.dateRestrictionEnabled,
+            deviceRestrictionEnabled: config.deviceRestrictionEnabled,
           );
         }
       });
     });
 
-    if (configAsync.isLoading && !configAsync.hasValue) {
+    final lastKnown = ref.watch(lastKnownCheckInRestrictionsProvider);
+    if (configAsync.isLoading && !configAsync.hasValue && lastKnown == null) {
       return const Scaffold(body: Center(child: MetaPhiLoadingIndicator()));
     }
 
+    // Prefer live stream; fall back to lastKnown so reload/invalidate does not
+    // default the One device toggle to ON and mis-gate the QR flow.
     final dateRestrictionEnabled = configAsync.maybeWhen(
       data: (config) => config.dateRestrictionEnabled,
-      orElse: () => true,
+      orElse: () => lastKnown?.dateRestrictionEnabled ?? true,
     );
 
-    // First emission after build: apply gates once config is known.
+    // First emission after build: apply gates once live config is known.
+    // Prefer hasValue so we don't briefly enforce date=ON defaults (Thu-only)
+    // before the stream emits and skip the Allow dialog on non-Thursdays.
     if (!_gateApplied && configAsync.hasValue) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || _gateApplied) return;
+        final config = configAsync.requireValue;
         _applyRestrictionsGate(
-          dateRestrictionEnabled: dateRestrictionEnabled,
+          dateRestrictionEnabled: config.dateRestrictionEnabled,
+          deviceRestrictionEnabled: config.deviceRestrictionEnabled,
+        );
+      });
+    } else if (!_gateApplied &&
+        !configAsync.hasValue &&
+        lastKnown != null &&
+        configAsync.isLoading) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _gateApplied) return;
+        _applyRestrictionsGate(
+          dateRestrictionEnabled: lastKnown.dateRestrictionEnabled,
+          deviceRestrictionEnabled: lastKnown.deviceRestrictionEnabled,
         );
       });
     }
@@ -300,8 +443,8 @@ class _LocationPermissionScreenState
     if (_hasCheckedIn || _existingSubmission != null) {
       return CheckInResultScreen(
         submission: _existingSubmission,
-        memberId: _existingSubmission?.memberId,
-        checkInId: _existingSubmission?.id,
+        memberId: _existingSubmission?.memberId ?? _lockedMemberId,
+        checkInId: _existingSubmission?.id ?? _lockedCheckInId,
       );
     }
 
@@ -309,6 +452,7 @@ class _LocationPermissionScreenState
       return const Scaffold(body: Center(child: MetaPhiLoadingIndicator()));
     }
 
+    final venue = _displayLocation;
     final validationState = ref.watch(
       locationValidationFamilyProvider(widget.location),
     );
@@ -325,9 +469,15 @@ class _LocationPermissionScreenState
     ref.listen<LocationValidationState>(
       locationValidationFamilyProvider(widget.location),
       (prev, next) {
+        if (_isBusy(next)) {
+          if (!_pulseController.isAnimating) _pulseController.repeat();
+        } else if (_pulseController.isAnimating) {
+          _pulseController.stop();
+        }
         if (_hasCheckedIn || _existingSubmission != null) return;
         if (next is LocationValidationSuccess) {
-          Future.delayed(const Duration(milliseconds: 300), () {
+          // Brief success flash, then navigate — keep short for snappy QR flow.
+          Future.delayed(const Duration(milliseconds: 120), () {
             if (!context.mounted) return;
             _goToCheckInForm(next.result);
           });
@@ -335,9 +485,7 @@ class _LocationPermissionScreenState
       },
     );
 
-    final isBusy =
-        validationState is LocationValidationRequestingPermission ||
-        validationState is LocationValidationFetchingPosition;
+    final isBusy = _isBusy(validationState);
 
     // When date restriction OFF: PAST / UPCOMING / any weekday QR is allowed.
     final showNotThursday = dateRestrictionEnabled && !_isTodayThursday;
@@ -380,7 +528,7 @@ class _LocationPermissionScreenState
 
                       SizedBox(height: isCompact ? 20 : 32),
 
-                      // 2. Venue Target Card
+                      // 2. Venue Target Card (live Supabase when available)
                       AppCard(
                         color: Theme.of(context)
                             .colorScheme
@@ -409,7 +557,7 @@ class _LocationPermissionScreenState
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        widget.location.name,
+                                        venue.name,
                                         style: Theme.of(context)
                                             .textTheme
                                             .titleMedium
@@ -417,10 +565,11 @@ class _LocationPermissionScreenState
                                               fontWeight: FontWeight.bold,
                                             ),
                                       ),
-                                      if (widget.location.address != null) ...[
+                                      if (venue.address != null &&
+                                          venue.address!.trim().isNotEmpty) ...[
                                         const SizedBox(height: 2),
                                         Text(
-                                          widget.location.address!,
+                                          venue.address!,
                                           style: Theme.of(context)
                                               .textTheme
                                               .bodySmall
@@ -432,44 +581,6 @@ class _LocationPermissionScreenState
                                         ),
                                       ],
                                     ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            const Divider(),
-                            const SizedBox(height: 8),
-                            Wrap(
-                              alignment: WrapAlignment.spaceBetween,
-                              crossAxisAlignment: WrapCrossAlignment.center,
-                              spacing: 8,
-                              runSpacing: 4,
-                              children: [
-                                Text(
-                                  'Allowed Perimeter:',
-                                  style: Theme.of(context).textTheme.bodySmall
-                                      ?.copyWith(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onSurfaceVariant,
-                                      ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary.withAlpha(20),
-                                    borderRadius: AppRadius.smAll,
-                                  ),
-                                  child: Text(
-                                    'Within ${widget.location.radiusMeters.round()} meters',
-                                    style: const TextStyle(
-                                      color: AppColors.primary,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 12,
-                                    ),
                                   ),
                                 ),
                               ],
@@ -908,44 +1019,58 @@ class _LocationPermissionScreenState
       );
     }
 
+    if (state is LocationValidationServiceDisabled) {
+      return const _MessagePanel(
+        title: AppStrings.locationServiceOffTitle,
+        message: AppStrings.locationServiceOffBody,
+      );
+    }
+
+    if (state is LocationValidationPermissionBlocked) {
+      if (!ref.read(permissionServiceProvider).isWeb) {
+        return const _MessagePanel(
+          title: AppStrings.locationPermissionBlockedTitle,
+          message: AppStrings.locationPermissionBlockedNative,
+        );
+      }
+      final (heading, steps) = switch (defaultTargetPlatform) {
+        TargetPlatform.android => (
+          AppStrings.locationBlockedAndroidHeading,
+          AppStrings.locationBlockedAndroidSteps,
+        ),
+        TargetPlatform.iOS => (
+          AppStrings.locationBlockedIosHeading,
+          AppStrings.locationBlockedIosSteps,
+        ),
+        _ => (
+          AppStrings.locationBlockedDesktopHeading,
+          AppStrings.locationBlockedDesktopSteps,
+        ),
+      };
+      return _MessagePanel(
+        title: AppStrings.locationPermissionBlockedTitle,
+        message: AppStrings.locationPermissionPermanentlyDenied,
+        stepsHeading: heading,
+        steps: steps,
+      );
+    }
+
     if (state is LocationValidationError) {
-      final isPermissionDeny =
-          state.exception is LocationPermissionDeniedException ||
-          state.exception is LocationPermissionPermanentlyDeniedException;
-      return Container(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        decoration: BoxDecoration(
-          color: AppColors.errorLight.withAlpha(40),
-          borderRadius: AppRadius.mdAll,
-          border: Border.all(color: AppColors.error),
+      return _MessagePanel(message: ErrorHandler.getUserMessage(state.exception));
+    }
+
+    if (state is LocationValidationInitial) {
+      return Text(
+        AppStrings.locationPermissionAwaitingAllow,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
         ),
-        child: Column(
-          children: [
-            Text(
-              ErrorHandler.getUserMessage(state.exception),
-              style: const TextStyle(color: AppColors.error),
-              textAlign: TextAlign.center,
-            ),
-            if (isPermissionDeny && kIsWeb) ...[
-              const SizedBox(height: 10),
-              Text(
-                AppStrings.locationPermissionWebHelp,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  height: 1.4,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ],
-        ),
+        textAlign: TextAlign.center,
       );
     }
 
     return Text(
-      state is LocationValidationFetchingPosition
-          ? 'Locking GPS coordinates...'
-          : 'Requesting permission to verify your physical presence...',
+      _busyLabel(state),
       style: theme.textTheme.bodyMedium?.copyWith(
         color: theme.colorScheme.onSurfaceVariant,
       ),
@@ -953,28 +1078,19 @@ class _LocationPermissionScreenState
     );
   }
 
+  String _busyLabel(LocationValidationState state) => switch (state) {
+    LocationValidationCheckingService() => AppStrings.locationCheckingService,
+    LocationValidationRequestingPermission() =>
+      AppStrings.locationRequestingPermission,
+    LocationValidationValidatingVenue() => AppStrings.locationVerifyingVenue,
+    _ => AppStrings.locationFetchingPosition,
+  };
+
   Widget _buildActionButtons(
     BuildContext context,
     LocationValidationState state,
     bool isBusy,
   ) {
-    // Web cannot re-open the browser location prompt or site settings after
-    // Deny — hide dead Allow Location / Open Settings actions.
-    if (state is LocationValidationError &&
-        (state.exception is LocationPermissionDeniedException ||
-            state.exception is LocationPermissionPermanentlyDeniedException)) {
-      return const SizedBox.shrink();
-    }
-
-    if (state is LocationValidationOutsideRadius ||
-        state is LocationValidationError) {
-      return AppButton.primary(
-        label: AppStrings.locationRetry,
-        icon: Icons.refresh_rounded,
-        onPressed: _retryLocationPermission,
-      );
-    }
-
     if (state is LocationValidationSuccess) {
       return AppButton.primary(
         label: 'Continue to Check-In',
@@ -983,10 +1099,156 @@ class _LocationPermissionScreenState
       );
     }
 
+    if (state is LocationValidationInitial) {
+      // User gesture → browser/OS system location prompt (no in-app dialog).
+      return AppButton.primary(
+        label: AppStrings.locationPermissionAllow,
+        icon: Icons.my_location_rounded,
+        onPressed: _startVerification,
+      );
+    }
+
+    if (state is LocationValidationServiceDisabled ||
+        state is LocationValidationPermissionDenied) {
+      // After Location is on, this tap is the gesture for the system popup.
+      return AppButton.primary(
+        label: AppStrings.locationPermissionAllow,
+        icon: Icons.my_location_rounded,
+        onPressed: _startVerification,
+      );
+    }
+
+    if (state is LocationValidationPermissionBlocked) {
+      // No Retry — recovery runs when the user returns after changing settings.
+      if (!ref.read(permissionServiceProvider).isWeb) {
+        return AppButton.text(
+          label: AppStrings.locationPermissionOpenSettings,
+          onPressed: _notifier.openSettings,
+        );
+      }
+      return const SizedBox.shrink();
+    }
+
+    if (state is LocationValidationOutsideRadius) {
+      return AppButton.primary(
+        label: AppStrings.locationRetry,
+        icon: Icons.my_location_rounded,
+        onPressed: _startVerification,
+      );
+    }
+
+    if (state is LocationValidationError) {
+      return AppButton.primary(
+        label: AppStrings.locationRetryShort,
+        icon: Icons.refresh_rounded,
+        onPressed: _startVerification,
+      );
+    }
+
     return AppButton.primary(
-      label: 'Verifying GPS Location...',
+      label: _busyLabel(state),
       isLoading: isBusy,
       onPressed: null,
+    );
+  }
+}
+
+/// Error-styled panel with optional title and numbered steps.
+class _MessagePanel extends StatelessWidget {
+  const _MessagePanel({
+    required this.message,
+    this.title,
+    this.stepsHeading,
+    this.steps = const [],
+  });
+
+  final String? title;
+  final String message;
+  final String? stepsHeading;
+  final List<String> steps;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.errorLight.withAlpha(40),
+        borderRadius: AppRadius.mdAll,
+        border: Border.all(color: AppColors.error),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (title != null) ...[
+            Row(
+              children: [
+                const Icon(Icons.location_off_rounded, color: AppColors.error),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title!,
+                    style: const TextStyle(
+                      color: AppColors.error,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
+          Text(
+            message,
+            style: title == null
+                ? const TextStyle(color: AppColors.error)
+                : theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+          ),
+          if (steps.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            if (stepsHeading != null) ...[
+              Text(
+                stepsHeading!,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 6),
+            ],
+            _NumberedSteps(steps: steps),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _NumberedSteps extends StatelessWidget {
+  const _NumberedSteps({required this.steps});
+
+  final List<String> steps;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.4);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < steps.length; i++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(width: 22, child: Text('${i + 1}.', style: style)),
+                Expanded(child: Text(steps[i], style: style)),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

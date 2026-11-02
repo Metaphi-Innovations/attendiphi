@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/config/supabase_bootstrap.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/logger/app_logger.dart';
+import '../../data/datasources/check_in_remote_data_source.dart';
 import '../../data/datasources/notification_dispatch_service.dart';
 import '../../data/datasources/supabase_check_in_remote_data_source.dart';
 import '../../data/datasources/supabase_notification_dispatch_service.dart';
@@ -31,12 +32,13 @@ final notificationDispatchServiceProvider =
     });
 
 /// Provider for check-in remote data (Postgres `check_ins` + session locks).
-final checkInRemoteDataSourceProvider =
-    Provider<SupabaseCheckInRemoteDataSource>((ref) {
-      _requireSupabase('check-in data');
-      AppLogger.info('Check-in data source: Supabase', tag: 'CheckInProviders');
-      return SupabaseCheckInRemoteDataSource();
-    });
+final checkInRemoteDataSourceProvider = Provider<CheckInRemoteDataSource>((
+  ref,
+) {
+  _requireSupabase('check-in data');
+  AppLogger.info('Check-in data source: Supabase', tag: 'CheckInProviders');
+  return SupabaseCheckInRemoteDataSource();
+});
 
 /// Provider for [CheckInRepository].
 final checkInRepositoryProvider = Provider<CheckInRepository>((ref) {

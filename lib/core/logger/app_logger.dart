@@ -29,7 +29,7 @@ class AppLogger {
     );
     // Long base64-ish blobs
     out = out.replaceAllMapped(
-      RegExp(r'(?:[A-Za-z0-9+/]{40,}={0,2})'),
+      RegExp('(?:[A-Za-z0-9+/]{40,}={0,2})'),
       (_) => '[redacted-blob]',
     );
     // Bearer / JWT fragments

@@ -322,6 +322,67 @@ final paginatedCheckInsProvider =
       return PaginatedCheckInsNotifier();
     });
 
+/// Optimistic Daily Attendance patches (Verify/Edit) keyed by check-in id.
+///
+/// Merged into [baseDashboardRecordsProvider] so the UI updates before Supabase
+/// Realtime catches up. Cleared on failure rollback or after a successful write
+/// once the stream reflects the same id.
+class DashboardCheckInOverridesNotifier
+    extends Notifier<Map<String, CheckInSubmission>> {
+  @override
+  Map<String, CheckInSubmission> build() => const {};
+
+  void apply(CheckInSubmission updated, {String? replaceId}) {
+    final next = Map<String, CheckInSubmission>.from(state);
+    if (replaceId != null &&
+        replaceId.isNotEmpty &&
+        replaceId != updated.id) {
+      next.remove(replaceId);
+    }
+    next[updated.id] = updated;
+    state = next;
+  }
+
+  void remove(String id) {
+    if (id.isEmpty || !state.containsKey(id)) return;
+    final next = Map<String, CheckInSubmission>.from(state)..remove(id);
+    state = next;
+  }
+
+  void clear() => state = const {};
+}
+
+final dashboardCheckInOverridesProvider = NotifierProvider<
+  DashboardCheckInOverridesNotifier,
+  Map<String, CheckInSubmission>
+>(DashboardCheckInOverridesNotifier.new);
+
+/// Applies local Verify/Edit overrides on top of the live check-in stream.
+///
+/// Exposed for unit tests.
+List<CheckInSubmission> mergeCheckInOverrides({
+  required List<CheckInSubmission> streamRows,
+  required Map<String, CheckInSubmission> overrides,
+}) {
+  if (overrides.isEmpty) return streamRows;
+  final byId = <String, CheckInSubmission>{
+    for (final row in streamRows) row.id: row,
+  };
+  for (final override in overrides.values) {
+    final memberId = override.memberId?.trim() ?? '';
+    if (memberId.isNotEmpty) {
+      byId.removeWhere(
+        (id, row) =>
+            id != override.id &&
+            (row.memberId?.trim() ?? '') == memberId &&
+            !row.type.isVisitor,
+      );
+    }
+    byId[override.id] = override;
+  }
+  return byId.values.toList();
+}
+
 /// Filtered view over the real-time check-in stream based on search and attendance type filters.
 final filteredPaginatedCheckInsProvider = Provider<List<CheckInSubmission>>((
   ref,
@@ -336,6 +397,7 @@ final baseDashboardRecordsProvider = Provider<AsyncValue<List<CheckInSubmission>
   ref,
 ) {
   final checkInsAsync = ref.watch(checkInsStreamProvider);
+  final overrides = ref.watch(dashboardCheckInOverridesProvider);
   final filters = ref.watch(adminDashboardFilterProvider);
   final employeesAsync = ref.watch(employeesStreamProvider);
 
@@ -357,7 +419,10 @@ final baseDashboardRecordsProvider = Provider<AsyncValue<List<CheckInSubmission>
     );
   }
 
-  final records = checkInsAsync.value ?? [];
+  final records = mergeCheckInOverrides(
+    streamRows: checkInsAsync.value ?? const [],
+    overrides: overrides,
+  );
   final employees = employeesAsync.value ?? [];
   final activeEmployees = employees.where((e) => e.isActive).toList();
   final dateRestrictionEnabled = ref.watch(dateRestrictionEnabledProvider);
@@ -370,12 +435,11 @@ final baseDashboardRecordsProvider = Provider<AsyncValue<List<CheckInSubmission>
         dateRestrictionEnabled: dateRestrictionEnabled,
       );
 
-  final daySubmissions = records.where((r) {
-    final rec = r.timestamp;
-    return rec.year == targetDate.year &&
-        rec.month == targetDate.month &&
-        rec.day == targetDate.day;
-  }).toList();
+  // [checkInsStreamProvider] is already scoped by session_date. Do NOT
+  // re-filter by timestamp calendar day — admin Verify/Edit stamps wall-clock
+  // time (and older rows may have timestamp ≠ session_date), which hid updates
+  // (e.g. viewing 28 Oct while write stamped 30 Oct).
+  final daySubmissions = records;
 
   final resultRows = <CheckInSubmission>[];
 

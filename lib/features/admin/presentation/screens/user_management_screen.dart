@@ -14,6 +14,7 @@ import '../../../../app/theme/app_shadows.dart';
 import '../../../../core/biometrics/biometrics_provider.dart';
 import '../../../../core/biometrics/face_matching_config.dart';
 import '../../../../core/biometrics/web_face_embedder.dart';
+import '../../../../core/errors/error_handler.dart';
 import '../../../../core/responsive/responsive_breakpoints.dart';
 import '../../../../core/utils/image_utils.dart';
 import '../../../../core/widgets/app_card.dart';
@@ -181,6 +182,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
         : 'Member';
     final isActive = existingMember?.isActive ?? true;
     var isSubmitting = false;
+    String? submitError;
     final formKey = GlobalKey<FormState>();
 
     List<double>? enrolledEmbedding = existingMember?.faceEmbedding;
@@ -476,6 +478,47 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                           ),
                         ],
                       ),
+                      if (submitError != null) ...[
+                        const SizedBox(height: 14),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.error.withAlpha(isDark ? 40 : 18),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppColors.error.withAlpha(120),
+                            ),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(
+                                Icons.error_outline_rounded,
+                                color: AppColors.error,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  submitError!,
+                                  style: TextStyle(
+                                    color: isDark
+                                        ? const Color(0xFFFCA5A5)
+                                        : AppColors.error,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    height: 1.35,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 18),
 
                       // Face Photo & Biometric Enrollment Card
@@ -995,9 +1038,10 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                         if (!formKey.currentState!.validate()) {
                                           return;
                                         }
-                                        setDialogState(
-                                          () => isSubmitting = true,
-                                        );
+                                        setDialogState(() {
+                                          isSubmitting = true;
+                                          submitError = null;
+                                        });
                                         final name = nameController.text.trim();
                                         final phone = phoneController.text
                                             .trim();
@@ -1127,22 +1171,14 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                                             }
                                           }
                                         } catch (e) {
-                                          setDialogState(
-                                            () => isSubmitting = false,
-                                          );
-                                          if (mounted) {
-                                            ScaffoldMessenger.of(
-                                              context,
-                                            ).showSnackBar(
-                                              SnackBar(
-                                                content: Text('Error: $e'),
-                                                backgroundColor:
-                                                    AppColors.error,
-                                                behavior:
-                                                    SnackBarBehavior.floating,
-                                              ),
-                                            );
-                                          }
+                                          // Keep error inside the dialog — parent
+                                          // SnackBars render behind the modal barrier.
+                                          final message =
+                                              ErrorHandler.getUserMessage(e);
+                                          setDialogState(() {
+                                            isSubmitting = false;
+                                            submitError = message;
+                                          });
                                         }
                                       },
                                 child: isSubmitting
@@ -1195,10 +1231,12 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
     Map<String, int> visitorCounts,
   ) {
     final list = rawList.where((u) {
-      if (_statusFilter == MemberStatusFilter.active && !u.isActive)
+      if (_statusFilter == MemberStatusFilter.active && !u.isActive) {
         return false;
-      if (_statusFilter == MemberStatusFilter.inactive && u.isActive)
+      }
+      if (_statusFilter == MemberStatusFilter.inactive && u.isActive) {
         return false;
+      }
       if (_searchQuery.isEmpty) return true;
       final query = _searchQuery.toLowerCase();
       return u.name.toLowerCase().contains(query) ||

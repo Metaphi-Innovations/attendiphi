@@ -9,8 +9,44 @@ import '../../../../core/logger/app_logger.dart';
 import '../../../../core/utils/cookie_helper.dart';
 import '../../../../core/utils/device_fingerprint_helper.dart';
 import '../../domain/entities/check_in_submission.dart';
+import '../../domain/entities/public_device_session_attendance.dart';
 import '../../presentation/providers/checkin_providers.dart';
 import 'check_in_remote_data_source.dart';
+
+/// Whether this phone/browser already completed (or locked) check-in for a session.
+class DeviceSessionAttendance {
+  const DeviceSessionAttendance._({
+    this.submission,
+    this.claimedWithoutPayload = false,
+    this.checkInId,
+  });
+
+  factory DeviceSessionAttendance.found(CheckInSubmission submission) {
+    return DeviceSessionAttendance._(
+      submission: submission,
+      checkInId: submission.id,
+    );
+  }
+
+  /// Server device lock exists but the prior row is not readable (anon RLS).
+  factory DeviceSessionAttendance.claimedWithoutPayload({String? checkInId}) {
+    return DeviceSessionAttendance._(
+      claimedWithoutPayload: true,
+      checkInId: checkInId,
+    );
+  }
+
+  static const none = DeviceSessionAttendance._();
+
+  final CheckInSubmission? submission;
+  final bool claimedWithoutPayload;
+
+  /// Known check-in id when locked without a full payload (result deep-link).
+  final String? checkInId;
+
+  /// True when the UI must skip the form and show Attendance Recorded.
+  bool get alreadyCheckedIn => submission != null || claimedWithoutPayload;
+}
 
 /// Service managing persistent local device check-in records to ensure each device
 /// can submit attendance only once per session / day.
@@ -24,15 +60,26 @@ class DeviceCheckInService {
   static const String _lastSubmissionKey = 'app_last_submission';
   static const String _sessionPrefix = 'app_session_checkin_';
 
+  /// Cookies/localStorage ~4KB; keep JSON under this to avoid silent drop.
+  static const int _maxCookiePayloadChars = 3500;
+
   Future<SharedPreferences> _getPrefs() async {
     return _prefs ?? await SharedPreferences.getInstance();
   }
 
+  /// Normalizes QR/session date strings to `yyyy-MM-dd` so storage keys match.
+  String normalizeSessionDateKey(String? sessionDateStr) {
+    final s = sessionDateStr?.trim() ?? '';
+    if (s.length >= 10) {
+      final ymd = s.substring(0, 10);
+      if (RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(ymd)) return ymd;
+    }
+    return DateFormat('yyyy-MM-dd').format(DateTime.now());
+  }
+
   /// Builds a deterministic key scoped to the session date and location ID.
   String getSessionKey({String? sessionDateStr, String? locationId}) {
-    final dateKey = (sessionDateStr != null && sessionDateStr.trim().isNotEmpty)
-        ? sessionDateStr.trim()
-        : DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final dateKey = normalizeSessionDateKey(sessionDateStr);
     final locKey = (locationId != null && locationId.trim().isNotEmpty)
         ? locationId.trim()
         : 'location_x';
@@ -74,36 +121,161 @@ class DeviceCheckInService {
     }
   }
 
-  String _sessionDateYmd(String? sessionDateStr) {
-    final s = sessionDateStr?.trim();
-    if (s != null && s.length >= 10) return s.substring(0, 10);
-    final now = DateTime.now();
-    final m = now.month.toString().padLeft(2, '0');
-    final d = now.day.toString().padLeft(2, '0');
-    return '${now.year}-$m-$d';
-  }
+  String _sessionDateYmd(String? sessionDateStr) =>
+      normalizeSessionDateKey(sessionDateStr);
 
-  /// True only when a resolvable [CheckInSubmission] exists for this session.
-  ///
-  /// Cookie value `'1'` / a device lock alone is **not** attendance — those
-  /// markers previously caused Approved/Success with no Firestore Present row.
+  /// True only when this device should be treated as already checked in.
   Future<bool> hasCheckedInForSession({
     String? sessionDateStr,
     String? locationId,
     bool probeServer = true,
   }) async {
-    final submission = await getSubmissionForSession(
+    final attendance = await resolveSessionAttendance(
       sessionDateStr: sessionDateStr,
       locationId: locationId,
       probeServer: probeServer,
     );
-    if (submission != null) return true;
+    if (attendance.alreadyCheckedIn) return true;
 
     await clearIncompleteSessionMarker(
       sessionDateStr: sessionDateStr,
       locationId: locationId,
     );
     return false;
+  }
+
+  /// Resolves prior attendance for early QR gates (form / location screens).
+  ///
+  /// Order: local JSON → lastSubmission → public SECURITY DEFINER RPC
+  /// (works for anon after clear-site-data) → legacy direct lock probe.
+  Future<DeviceSessionAttendance> resolveSessionAttendance({
+    String? sessionDateStr,
+    String? locationId,
+    bool probeServer = true,
+  }) async {
+    final key = getSessionKey(
+      sessionDateStr: sessionDateStr,
+      locationId: locationId,
+    );
+    AppLogger.info(
+      'resolveSessionAttendance key=$key '
+      'date=${normalizeSessionDateKey(sessionDateStr)} '
+      'location=${locationId ?? "(default)"} probeServer=$probeServer',
+      tag: 'DeviceCheckInService',
+    );
+
+    // Local only first — avoid waiting on RLS-denied table reads.
+    final local = await _getLocalSubmission(
+      sessionDateStr: sessionDateStr,
+      locationId: locationId,
+    );
+    if (local != null) {
+      return DeviceSessionAttendance.found(local);
+    }
+
+    final last = await getLastSubmission();
+    if (last != null && _matchesSessionDate(last, sessionDateStr)) {
+      final loc = locationId?.trim() ?? '';
+      if (loc.isEmpty || last.locationId == loc) {
+        return DeviceSessionAttendance.found(last);
+      }
+    }
+
+    if (!probeServer || _remoteDataSource == null) {
+      return DeviceSessionAttendance.none;
+    }
+
+    final deviceId = await getOrCreateDeviceId();
+    final sessionDateYmd = _sessionDateYmd(sessionDateStr);
+
+    // Preferred: anon-callable RPC returns lock + first check-in summary.
+    try {
+      final public = await _remoteDataSource
+          .getPublicDeviceSessionAttendance(
+            deviceId: deviceId,
+            sessionDateYmd: sessionDateYmd,
+          )
+          .timeout(
+            const Duration(milliseconds: 2500),
+            onTimeout: () => null,
+          );
+      final fromPublic = await _attendanceFromPublic(public, sessionDateStr);
+      if (fromPublic != null) return fromPublic;
+    } catch (e) {
+      AppLogger.warning(
+        'Public device-session attendance probe failed: $e',
+        tag: 'DeviceCheckInService',
+      );
+    }
+
+    // Legacy: direct table reads (admin / permissive RLS only).
+    try {
+      final sessionDate = _parseSessionDate(sessionDateStr);
+      final serverSubmission = await _remoteDataSource
+          .getDeviceSubmission(deviceId, sessionDate)
+          .timeout(const Duration(milliseconds: 1500), onTimeout: () => null);
+      if (serverSubmission != null) {
+        await recordSubmission(
+          sessionDateStr: sessionDateStr,
+          submission: serverSubmission,
+        );
+        return DeviceSessionAttendance.found(serverSubmission);
+      }
+
+      final isLocked = await _remoteDataSource
+          .isDeviceSessionLocked(
+            deviceId: deviceId,
+            sessionDateYmd: sessionDateYmd,
+          )
+          .timeout(
+            const Duration(milliseconds: 2000),
+            onTimeout: () => false,
+          );
+      if (isLocked) {
+        AppLogger.info(
+          'Device session locked without readable check-in '
+          '($deviceId / $sessionDateYmd) — treating as already checked in',
+          tag: 'DeviceCheckInService',
+        );
+        return DeviceSessionAttendance.claimedWithoutPayload();
+      }
+    } catch (e) {
+      AppLogger.warning(
+        'Device lock probe failed: $e',
+        tag: 'DeviceCheckInService',
+      );
+    }
+    return DeviceSessionAttendance.none;
+  }
+
+  Future<DeviceSessionAttendance?> _attendanceFromPublic(
+    PublicDeviceSessionAttendance? public,
+    String? sessionDateStr,
+  ) async {
+    if (public == null || !public.alreadyCheckedIn) return null;
+
+    final submission = public.submission;
+    if (submission != null) {
+      await recordSubmission(
+        sessionDateStr: sessionDateStr,
+        submission: submission,
+      );
+      AppLogger.info(
+        'Public RPC hit with check-in ${submission.id} '
+        '(${submission.userName})',
+        tag: 'DeviceCheckInService',
+      );
+      return DeviceSessionAttendance.found(submission);
+    }
+
+    AppLogger.info(
+      'Public RPC locked without payload '
+      '(check_in_id=${public.checkInId})',
+      tag: 'DeviceCheckInService',
+    );
+    return DeviceSessionAttendance.claimedWithoutPayload(
+      checkInId: public.checkInId,
+    );
   }
 
   /// Removes lock-only / non-JSON session cookies that are not real attendance.
@@ -153,6 +325,14 @@ class DeviceCheckInService {
     }
   }
 
+  bool _matchesSessionDate(CheckInSubmission sub, String? sessionDateStr) {
+    if (sessionDateStr == null || sessionDateStr.trim().isEmpty) return true;
+    final target = _parseSessionDate(sessionDateStr);
+    return sub.timestamp.year == target.year &&
+        sub.timestamp.month == target.month &&
+        sub.timestamp.day == target.day;
+  }
+
   /// Retrieves the recorded attendance submission for this session from local storage / cookies.
   Future<CheckInSubmission?> _getLocalSubmission({
     String? sessionDateStr,
@@ -167,31 +347,40 @@ class DeviceCheckInService {
 
       // 1. Check SharedPreferences for this specific session key
       String? jsonStr = prefs.getString(key);
+      var source = 'prefs';
 
-      // 2. Fallback to CookieHelper (must be JSON — not '1' / bare id)
+      // 2. Fallback to CookieHelper / localStorage (must be JSON — not '1' / bare id)
       if (jsonStr == null || jsonStr.isEmpty) {
         jsonStr = CookieHelper.getCookie(key);
+        source = 'cookie';
       }
 
       final fromSession = _parseStoredSubmission(jsonStr);
-      if (fromSession != null) return fromSession;
+      if (fromSession != null) {
+        AppLogger.info(
+          'Local session hit via $source for "$key"',
+          tag: 'DeviceCheckInService',
+        );
+        return fromSession;
+      }
 
       // 3. Fallback to last submission if available and matches session date
       jsonStr = prefs.getString(_lastSubmissionKey);
+      source = 'prefs-last';
       if (jsonStr == null || jsonStr.isEmpty || jsonStr == '1') {
         jsonStr = CookieHelper.getCookie(_lastSubmissionKey);
+        source = 'cookie-last';
       }
 
       final sub = _parseStoredSubmission(jsonStr);
-      if (sub != null) {
-        if (sessionDateStr != null && sessionDateStr.trim().isNotEmpty) {
-          final target = _parseSessionDate(sessionDateStr);
-          if (sub.timestamp.year == target.year &&
-              sub.timestamp.month == target.month &&
-              sub.timestamp.day == target.day) {
-            return sub;
-          }
-        } else {
+      if (sub != null && _matchesSessionDate(sub, sessionDateStr)) {
+        // Also require same location when we know it.
+        final loc = locationId?.trim() ?? '';
+        if (loc.isEmpty || sub.locationId == loc) {
+          AppLogger.info(
+            'Local last-submission hit via $source for session date',
+            tag: 'DeviceCheckInService',
+          );
           return sub;
         }
       }
@@ -205,7 +394,7 @@ class DeviceCheckInService {
   }
 
   /// Retrieves the submission for this session. Checks local storage first,
-  /// then falls back to a Firestore server-side query by deviceId.
+  /// then falls back to a server-side query by deviceId.
   Future<CheckInSubmission?> getSubmissionForSession({
     String? sessionDateStr,
     String? locationId,
@@ -220,25 +409,36 @@ class DeviceCheckInService {
 
     // Check last submission if session date matches
     final last = await getLastSubmission();
-    if (last != null) {
-      if (sessionDateStr != null && sessionDateStr.trim().isNotEmpty) {
-        final target = _parseSessionDate(sessionDateStr);
-        if (last.timestamp.year == target.year &&
-            last.timestamp.month == target.month &&
-            last.timestamp.day == target.day) {
-          return last;
-        }
-      } else {
-        return last;
-      }
+    if (last != null && _matchesSessionDate(last, sessionDateStr)) {
+      final loc = locationId?.trim() ?? '';
+      if (loc.isEmpty || last.locationId == loc) return last;
     }
 
     if (!probeServer) return null;
 
-    // Server-side fallback (works for admin-capable clients; public may be denied)
+    // Server-side: public RPC first (anon after clear-site-data), then table reads.
     if (_remoteDataSource != null) {
       try {
         final deviceId = await getOrCreateDeviceId();
+        final sessionDateYmd = _sessionDateYmd(sessionDateStr);
+
+        final public = await _remoteDataSource
+            .getPublicDeviceSessionAttendance(
+              deviceId: deviceId,
+              sessionDateYmd: sessionDateYmd,
+            )
+            .timeout(
+              const Duration(milliseconds: 2500),
+              onTimeout: () => null,
+            );
+        if (public?.submission != null) {
+          await recordSubmission(
+            sessionDateStr: sessionDateStr,
+            submission: public!.submission!,
+          );
+          return public.submission;
+        }
+
         final sessionDate = _parseSessionDate(sessionDateStr);
         final serverSubmission = await _remoteDataSource
             .getDeviceSubmission(deviceId, sessionDate)
@@ -251,27 +451,14 @@ class DeviceCheckInService {
           return serverSubmission;
         }
 
-        // Lock without a readable check-in → incomplete attempt; do not treat
-        // as checked-in. Clear any local '1' marker so the member can retry.
-        final sessionDateYmd = _sessionDateYmd(sessionDateStr);
-        final isLocked = await _remoteDataSource
-            .isDeviceSessionLocked(
-              deviceId: deviceId,
-              sessionDateYmd: sessionDateYmd,
-            )
-            .timeout(
-              const Duration(milliseconds: 2000),
-              onTimeout: () => false,
-            );
-        if (isLocked) {
-          AppLogger.warning(
+        // Lock without a readable check-in is handled by resolveSessionAttendance
+        // (show success). Do not clear local markers here — that caused the form
+        // to reopen on second QR scan when RLS blocks check_ins reads.
+        if (public?.locked == true) {
+          AppLogger.info(
             'Device session lock exists without resolvable check-in '
-            '($deviceId / $sessionDateYmd) — treating as incomplete',
+            '($deviceId / $sessionDateYmd)',
             tag: 'DeviceCheckInService',
-          );
-          await clearIncompleteSessionMarker(
-            sessionDateStr: sessionDateStr,
-            locationId: locationId,
           );
         }
       } catch (e) {
@@ -289,6 +476,19 @@ class DeviceCheckInService {
   Future<bool> hasAnySubmission() async {
     final sub = await getLastSubmission();
     return sub != null;
+  }
+
+  void _persistCookiePayload(String key, String jsonStr) {
+    if (jsonStr.length <= _maxCookiePayloadChars) {
+      CookieHelper.setCookie(key, jsonStr);
+    } else {
+      // Fall back to id-only token when JSON is too large for cookies.
+      AppLogger.warning(
+        'Session payload too large for cookie (${jsonStr.length} chars); '
+        'storing id token only for "$key"',
+        tag: 'DeviceCheckInService',
+      );
+    }
   }
 
   /// Persists a successful attendance submission locally on this device.
@@ -309,10 +509,10 @@ class DeviceCheckInService {
       await prefs.setString(key, jsonStr);
       await prefs.setString(_lastSubmissionKey, jsonStr);
 
-      // Lightweight id token in cookies only — never treat this as a full
-      // submission (see hasCheckedInForSession / _parseStoredSubmission).
-      CookieHelper.setCookie(key, submission.id);
-      CookieHelper.setCookie(_lastSubmissionKey, submission.id);
+      // Also persist JSON via CookieHelper (cookie + localStorage + sessionStorage)
+      // so Safari / ephemeral WebViews still recover the first check-in on re-scan.
+      _persistCookiePayload(key, jsonStr);
+      _persistCookiePayload(_lastSubmissionKey, jsonStr);
 
       AppLogger.info(
         'Recorded check-in on device for session "$key" (${submission.userName})',
@@ -365,10 +565,8 @@ class DeviceCheckInService {
   }
 
   DateTime _parseSessionDate(String? sessionDateStr) {
-    if (sessionDateStr != null && sessionDateStr.trim().isNotEmpty) {
-      return DateTime.tryParse(sessionDateStr.trim()) ?? DateTime.now();
-    }
-    return DateTime.now();
+    final ymd = normalizeSessionDateKey(sessionDateStr);
+    return DateTime.tryParse(ymd) ?? DateTime.now();
   }
 }
 

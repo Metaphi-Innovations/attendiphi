@@ -71,6 +71,67 @@ void main() {
       expect(result.distanceMeters, greaterThan(500.0));
       expect(result.userLatitude, 19.10295);
       expect(result.userLongitude, 72.9129274);
+      expect(result.isVerified, isFalse);
+    });
+
+    test('real fix inside the radius is verified', () {
+      final result = usecase(
+        userLat: 19.08475,
+        userLon: 72.9129274,
+        accuracy: 30,
+        location: excelPlaza,
+      );
+      expect(result.isVerified, isTrue);
+    });
+
+    test('accuracy wider than the radius is inconclusive when enforced', () {
+      expect(
+        () => usecase(
+          userLat: 19.0829524,
+          userLon: 72.9129274,
+          accuracy: 600,
+          location: excelPlaza,
+        ),
+        throwsA(isA<LocationAccuracyTooLowException>()),
+      );
+    });
+
+    test('coarse fix whose nearest edge is still outside → outside radius', () {
+      // ~2.2 km away with ±600 m: even the closest point is > 500 m.
+      expect(
+        () => usecase(
+          userLat: 19.10295,
+          userLon: 72.9129274,
+          accuracy: 600,
+          location: excelPlaza,
+        ),
+        throwsA(isA<OutsideAllowedRadiusException>()),
+      );
+    });
+
+    test('coarse fix under restrictions OFF is recorded but not verified', () {
+      final result = usecase(
+        userLat: 19.0829524,
+        userLon: 72.9129274,
+        accuracy: 600,
+        location: excelPlaza,
+        enforceProximity: false,
+      );
+      expect(result.isWithinRadius, isTrue);
+      expect(result.isVerified, isFalse);
+    });
+
+    test('radius stays at the configured 500 m', () {
+      // ~520 m north: just outside, accuracy fine.
+      expect(
+        () => usecase(
+          userLat: 19.0876324,
+          userLon: 72.9129274,
+          accuracy: 10,
+          location: excelPlaza,
+        ),
+        throwsA(isA<OutsideAllowedRadiusException>()),
+      );
     });
   });
 }

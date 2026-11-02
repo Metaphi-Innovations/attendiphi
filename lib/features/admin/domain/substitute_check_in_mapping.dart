@@ -197,6 +197,30 @@ bool isAdminPlaceholderCheckIn(CheckInSubmission submission) {
       CheckInSubmission.isPlaceholderId(submission.id);
 }
 
+/// Wall-clock time to persist when an admin materializes a Not Checked In row.
+///
+/// Placeholders use session-day midnight only for list sorting / display as
+/// "—". Once Verify or Edit writes a real check-in, keep that **session
+/// calendar day** and apply [stamped]'s clock so Daily Attendance never shows
+/// 12:00 AM and the row still belongs to the selected session date. Real QR
+/// rows keep [original.timestamp].
+DateTime adminPersistedTimestamp({
+  required CheckInSubmission original,
+  required DateTime stamped,
+}) {
+  if (!isAdminPlaceholderCheckIn(original)) return original.timestamp;
+  final session = original.timestamp;
+  return DateTime(
+    session.year,
+    session.month,
+    session.day,
+    stamped.hour,
+    stamped.minute,
+    stamped.second,
+    stamped.millisecond,
+  );
+}
+
 /// Builds the Firestore payload when an admin edits a Daily Attendance row.
 ///
 /// Supports Member ↔ Substitute ↔ Absent and Not Checked In → any.
@@ -233,6 +257,10 @@ CheckInSubmission prepareAdminEditedCheckIn({
       ? CheckInType.member
       : selectedType;
   final keepVerified = isVerified && !isMarkedAbsent;
+  final persistedTimestamp = adminPersistedTimestamp(
+    original: original,
+    stamped: stamped,
+  );
 
   late CheckInSubmission edited;
   if (effectiveType.isSubstitute) {
@@ -269,7 +297,7 @@ CheckInSubmission prepareAdminEditedCheckIn({
       verifiedBy: keepVerified ? (original.verifiedBy ?? 'Admin') : null,
       isEdited: true,
       editedAt: stamped,
-      timestamp: original.timestamp,
+      timestamp: persistedTimestamp,
     );
   } else {
     // Absent always keeps the covered member identity (not the substitute name
@@ -296,7 +324,7 @@ CheckInSubmission prepareAdminEditedCheckIn({
       verifiedBy: keepVerified ? (original.verifiedBy ?? 'Admin') : null,
       isEdited: true,
       editedAt: stamped,
-      timestamp: original.timestamp,
+      timestamp: persistedTimestamp,
     );
   }
 

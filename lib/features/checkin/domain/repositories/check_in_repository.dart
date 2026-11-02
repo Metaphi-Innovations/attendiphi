@@ -1,5 +1,6 @@
 import '../../../../core/constants/app_constants.dart';
 import '../entities/check_in_submission.dart';
+import '../entities/check_in_type.dart';
 import '../entities/paginated_check_ins_result.dart';
 
 /// Contract for recording, streaming, and paginating check-in submissions.
@@ -29,13 +30,25 @@ abstract class CheckInRepository {
   Future<void> deleteAllCheckIns({String? locationId});
 
   /// Checks if a specific identity (phone) has already checked in on a given date.
-  Future<bool> hasIdentityCheckedIn(String phone, DateTime sessionDate);
+  ///
+  /// When [type] is set, only that check-in type counts (Member vs Substitute
+  /// may share a phone on the same session day).
+  Future<bool> hasIdentityCheckedIn(
+    String phone,
+    DateTime sessionDate, {
+    CheckInType? type,
+  });
 
-  /// Retrieves the existing submission for a specific identity (phone) on a given date if present.
+  /// Retrieves the existing submission for a specific identity (phone) on a
+  /// given date if present.
+  ///
+  /// When [type] is set, only a same-type row is returned so Member→Substitute
+  /// with the same phone is not treated as already checked in.
   Future<CheckInSubmission?> getIdentitySubmission(
     String phone,
-    DateTime sessionDate,
-  );
+    DateTime sessionDate, {
+    CheckInType? type,
+  });
 
   /// Retrieves the existing submission for a specific deviceId on a given date if present.
   Future<CheckInSubmission?> getDeviceSubmission(

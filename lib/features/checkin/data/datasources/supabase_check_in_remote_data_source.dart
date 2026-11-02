@@ -1,6 +1,11 @@
+import 'dart:async';
+import 'dart:typed_data';
+
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../app/config/supabase_bootstrap.dart';
+import '../../../../core/config/supabase_app_config.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/logger/app_logger.dart';
@@ -10,7 +15,9 @@ import '../../../../core/supabase/supabase_realtime_or_poll_stream.dart';
 import '../../../../core/utils/image_utils.dart';
 import '../../../../core/utils/validators.dart';
 import '../../domain/entities/check_in_submission.dart';
+import '../../domain/entities/check_in_type.dart';
 import '../../domain/entities/paginated_check_ins_result.dart';
+import '../../domain/entities/public_device_session_attendance.dart';
 import '../../domain/session_lock_ids.dart';
 import '../mappers/supabase_check_in_mapper.dart';
 import 'check_in_remote_data_source.dart';
@@ -70,17 +77,22 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
         );
       }
 
-      // When device restriction is ON, SubmitCheckIn passes claimDeviceId.
-      // Ensure it lands on the row so the RPC can claim device_session_locks.
-      final effectiveDeviceId =
-          (claimDeviceId ?? submission.deviceId)?.trim() ?? '';
+      // Device lock claim: only [claimDeviceId] (set when device restriction is
+      // ON). Still keep [submission.deviceId] on the row for audit when the
+      // Super Admin has standee mode (device restriction OFF) — the RPC skips
+      // device_session_locks when the flag is false.
+      final claim = claimDeviceId?.trim() ?? '';
+      final auditDevice = submission.deviceId?.trim() ?? '';
+      final rowDeviceId = claim.isNotEmpty
+          ? claim
+          : (auditDevice.isNotEmpty ? auditDevice : null);
 
       final row = SupabaseCheckInMapper.toRow(
         submission.copyWith(
           photoPath: photoPath,
           hasPhoto: photoPath != null && photoPath.isNotEmpty,
           photoBase64: '',
-          deviceId: effectiveDeviceId.isEmpty ? submission.deviceId : effectiveDeviceId,
+          deviceId: rowDeviceId,
         ),
       );
       row.remove('photo_base64');
@@ -118,7 +130,8 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
       if (msg.contains('duplicate_phone')) {
         throw const DuplicateCheckInException(
           userMessage:
-              'This phone number has already submitted attendance for today.',
+              'This phone number has already submitted the same type of '
+              'check-in for today.',
           technicalMessage: 'submit_public_check_in duplicate_phone',
         );
       }
@@ -132,9 +145,7 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
       if (msg.contains('duplicate_device')) {
         throw const DuplicateCheckInException(
           userMessage:
-              'This device has already recorded attendance for today. '
-              'Use another device, or ask an admin to turn off '
-              '"One device = one check-in".',
+              'Attendance for this session was already submitted on this phone.',
           technicalMessage: 'submit_public_check_in duplicate_device',
         );
       }
@@ -199,10 +210,12 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
         );
       }
 
+      // Lean row: mapper never writes photo_base64 into Postgres.
       final row = SupabaseCheckInMapper.toRow(submission);
       await _client.from('check_ins').upsert(row);
 
-      // Keep QR typeahead projection in sync (admin upsert bypasses the RPC).
+      // QR typeahead projection (session_attendance) is eventually consistent.
+      // Do not block admin Verify/Edit on the extra fetch+upsert round trip.
       final memberId = submission.memberId?.trim() ?? '';
       if (memberId.isNotEmpty &&
           (submission.type.isMember ||
@@ -211,9 +224,11 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
         final date = SessionLockIds.sessionDateYmd(
           fallbackTimestamp: submission.timestamp,
         );
-        await _mergeSessionAttendanceMember(
-          sessionDateYmd: date,
-          memberId: memberId,
+        unawaited(
+          _mergeSessionAttendanceMember(
+            sessionDateYmd: date,
+            memberId: memberId,
+          ),
         );
       }
 
@@ -313,17 +328,13 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
     }
     final path = '$sessionDateYmd/${checkInId.trim()}.jpg';
     try {
-      await _client.storage
-          .from(photoBucket)
-          .uploadBinary(
-            path,
-            bytes,
-            fileOptions: const FileOptions(
-              contentType: 'image/jpeg',
-              upsert: true,
-            ),
-          );
+      // Raw binary POST keeps Content-Type: image/jpeg. Flutter web's
+      // storage.uploadBinary multipart path often arrives as
+      // application/octet-stream → bucket MIME allow-list → HTTP 400.
+      await _uploadCheckInPhotoRaw(path: path, bytes: bytes);
       return path;
+    } on CheckInSubmissionFailedException {
+      rethrow;
     } on StorageException catch (e, st) {
       AppLogger.error(
         'Storage upload failed for check-in photo'
@@ -336,6 +347,65 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
         userMessage: 'Photo upload failed. Please try again.',
         technicalMessage:
             'storage upload: ${e.statusCode} ${e.message}',
+      );
+    } catch (e, st) {
+      AppLogger.error(
+        'Storage upload failed for check-in photo: $e',
+        error: e,
+        stackTrace: st,
+        tag: 'SupabaseCheckInRemoteDataSource',
+      );
+      throw CheckInSubmissionFailedException(
+        userMessage: 'Photo upload failed. Please try again.',
+        technicalMessage: 'storage upload: $e',
+      );
+    }
+  }
+
+  /// Uploads JPEG bytes with an explicit Content-Type header (not multipart).
+  ///
+  /// Always authenticates as the publishable anon key — not the current
+  /// admin session. QR check-in is a public flow; Storage INSERT policies are
+  /// granted to `anon`. Using a logged-in Super Admin JWT (`authenticated`)
+  /// caused HTTP 400 when testing Substitute photos from the standee tab.
+  Future<void> _uploadCheckInPhotoRaw({
+    required String path,
+    required Uint8List bytes,
+  }) async {
+    if (!SupabaseBootstrap.isInitialized && _clientOverride == null) {
+      throw const ServerException(
+        userMessage: 'Data service is not ready. Please restart the app.',
+        technicalMessage: 'Supabase not initialized (photo upload)',
+      );
+    }
+    final baseUrl = SupabaseAppConfig.url.replaceAll(RegExp(r'/+$'), '');
+    final anonKey = SupabaseAppConfig.anonKey;
+    final uri = Uri.parse('$baseUrl/storage/v1/object/$photoBucket/$path');
+
+    // Use Request + bodyBytes so Content-Type stays exactly image/jpeg
+    // (no charset) on Flutter web.
+    final request = http.Request('POST', uri)
+      ..headers.addAll(<String, String>{
+        'Authorization': 'Bearer $anonKey',
+        'apikey': anonKey,
+        'Content-Type': 'image/jpeg',
+        'x-upsert': 'true',
+      })
+      ..bodyBytes = bytes;
+
+    final streamed = await request.send();
+    final response = await http.Response.fromStream(streamed);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      AppLogger.error(
+        'Storage raw upload failed (${response.statusCode}): '
+        '${response.body}',
+        tag: 'SupabaseCheckInRemoteDataSource',
+      );
+      throw CheckInSubmissionFailedException(
+        userMessage: 'Photo upload failed. Please try again.',
+        technicalMessage:
+            'storage raw upload: ${response.statusCode} ${response.body}',
       );
     }
   }
@@ -647,8 +717,9 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
   @override
   Future<CheckInSubmission?> getIdentitySubmission(
     String phone,
-    DateTime sessionDate,
-  ) async {
+    DateTime sessionDate, {
+    CheckInType? type,
+  }) async {
     try {
       final normalizedPhone = Validators.normalizePhone(phone);
       final formattedPhone = Validators.formatPhoneWithCountryCode(phone);
@@ -666,9 +737,10 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
 
       for (final row in rows) {
         final map = Map<String, dynamic>.from(row);
-        if (_rowMatchesSession(map, sessionDate)) {
-          return SupabaseCheckInMapper.fromRow(map);
-        }
+        if (!_rowMatchesSession(map, sessionDate)) continue;
+        final submission = SupabaseCheckInMapper.fromRow(map);
+        if (type != null && submission.type != type) continue;
+        return submission;
       }
       return null;
     } catch (e, st) {
@@ -681,8 +753,16 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
   }
 
   @override
-  Future<bool> hasIdentityCheckedIn(String phone, DateTime sessionDate) async {
-    final submission = await getIdentitySubmission(phone, sessionDate);
+  Future<bool> hasIdentityCheckedIn(
+    String phone,
+    DateTime sessionDate, {
+    CheckInType? type,
+  }) async {
+    final submission = await getIdentitySubmission(
+      phone,
+      sessionDate,
+      type: type,
+    );
     return submission != null;
   }
 
@@ -729,7 +809,8 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
     } on PostgrestException catch (e, st) {
       if (_isUniqueViolation(e)) {
         throw const DuplicateCheckInException(
-          userMessage: 'This device has already recorded attendance for today.',
+          userMessage:
+              'Attendance for this session was already submitted on this phone.',
           technicalMessage: 'device_session_locks already-exists',
         );
       }
@@ -755,6 +836,118 @@ class SupabaseCheckInRemoteDataSource implements CheckInRemoteDataSource {
       return row != null;
     } catch (_) {
       return false;
+    }
+  }
+
+  @override
+  Future<PublicDeviceSessionAttendance?> getPublicDeviceSessionAttendance({
+    required String deviceId,
+    required String sessionDateYmd,
+  }) async {
+    try {
+      final id = deviceId.trim();
+      final date = sessionDateYmd.trim();
+      if (id.isEmpty || date.isEmpty) {
+        return const PublicDeviceSessionAttendance(locked: false);
+      }
+
+      final raw = await _client.rpc(
+        'get_public_device_session_attendance',
+        params: {
+          'p_device_id': id,
+          'p_session_date': date,
+        },
+      );
+
+      if (raw == null) {
+        return const PublicDeviceSessionAttendance(locked: false);
+      }
+
+      final Map<String, dynamic> map;
+      if (raw is Map<String, dynamic>) {
+        map = raw;
+      } else if (raw is Map) {
+        map = Map<String, dynamic>.from(raw);
+      } else {
+        return const PublicDeviceSessionAttendance(locked: false);
+      }
+
+      final locked = map['locked'] == true;
+      if (!locked) {
+        return const PublicDeviceSessionAttendance(locked: false);
+      }
+
+      final checkInId =
+          map['id']?.toString().trim().isNotEmpty == true
+          ? map['id']!.toString().trim()
+          : (map['check_in_id']?.toString().trim().isNotEmpty == true
+                ? map['check_in_id']!.toString().trim()
+                : null);
+
+      CheckInSubmission? submission;
+      final userName = map['user_name']?.toString().trim() ?? '';
+      final hasRowPayload =
+          checkInId != null &&
+          (userName.isNotEmpty ||
+              map['location_id'] != null ||
+              map['user_phone'] != null ||
+              map['type'] != null);
+      if (hasRowPayload) {
+        final row = Map<String, dynamic>.from(map);
+        row['id'] = checkInId;
+        submission = SupabaseCheckInMapper.fromRow(row);
+      }
+
+      return PublicDeviceSessionAttendance(
+        locked: true,
+        submission: submission,
+        checkInId: checkInId,
+      );
+    } catch (e, st) {
+      AppLogger.warning(
+        'get_public_device_session_attendance failed: $e\n$st',
+        tag: 'SupabaseCheckInRemoteDataSource',
+      );
+      return null;
+    }
+  }
+
+  @override
+  Future<CheckInSubmission?> getPublicCheckInSummary(String checkInId) async {
+    try {
+      final id = checkInId.trim();
+      if (id.isEmpty) return null;
+
+      final raw = await _client.rpc(
+        'get_public_check_in_summary',
+        params: {'p_check_in_id': id},
+      );
+      if (raw == null) return null;
+
+      final Map<String, dynamic> map;
+      if (raw is Map<String, dynamic>) {
+        map = raw;
+      } else if (raw is Map) {
+        map = Map<String, dynamic>.from(raw);
+      } else {
+        return null;
+      }
+
+      final resolvedId =
+          map['id']?.toString().trim().isNotEmpty == true
+          ? map['id']!.toString().trim()
+          : (map['check_in_id']?.toString().trim().isNotEmpty == true
+                ? map['check_in_id']!.toString().trim()
+                : id);
+      final row = Map<String, dynamic>.from(map);
+      row['id'] = resolvedId;
+      return SupabaseCheckInMapper.fromRow(row);
+    } catch (e, st) {
+      AppLogger.warning(
+        'get_public_check_in_summary failed: $e\n$st',
+        tag: 'SupabaseCheckInRemoteDataSource',
+      );
+      return null;
     }
   }
 }

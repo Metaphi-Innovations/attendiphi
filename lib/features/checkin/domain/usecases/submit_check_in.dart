@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/errors/app_exception.dart';
+import '../../../../core/l10n/app_strings.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../location/domain/entities/location_config.dart';
 import '../../../location/domain/usecases/validate_user_proximity.dart';
@@ -64,6 +65,16 @@ class SubmitCheckIn {
     final locationOn = locationRestrictionEnabled ?? restrictionsEnabled;
     final deviceOn = deviceRestrictionEnabled ?? restrictionsEnabled;
     final enforceServerRestrictions = dateOn || locationOn;
+
+    // 0. Location restriction ON requires a real, verified fix.
+    if (locationOn && !proximityResult.isVerified) {
+      throw const CheckInSubmissionFailedException(
+        userMessage: AppStrings.locationVerificationRequired,
+        technicalMessage:
+            'Location restriction ON but proximity result is not verified.',
+      );
+    }
+
     // 1. Validate Form Fields
     final nameError = Validators.validateName(name);
     if (nameError != null) {
@@ -218,17 +229,20 @@ class SubmitCheckIn {
     // claimed atomically with the check-in write below.
     final formattedPhone = Validators.formatPhoneWithCountryCode(phone);
 
-    // Phone uniqueness — always. Device uniqueness only when device restriction ON.
+    // Phone uniqueness is per check-in type (Member vs Substitute may share a
+    // phone on the same session day). Device uniqueness only when device ON.
     // Member uniqueness is enforced via member_session_locks on write.
     try {
       final existingPhoneSubmission = await _repository.getIdentitySubmission(
         formattedPhone,
         submissionTimestamp,
+        type: type,
       );
       if (existingPhoneSubmission != null) {
         throw DuplicateCheckInException(
           userMessage:
-              'This phone number has already submitted attendance for today.',
+              'This phone number has already submitted a '
+              '${type.displayName.toLowerCase()} check-in for today.',
           existingSubmissionData: existingPhoneSubmission.toMap(),
         );
       }
@@ -248,9 +262,7 @@ class SubmitCheckIn {
         if (existingDeviceSubmission != null) {
           throw DuplicateCheckInException(
             userMessage:
-                'This device has already recorded attendance for today. '
-                'Use another device, or ask an admin to turn off '
-                '"One device = one check-in".',
+                'Attendance for this session was already submitted on this phone.',
             existingSubmissionData: existingDeviceSubmission.toMap(),
           );
         }

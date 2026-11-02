@@ -23,9 +23,11 @@ import '../../../app_config/presentation/providers/check_in_restrictions_provide
 import '../../../employee/domain/employee_lookup.dart';
 import '../../../employee/domain/entities/employee.dart';
 import '../../../employee/presentation/providers/employee_providers.dart';
+import '../../../location/domain/default_location_x.dart';
 import '../../../location/domain/entities/location_config.dart';
 import '../../../location/domain/usecases/validate_user_proximity.dart';
 import '../../../location/presentation/providers/location_providers.dart';
+import '../../../location/presentation/screens/location_permission_screen.dart';
 import '../../data/datasources/device_checkin_service.dart';
 import '../../domain/entities/check_in_submission.dart';
 import '../../domain/entities/check_in_type.dart';
@@ -190,6 +192,8 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   bool _isCheckingDevice = true;
   bool _hasCheckedIn = false;
   CheckInSubmission? _existingSubmission;
+  String? _lockedCheckInId;
+  String? _lockedMemberId;
 
   /// Member selected from the typeahead list (manual check-in only).
   Employee? _manuallySelectedMember;
@@ -438,14 +442,61 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     }
   }
 
-  Future<void> _applyDeviceGate({required bool restrictionsEnabled}) async {
-    // Venue phones/tablets are shared: do not block the form because another
-    // member already checked in on this browser. Per-member / per-phone
-    // uniqueness is enforced on submit.
+  /// When [deviceRestrictionEnabled] is ON, one browser/device may only
+  /// complete one check-in per session day. Redirect to the recorded result.
+  /// When OFF (standee / shared tablet), skip the early gate; phone + member
+  /// locks still apply on submit.
+  Future<void> _applyDeviceGate({required bool deviceRestrictionEnabled}) async {
+    if (!deviceRestrictionEnabled) {
+      if (!mounted) return;
+      setState(() {
+        _hasCheckedIn = false;
+        _existingSubmission = null;
+        _isCheckingDevice = false;
+      });
+      return;
+    }
+
+    if (_hasCheckedIn) {
+      if (mounted) {
+        setState(() => _isCheckingDevice = false);
+      }
+      return;
+    }
+
+    final deviceService = ref.read(deviceCheckInServiceProvider);
+    final attendance = await deviceService.resolveSessionAttendance(
+      sessionDateStr: _effectiveSessionDateStr,
+      locationId: widget.locationId,
+    );
+
     if (!mounted) return;
+
+    if (attendance.alreadyCheckedIn) {
+      setState(() {
+        _hasCheckedIn = true;
+        _existingSubmission = attendance.submission;
+        _lockedCheckInId = attendance.checkInId;
+        _lockedMemberId = attendance.submission?.memberId;
+        _isCheckingDevice = false;
+      });
+      // Prefer the dedicated result route (payload and/or ids for hydration).
+      if (attendance.submission != null ||
+          (attendance.checkInId?.trim().isNotEmpty ?? false)) {
+        _goToCheckInResult(
+          attendance.submission,
+          checkInId: attendance.checkInId,
+          memberId: attendance.submission?.memberId,
+        );
+      }
+      return;
+    }
+
     setState(() {
       _hasCheckedIn = false;
       _existingSubmission = null;
+      _lockedCheckInId = null;
+      _lockedMemberId = null;
       _isCheckingDevice = false;
     });
   }
@@ -520,24 +571,18 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
   }
 
   LocationConfig get _effectiveLocation {
-    const defaultLocation = LocationConfig(
-      id: 'location_x',
-      name: 'Jade Luxury Banquets, Mumbai',
-      latitude: 18.9888622,
-      longitude: 72.8152475,
-      radiusMeters: 500.0,
-      isActive: true,
-      address:
-          'Jade Luxury Banquets, Nehru Centre, Dr Annie Besant Rd, Worli, Mumbai, Maharashtra 400018',
-    );
     if (widget.initialLocation != null) return widget.initialLocation!;
     final loaded = ref
         .read(locationConfigFamilyProvider(widget.locationId))
         .asData
         ?.value;
-    return loaded ?? defaultLocation;
+    return loaded ?? DefaultLocationX.current();
   }
 
+  /// Real verified result when present. The venue-coord placeholder is only
+  /// reachable with the location restriction OFF: [build] swaps in the
+  /// location gate when it is ON and nothing verified was passed, and
+  /// SubmitCheckIn rejects unverified results under the restriction.
   ProximityResult get _effectiveProximity {
     if (widget.proximityResult != null) return widget.proximityResult!;
     final location = _effectiveLocation;
@@ -606,16 +651,81 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     }
   }
 
-  void _goToCheckInResult(CheckInSubmission? submission) {
+  void _goToCheckInResult(
+    CheckInSubmission? submission, {
+    String? checkInId,
+    String? memberId,
+  }) {
     if (!mounted) return;
-    // Never open Approved without a real submission (avoids empty Present gap).
-    if (submission == null) return;
+    final id = (submission?.id ?? checkInId)?.trim() ?? '';
+    final mem = (submission?.memberId ?? memberId)?.trim();
+    // Prefer a real payload; IDs alone still open result (screen hydrates).
+    if (submission == null && id.isEmpty && (mem == null || mem.isEmpty)) {
+      return;
+    }
+    // Widget tests may mount without GoRouter; inline CheckInResultScreen then.
+    if (GoRouter.maybeOf(context) == null) return;
     context.go(
       RouteNames.checkinResultPath(
-        checkInId: submission.id,
-        memberId: submission.memberId,
+        checkInId: id.isEmpty ? null : id,
+        memberId: mem,
       ),
       extra: submission,
+    );
+  }
+
+  /// Opens the recorded-attendance screen after a duplicate submit.
+  ///
+  /// Server `duplicate_device` often omits the prior row; fall back to this
+  /// phone's saved session / device lock so we still leave the form.
+  Future<void> _openDuplicateAttendanceResult(
+    CheckInSubmission? existing,
+  ) async {
+    var resolved = existing;
+    if (resolved == null) {
+      final attendance = await ref
+          .read(deviceCheckInServiceProvider)
+          .resolveSessionAttendance(
+            sessionDateStr: _effectiveSessionDateStr,
+            locationId: widget.locationId,
+          );
+      resolved = attendance.submission;
+      if (!mounted) return;
+      if (resolved == null && attendance.alreadyCheckedIn) {
+        setState(() {
+          _hasCheckedIn = true;
+          _existingSubmission = null;
+          _lockedCheckInId = attendance.checkInId;
+          _lockedMemberId = attendance.submission?.memberId;
+        });
+        _goToCheckInResult(
+          null,
+          checkInId: attendance.checkInId,
+          memberId: attendance.submission?.memberId,
+        );
+        return;
+      }
+    }
+    if (!mounted) return;
+
+    if (resolved != null) {
+      setState(() {
+        _hasCheckedIn = true;
+        _existingSubmission = resolved;
+      });
+      _goToCheckInResult(resolved);
+      return;
+    }
+
+    // No local payload available — still leave the form for the recorded screen.
+    setState(() {
+      _hasCheckedIn = true;
+      _existingSubmission = null;
+    });
+    _goToCheckInResult(
+      null,
+      checkInId: _lockedCheckInId,
+      memberId: _lockedMemberId,
     );
   }
 
@@ -806,6 +916,20 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       if (error != null) {
         if (error is DuplicateCheckInException) {
           final existing = formState.submissionResult;
+          final attemptedType = formState.type;
+          // Never open a different type's receipt (e.g. Member card after a
+          // Substitute submit that shared a phone before typed phone locks).
+          if (existing != null &&
+              attemptedType != null &&
+              existing.type != attemptedType) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(ErrorHandler.getUserMessage(error)),
+                backgroundColor: AppColors.error,
+              ),
+            );
+            return;
+          }
           if (existing != null) {
             ref
                 .read(deviceCheckInServiceProvider)
@@ -814,42 +938,8 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
                   submission: existing,
                 );
           }
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (ctx) => AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              title: const Row(
-                children: [
-                  Icon(
-                    Icons.info_outline_rounded,
-                    color: AppColors.primary,
-                    size: 24,
-                  ),
-                  SizedBox(width: 10),
-                  Text(
-                    'Already Responded',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                  ),
-                ],
-              ),
-              content: const Text(
-                'You have already submitted your attendance for this date.\n\nOnly one check-in is allowed per member (or phone) each Thursday.',
-                style: TextStyle(fontSize: 14, height: 1.4),
-              ),
-              actions: [
-                FilledButton(
-                  onPressed: () {
-                    Navigator.of(ctx).pop();
-                    _goToCheckInResult(existing);
-                  },
-                  child: const Text('View Response'),
-                ),
-              ],
-            ),
-          );
+          // Same-type duplicate — open that check-in's success screen.
+          await _openDuplicateAttendanceResult(existing);
           return;
         }
 
@@ -869,35 +959,59 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
 
     ref.listen(checkInRestrictionsConfigProvider, (prev, next) {
       next.whenData((config) {
-        if (!config.dateRestrictionEnabled) {
-          _applyDeviceGate(restrictionsEnabled: false);
-        } else if (_isCheckingDevice) {
-          _applyDeviceGate(restrictionsEnabled: true);
+        // Re-evaluate whenever device policy changes (or first config load).
+        if (_isCheckingDevice ||
+            prev == null ||
+            prev.asData?.value.deviceRestrictionEnabled !=
+                config.deviceRestrictionEnabled) {
+          _applyDeviceGate(
+            deviceRestrictionEnabled: config.deviceRestrictionEnabled,
+          );
         }
       });
     });
 
-    if (configAsync.isLoading && !configAsync.hasValue) {
+    final lastKnown = ref.watch(lastKnownCheckInRestrictionsProvider);
+    if (configAsync.isLoading && !configAsync.hasValue && lastKnown == null) {
       return const Scaffold(body: Center(child: MetaPhiLoadingIndicator()));
+    }
+
+    if (ref.watch(locationRestrictionEnabledProvider) &&
+        widget.proximityResult?.isVerified != true) {
+      return LocationPermissionScreen(
+        key: ValueKey('form-location-gate-${widget.locationId}'),
+        location: _effectiveLocation,
+        adminId: widget.adminId,
+        sessionDateStr: widget.sessionDateStr,
+        sessionToken: widget.sessionToken,
+        nowProvider: widget.nowProvider,
+      );
     }
 
     final dateRestrictionEnabled = configAsync.maybeWhen(
       data: (config) => config.dateRestrictionEnabled,
-      orElse: () => true,
+      orElse: () => lastKnown?.dateRestrictionEnabled ?? true,
     );
+    final deviceRestrictionEnabled = configAsync.maybeWhen(
+      data: (config) => config.deviceRestrictionEnabled,
+      orElse: () => lastKnown?.deviceRestrictionEnabled ?? true,
+    );
+    final configReady = configAsync.hasValue || lastKnown != null;
 
-    if (_isCheckingDevice && configAsync.hasValue) {
+    if (_isCheckingDevice && configReady) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !_isCheckingDevice) return;
-        _applyDeviceGate(restrictionsEnabled: dateRestrictionEnabled);
+        _applyDeviceGate(
+          deviceRestrictionEnabled: deviceRestrictionEnabled,
+        );
       });
     }
 
     if (_hasCheckedIn || _existingSubmission != null) {
       return CheckInResultScreen(
         submission: _existingSubmission,
-        memberId: _existingSubmission?.memberId,
-        checkInId: _existingSubmission?.id,
+        memberId: _existingSubmission?.memberId ?? _lockedMemberId,
+        checkInId: _existingSubmission?.id ?? _lockedCheckInId,
       );
     }
 
@@ -1092,30 +1206,12 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       desktop: 32.0,
     );
 
-    const defaultLocation = LocationConfig(
-      id: 'location_x',
-      name: 'Jade Luxury Banquets, Mumbai',
-      latitude: 18.9888622,
-      longitude: 72.8152475,
-      radiusMeters: 500.0,
-      isActive: true,
-      address: 'Jade Luxury Banquets, Nehru Centre, Dr Annie Besant Rd, Worli, Mumbai, Maharashtra 400018',
-    );
     final location =
         widget.initialLocation ??
         locationAsync.asData?.value ??
-        defaultLocation;
+        DefaultLocationX.current();
 
-    final proximity =
-        widget.proximityResult ??
-        ProximityResult(
-          distanceMeters: 10.0,
-          isWithinRadius: true,
-          allowedRadiusMeters: location.radiusMeters,
-          userLatitude: location.latitude,
-          userLongitude: location.longitude,
-          gpsAccuracy: 5.0,
-        );
+    final proximity = _effectiveProximity;
     final canSubmit = _canSubmit(formState);
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     if (_anyMemberTypeaheadOpen && keyboardInset != _lastKeyboardInset) {

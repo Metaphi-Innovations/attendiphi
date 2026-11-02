@@ -29,10 +29,10 @@ class ErrorHandler {
       ServerException() => true,
       PhotoUploadFailedException() => true,
       CheckInSubmissionFailedException() => true,
-      // Not retryable — requires user action or is permanent
-      LocationPermissionDeniedException() => false,
-      LocationPermissionPermanentlyDeniedException() => false,
-      LocationServiceDisabledException() => false,
+      // Retryable via Allow Location / Retry (re-invokes browser/OS prompt).
+      LocationPermissionDeniedException() => true,
+      LocationPermissionPermanentlyDeniedException() => true,
+      LocationServiceDisabledException() => true,
       InvalidQrCodeException() => false,
       MalformedQrPayloadException() => false,
       LocationNotFoundException() => false,

@@ -1,4 +1,5 @@
 import '../../../core/utils/validators.dart';
+import 'entities/check_in_type.dart';
 
 /// Helpers for public create-once session lock document IDs.
 class SessionLockIds {
@@ -13,8 +14,20 @@ class SessionLockIds {
     return normalized;
   }
 
-  static String phoneLockId(String phone, String sessionDateYmd) {
-    return '${phoneDigits(phone)}_$sessionDateYmd';
+  /// Phone lock bucket: member | substitute | visitor (matches RPC).
+  static String phoneLockType(CheckInType type) {
+    if (type.isSubstitute) return 'substitute';
+    if (type.isVisitor) return 'visitor';
+    return 'member';
+  }
+
+  /// `{phone}_{yyyy-MM-dd}_{member|substitute|visitor}`.
+  static String phoneLockId(
+    String phone,
+    String sessionDateYmd, {
+    CheckInType type = CheckInType.member,
+  }) {
+    return '${phoneDigits(phone)}_${sessionDateYmd}_${phoneLockType(type)}';
   }
 
   static String memberLockId(String memberId, String sessionDateYmd) {

@@ -28,22 +28,81 @@ class AppStrings {
   static const locationPermissionRationale =
       'Location permission is required to verify that you are at the check-in location.';
   static const locationPermissionGrant = 'Grant Permission';
-  static const locationPermissionDenied =
-      'Location was denied. Enable location for this site to verify you are at the venue.';
-  static const locationPermissionPermanentlyDenied =
-      'Location is blocked for this site. Enable it in the browser, then reload or scan the QR again to continue check-in.';
   static const locationPermissionOpenSettings = 'Open Settings';
   static const locationPermissionAllow = 'Allow Location';
-  static const locationPermissionWebHelp =
-      'On web: tap the lock/tune icon next to the URL → Site settings → Location → Allow (or Ask), then reload this page or scan the QR again.';
+  // Single screen CTA (permission not decided yet). No in-app Allow dialog —
+  // the CTA itself is the user gesture that opens the browser/OS prompt.
+  static const locationPermissionAwaitingAllow =
+      'Tap Allow Location so we can verify you are at the venue. Your browser '
+      'will ask for permission.';
+
+  // Permission not granted, cause ambiguous (dismissed prompt, or the phone's
+  // Location was off). Must not claim either one.
+  static const locationPermissionDenied =
+      "Location access wasn't granted. Tap Allow Location and choose Allow when "
+      'asked. If Location is turned off on your phone, turn it on first.';
+
+  // Blocked for this site.
+  static const locationPermissionBlockedTitle = 'Location Permission Blocked';
+  static const locationPermissionPermanentlyDenied =
+      "Location access is blocked for this website. Please update your browser's "
+      'site settings to continue.';
+  static const locationPermissionBlockedNative =
+      'Location access is blocked for Attendiphi. Open Settings, allow Location, '
+      'then return to Attendiphi — check-in will continue automatically.';
+  static const locationBlockedAndroidHeading = 'Android Chrome';
+  static const locationBlockedAndroidSteps = [
+    'Open Chrome.',
+    'Tap the site information/settings icon beside the URL.',
+    'Open Site Settings.',
+    'Select Location.',
+    'Change it to Allow.',
+    'Return to Attendiphi — check-in will continue automatically.',
+  ];
+  static const locationBlockedIosHeading = 'iPhone Safari';
+  static const locationBlockedIosSteps = [
+    'Tap the page settings (aA) icon in the address bar.',
+    'Open Website Settings.',
+    'Set Location to Allow.',
+    'Return to Attendiphi — check-in will continue automatically.',
+  ];
+  static const locationBlockedDesktopHeading = 'Desktop browser';
+  static const locationBlockedDesktopSteps = [
+    'Click the site information icon beside the address bar.',
+    'Open Site settings (or Permissions).',
+    'Set Location to Allow.',
+    'Return to this tab — check-in will continue automatically.',
+  ];
+
+  // Device Location (GPS) off — short, user-centric copy.
+  static const locationServiceOffTitle = 'Location is Turned Off';
+  static const locationServiceOffBody =
+      'Please turn on Location on your phone, then tap Allow Location to '
+      'continue check-in.';
   static const locationServiceDisabled =
-      'Location services are turned off. Please enable them to continue.';
-  static const locationFetchingPosition = 'Getting your location...';
+      'Please turn on Location on your phone, then tap Allow Location to '
+      'continue check-in.';
+
+  // Progress.
+  static const locationCheckingService = 'Checking location settings...';
+  static const locationRequestingPermission =
+      'Requesting location permission...';
+  static const locationFetchingPosition = 'Fetching your location...';
+  static const locationVerifyingVenue = 'Verifying your venue...';
+
+  // Acquisition failures.
   static const locationTimeout =
-      'Unable to determine your location. Please check your GPS and try again.';
+      'Getting your location is taking longer than expected. Move near a window '
+      'or outdoors, then tap Retry.';
+  static const locationUnavailable =
+      "We couldn't determine your location. Make sure Location is turned on for "
+      'this device, then tap Retry.';
   static const locationAccuracyTooLow =
-      'Your GPS signal is too weak for accurate verification. '
-      'Please move to an open area and try again.';
+      'Your location is not precise enough to verify you are at the venue. '
+      'Turn on precise / high-accuracy location, move near a window or '
+      'outdoors, then tap Retry.';
+  static const locationVerificationRequired =
+      'Please verify your location at the venue before checking in.';
 
   // ── Location Validation ──────────────────────────────────────────────────
   static String locationTooFar(double distanceMeters) {
@@ -59,6 +118,7 @@ class AppStrings {
 
   static const locationValidating = 'Validating your location...';
   static const locationRetry = 'Retry Location';
+  static const locationRetryShort = 'Retry';
 
   // ── Check-In Form ────────────────────────────────────────────────────────
   static const checkInFormTitle = 'Check In';

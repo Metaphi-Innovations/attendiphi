@@ -111,7 +111,9 @@ Change this password after first login if the project is shared.
 
 ### Demo data included
 
-- Location `location_x` (Jade)
+- Location `location_x` — **Metaphi** at Excel Plaza, Ghatkopar East  
+  (`19.083304, 72.913425`). Production Jade is unchanged. To upsert only the  
+  pin on attendiphi-test: `scripts/upsert_staging_location_x.sql` (never run on prod).
 - 6 fake members (`mem_demo_01` … `06`)
 - Check-ins: member + substitute + visitor on **2026-10-15**; visitor on **2026-10-08**
 - `session_attendance` rows for those Thursdays

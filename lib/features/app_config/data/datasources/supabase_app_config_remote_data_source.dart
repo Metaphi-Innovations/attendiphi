@@ -16,7 +16,9 @@ class SupabaseAppConfigRemoteDataSource implements AppConfigRemoteDataSource {
     : _clientOverride = client;
 
   final SupabaseClient? _clientOverride;
-  static const _pollInterval = Duration(seconds: 20);
+  /// Short interval so QR clients pick up Super Admin toggles quickly
+  /// (especially One device = one check-in standee mode).
+  static const _pollInterval = Duration(seconds: 5);
 
   static const _rawLocationKey = 'location_restriction_enabled';
   static const _rawDateKey = 'date_restriction_enabled';

@@ -4,19 +4,26 @@ import '../../../../app/config/supabase_bootstrap.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/logger/app_logger.dart';
 import '../../../../core/supabase/resilient_poll_stream.dart';
+import '../../domain/default_location_x.dart';
+import '../../domain/entities/location_config.dart';
 import '../models/location_config_model.dart';
 import 'location_remote_data_source.dart';
 
-/// Built-in Jade venue (same as Firestore fallback).
-const _locationXFallback = LocationConfigModel(
-  id: 'location_x',
-  name: 'Jade Luxury Banquets, Mumbai',
-  latitude: 18.9888622,
-  longitude: 72.8152475,
-  radiusMeters: 500.0,
-  isActive: true,
-  address: 'Jade Luxury Banquets, Nehru Centre, Dr Annie Besant Rd, Worli, Mumbai, Maharashtra 400018',
-);
+LocationConfigModel _modelFromConfig(LocationConfig config) {
+  return LocationConfigModel(
+    id: config.id,
+    name: config.name,
+    latitude: config.latitude,
+    longitude: config.longitude,
+    radiusMeters: config.radiusMeters,
+    isActive: config.isActive,
+    address: config.address,
+  );
+}
+
+/// Env-aware `location_x` fallback when Supabase has no row yet.
+LocationConfigModel locationXFallbackModel() =>
+    _modelFromConfig(DefaultLocationX.current());
 
 /// Supabase Postgres implementation of [LocationRemoteDataSource].
 class SupabaseLocationRemoteDataSource implements LocationRemoteDataSource {
@@ -58,7 +65,7 @@ class SupabaseLocationRemoteDataSource implements LocationRemoteDataSource {
     final list = rows
         .map((r) => _fromRow(Map<String, dynamic>.from(r)))
         .toList();
-    if (list.isEmpty) return const [_locationXFallback];
+    if (list.isEmpty) return [locationXFallbackModel()];
     return list;
   }
 
@@ -73,21 +80,21 @@ class SupabaseLocationRemoteDataSource implements LocationRemoteDataSource {
       if (row != null) {
         return _fromRow(Map<String, dynamic>.from(row));
       }
-      if (locationId == 'location_x') return _locationXFallback;
+      if (locationId == DefaultLocationX.id) return locationXFallbackModel();
       return null;
     } on PostgrestException catch (e, st) {
       AppLogger.warning(
         'Supabase fetchLocation fallback for $locationId: ${e.message}',
         tag: 'SupabaseLocationRemoteDataSource',
       );
-      if (locationId == 'location_x') return _locationXFallback;
+      if (locationId == DefaultLocationX.id) return locationXFallbackModel();
       throw ServerException(
         technicalMessage: 'Supabase location error: ${e.message}',
         originalError: e,
         stackTrace: st,
       );
     } catch (e, st) {
-      if (locationId == 'location_x') return _locationXFallback;
+      if (locationId == DefaultLocationX.id) return locationXFallbackModel();
       throw ServerException(
         technicalMessage: 'Unexpected error fetching location: $e',
         originalError: e,

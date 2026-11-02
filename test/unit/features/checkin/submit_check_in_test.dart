@@ -37,21 +37,33 @@ void main() {
     userLatitude: 19.0829,
     userLongitude: 72.9129,
     gpsAccuracy: 10.0,
+    isVerified: true,
   );
 
   setUpAll(() {
     registerFallbackValue(FakeCheckInSubmission());
+    registerFallbackValue(CheckInType.member);
   });
 
   setUp(() {
     mockRepository = MockCheckInRepository();
     mockDispatchService = MockNotificationDispatchService();
-    when(() => mockRepository.getIdentitySubmission(any(), any()))
-        .thenAnswer((_) async => null);
+    when(
+      () => mockRepository.getIdentitySubmission(
+        any(),
+        any(),
+        type: any(named: 'type'),
+      ),
+    ).thenAnswer((_) async => null);
     when(() => mockRepository.getDeviceSubmission(any(), any()))
         .thenAnswer((_) async => null);
-    when(() => mockRepository.hasIdentityCheckedIn(any(), any()))
-        .thenAnswer((_) async => false);
+    when(
+      () => mockRepository.hasIdentityCheckedIn(
+        any(),
+        any(),
+        type: any(named: 'type'),
+      ),
+    ).thenAnswer((_) async => false);
     when(
       () => mockRepository.claimDeviceSessionLock(
         deviceId: any(named: 'deviceId'),
@@ -392,8 +404,13 @@ void main() {
         timestamp: DateTime(2026, 9, 8, 10, 0),
       );
 
-      when(() => mockRepository.getIdentitySubmission(any(), any()))
-          .thenAnswer((_) async => existingSubmission);
+      when(
+        () => mockRepository.getIdentitySubmission(
+          any(),
+          any(),
+          type: any(named: 'type'),
+        ),
+      ).thenAnswer((_) async => existingSubmission);
 
       await expectLater(
         usecase(
@@ -420,6 +437,58 @@ void main() {
         () => mockDispatchService.dispatchAdminCheckInNotification(any()),
       );
     });
+
+    test(
+      'same phone Member then Substitute is allowed (typed phone uniqueness)',
+      () async {
+        // Probe for substitute type finds nothing even if a member used the phone.
+        when(
+          () => mockRepository.getIdentitySubmission(
+            any(),
+            any(),
+            type: CheckInType.substitute,
+          ),
+        ).thenAnswer((_) async => null);
+        when(
+          () => mockDispatchService.dispatchAdminCheckInNotification(any()),
+        ).thenAnswer((_) async {});
+
+        final result = await usecase(
+          name: 'Stand-in Person',
+          phone: '8356011246',
+          type: CheckInType.substitute,
+          location: testLocation,
+          proximityResult: testProximity,
+          substituteForMember: 'Other Member',
+          substituteForMemberId: 'emp_other',
+          photoBase64: 'fake-photo',
+          sessionDateStr: '2026-10-01',
+          deviceRestrictionEnabled: false,
+          dateRestrictionEnabled: false,
+          locationRestrictionEnabled: false,
+        );
+
+        expect(result.type, CheckInType.substitute);
+        expect(result.userPhone, '+918356011246');
+        verify(
+          () => mockRepository.getIdentitySubmission(
+            any(),
+            any(),
+            type: CheckInType.substitute,
+          ),
+        ).called(1);
+        verify(
+          () => mockRepository.submitCheckIn(
+            any(),
+            enforceThursday: false,
+            sessionDateYmd: '2026-10-01',
+            claimDeviceId: null,
+            claimMemberId: 'emp_other',
+            sessionToken: any(named: 'sessionToken'),
+          ),
+        ).called(1);
+      },
+    );
 
     test('2026-09-24 allows shared device with a different phone', () async {
       final thursday24 = SubmitCheckIn(
