@@ -177,8 +177,9 @@ class _LocationPermissionScreenState
         .applyLocation(live);
   }
 
-  /// Fresh QR entry: clear cache, read location status (no prompt), then
-  /// verify immediately when already allowed. Ask stays on Initial with one CTA.
+  /// Fresh QR entry: clear cache, then status check.
+  /// Granted or Ask → verification starts immediately (system popup when Ask).
+  /// GPS off / blocked → recovery UI; Allow Location CTA remains as fallback.
   void _prepareLocationGateIfNeeded({bool force = false}) {
     if (!force && (_locationStarted || !mounted)) return;
     _locationStarted = true;

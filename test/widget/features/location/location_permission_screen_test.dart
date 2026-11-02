@@ -479,31 +479,7 @@ void main() {
         }
       }
 
-      testWidgets('undecided permission shows one Allow CTA without prompting', (
-        tester,
-      ) async {
-        var prompts = 0;
-        await tester.pumpWidget(
-          gpsHarness(
-            service: PermissionService(
-              isWebOverride: true,
-              checkPermission: () async => LocationPermission.denied,
-              getCurrentPositionFn: (_) async {
-                prompts++;
-                return _position(testLocation.latitude, testLocation.longitude);
-              },
-            ),
-          ),
-        );
-        await settle(tester);
-
-        expect(find.byType(AlertDialog), findsNothing);
-        expect(find.text(AppStrings.locationPermissionAwaitingAllow), findsOneWidget);
-        expect(find.text(AppStrings.locationPermissionAllow), findsOneWidget);
-        expect(prompts, 0);
-      });
-
-      testWidgets('Allow CTA tap triggers system prompt then verifies', (
+      testWidgets('undecided permission auto-shows system prompt then verifies', (
         tester,
       ) async {
         var prompts = 0;
@@ -527,15 +503,49 @@ void main() {
         );
         await settle(tester);
 
-        expect(prompts, 0);
-        expect(device.calls, 0);
-        await tester.tap(find.text(AppStrings.locationPermissionAllow));
-        await settle(tester);
-
+        expect(find.byType(AlertDialog), findsNothing);
         expect(prompts, 1);
         expect(device.calls, 1);
         expect(find.text('Continue to Check-In'), findsOneWidget);
-        expect(find.byType(AlertDialog), findsNothing);
+      });
+
+      testWidgets('Allow CTA recovers when auto prompt is dismissed', (
+        tester,
+      ) async {
+        var permission = LocationPermission.denied;
+        var allowFix = false;
+        final device = _FakeDeviceLocation(
+          _position(testLocation.latitude, testLocation.longitude),
+        );
+        await tester.pumpWidget(
+          gpsHarness(
+            service: PermissionService(
+              isWebOverride: true,
+              checkPermission: () async => permission,
+              getCurrentPositionFn: (_) async {
+                if (!allowFix) {
+                  throw const PermissionDeniedException('denied');
+                }
+                permission = LocationPermission.whileInUse;
+                return _position(testLocation.latitude, testLocation.longitude);
+              },
+            ),
+            device: device,
+          ),
+        );
+        await settle(tester);
+
+        expect(find.text(AppStrings.locationPermissionDenied), findsOneWidget);
+        expect(find.text(AppStrings.locationPermissionAllow), findsOneWidget);
+        expect(device.calls, 0);
+
+        allowFix = true;
+        await tester.ensureVisible(find.text(AppStrings.locationPermissionAllow));
+        await tester.tap(find.text(AppStrings.locationPermissionAllow));
+        await settle(tester, 12);
+
+        expect(device.calls, 1);
+        expect(find.text('Continue to Check-In'), findsOneWidget);
       });
 
       testWidgets('already granted verifies with zero taps (no dialog)', (
@@ -561,7 +571,7 @@ void main() {
         expect(find.text('Continue to Check-In'), findsOneWidget);
       });
 
-      testWidgets('Allow then dismissed prompt shows neutral denied UI', (
+      testWidgets('auto prompt dismissed shows neutral denied UI + Allow CTA', (
         tester,
       ) async {
         await tester.pumpWidget(
@@ -574,8 +584,6 @@ void main() {
             ),
           ),
         );
-        await settle(tester);
-        await tester.tap(find.text(AppStrings.locationPermissionAllow));
         await settle(tester);
 
         expect(find.byType(AlertDialog), findsNothing);
@@ -813,12 +821,17 @@ void main() {
         expect(find.text('FORM tok-abc verified=true'), findsOneWidget);
       });
 
-      testWidgets('remounted QR scan shows the single Allow CTA again', (
+      testWidgets('remounted QR scan auto-prompts again without dialog', (
         tester,
       ) async {
+        var prompts = 0;
         PermissionService service() => PermissionService(
           isWebOverride: true,
           checkPermission: () async => LocationPermission.denied,
+          getCurrentPositionFn: (_) async {
+            prompts++;
+            throw const PermissionDeniedException('denied');
+          },
         );
 
         await tester.pumpWidget(
@@ -826,14 +839,15 @@ void main() {
         );
         await settle(tester, 6);
         expect(find.byType(AlertDialog), findsNothing);
+        expect(prompts, 1);
         expect(find.text(AppStrings.locationPermissionAllow), findsOneWidget);
-        expect(find.text(AppStrings.locationPermissionAwaitingAllow), findsOneWidget);
 
         await tester.pumpWidget(
           gpsHarness(service: service(), key: const ValueKey('scan-2')),
         );
         await settle(tester, 6);
         expect(find.byType(AlertDialog), findsNothing);
+        expect(prompts, 2);
         expect(find.text(AppStrings.locationPermissionAllow), findsOneWidget);
       });
     });

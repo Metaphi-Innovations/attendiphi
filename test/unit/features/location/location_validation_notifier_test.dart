@@ -139,7 +139,7 @@ void main() {
       expect(env.requests, 0);
     });
 
-    test('3. permission not decided → entry waits for Allow (no prompt)', () async {
+    test('3. permission not decided → entry auto-prompts then verifies', () async {
       final env = _Env(permission: LocationPermission.denied);
       final device = _FakeDevice(() async => _fix());
       final c = _container(env, device);
@@ -147,12 +147,8 @@ void main() {
       final status = await notifierOf(c).checkAccessOnEntry();
 
       expect(status, LocationAccessStatus.needsPrompt);
-      expect(stateOf(c), isA<LocationValidationInitial>());
-      expect(env.requests, 0);
-      expect(device.calls, 0);
-
-      await notifierOf(c).validateLocation();
       expect(env.requests, 1);
+      expect(device.calls, 1);
       expect(stateOf(c), isA<LocationValidationSuccess>());
     });
 

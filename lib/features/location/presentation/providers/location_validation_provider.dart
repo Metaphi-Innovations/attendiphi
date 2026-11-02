@@ -97,13 +97,16 @@ class LocationValidationNotifier extends Notifier<LocationValidationState> {
     }
   }
 
-  /// Entry check for a fresh QR session. Never prompts.
+  /// Entry check for a fresh QR session.
   ///
-  /// - granted → verifies immediately (no prompt needed)
-  /// - needsPrompt → stays [LocationValidationInitial]; the screen shows one
-  ///   Allow Location CTA so the browser prompt runs from that user gesture
+  /// - granted → verifies immediately (already allowed)
+  /// - needsPrompt → starts verification immediately so the browser/OS system
+  ///   location popup can appear without an in-app Allow tap first. If the
+  ///   browser blocks a prompt without a gesture, the screen keeps the Allow
+  ///   Location CTA as a fallback.
   /// - blocked / serviceDisabled → matching error state (or bypass when the
-  ///   location restriction is OFF)
+  ///   location restriction is OFF). Never auto-prompts when blocked or when
+  ///   device Location is known to be off.
   Future<LocationAccessStatus?> checkAccessOnEntry() async {
     if (_inFlight) return null;
     _inFlight = true;
@@ -117,6 +120,7 @@ class LocationValidationNotifier extends Notifier<LocationValidationState> {
       );
       switch (status) {
         case LocationAccessStatus.needsPrompt:
+          // Leave Initial briefly; _verify below moves to RequestingPermission.
           state = const LocationValidationInitial();
         case LocationAccessStatus.blocked:
           _applyError(const LocationPermissionPermanentlyDeniedException());
@@ -128,7 +132,8 @@ class LocationValidationNotifier extends Notifier<LocationValidationState> {
     } finally {
       _inFlight = false;
     }
-    if (status == LocationAccessStatus.granted) {
+    if (status == LocationAccessStatus.granted ||
+        status == LocationAccessStatus.needsPrompt) {
       await _verify(forceRefresh: true);
     }
     return status;
