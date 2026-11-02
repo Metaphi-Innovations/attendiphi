@@ -49,7 +49,7 @@ class AppStrings {
       'site settings to continue.';
   static const locationPermissionBlockedNative =
       'Location access is blocked for Attendiphi. Open Settings, allow Location, '
-      'then return and tap Retry.';
+      'then return to Attendiphi — check-in will continue automatically.';
   static const locationBlockedAndroidHeading = 'Android Chrome';
   static const locationBlockedAndroidSteps = [
     'Open Chrome.',
@@ -57,24 +57,21 @@ class AppStrings {
     'Open Site Settings.',
     'Select Location.',
     'Change it to Allow.',
-    'Return to Attendiphi.',
-    'Tap Retry.',
+    'Return to Attendiphi — check-in will continue automatically.',
   ];
   static const locationBlockedIosHeading = 'iPhone Safari';
   static const locationBlockedIosSteps = [
     'Tap the page settings (aA) icon in the address bar.',
     'Open Website Settings.',
     'Set Location to Allow.',
-    'Return to Attendiphi.',
-    'Tap Retry.',
+    'Return to Attendiphi — check-in will continue automatically.',
   ];
   static const locationBlockedDesktopHeading = 'Desktop browser';
   static const locationBlockedDesktopSteps = [
     'Click the site information icon beside the address bar.',
     'Open Site settings (or Permissions).',
     'Set Location to Allow.',
-    'Return to this tab.',
-    'Click Retry.',
+    'Return to this tab — check-in will continue automatically.',
   ];
 
   // Device Location (GPS) off.

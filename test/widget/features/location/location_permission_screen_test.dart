@@ -596,15 +596,15 @@ void main() {
         expect(find.textContaining('reload'), findsNothing);
       });
 
-      testWidgets('blocked site shows settings guidance and Retry rechecks '
-          'without prompting', (tester) async {
+      testWidgets('blocked site shows settings guidance without Retry; '
+          'resume after Allow verifies', (tester) async {
         var prompts = 0;
         var permission = LocationPermission.deniedForever;
         final device = _FakeDeviceLocation(
           _position(testLocation.latitude, testLocation.longitude),
         );
-        await tester.pumpWidget(
-          gpsHarness(
+        final container = ProviderContainer(
+          overrides: gpsOverrides(
             service: PermissionService(
               isWebOverride: true,
               checkPermission: () async => permission,
@@ -620,27 +620,38 @@ void main() {
             device: device,
           ),
         );
+        addTearDown(container.dispose);
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: MaterialApp(
+              home: Scaffold(
+                body: LocationPermissionScreen(
+                  location: testLocation,
+                  sessionDateStr: '2026-10-30',
+                  nowProvider: () => DateTime(2026, 10, 30, 11, 0),
+                ),
+              ),
+            ),
+          ),
+        );
         await settle(tester);
 
         expect(find.text(AppStrings.locationPermissionBlockedTitle), findsOneWidget);
         expect(find.text(AppStrings.locationPermissionPermanentlyDenied), findsOneWidget);
-        // Test platform is Android → Android Chrome steps.
         expect(find.text(AppStrings.locationBlockedAndroidHeading), findsOneWidget);
         for (final step in AppStrings.locationBlockedAndroidSteps) {
           expect(find.text(step), findsOneWidget);
         }
+        expect(find.text(AppStrings.locationRetryShort), findsNothing);
         expect(find.byType(AlertDialog), findsNothing);
-
-        await tester.ensureVisible(find.text(AppStrings.locationRetryShort));
-        await tester.tap(find.text(AppStrings.locationRetryShort));
-        await settle(tester);
-        expect(find.text(AppStrings.locationPermissionBlockedTitle), findsOneWidget);
         expect(prompts, 0);
 
-        // User allows in site settings, then taps Retry.
+        // User allows in site settings, then returns to the tab.
         permission = LocationPermission.whileInUse;
-        await tester.ensureVisible(find.text(AppStrings.locationRetryShort));
-        await tester.tap(find.text(AppStrings.locationRetryShort));
+        await container
+            .read(locationValidationFamilyProvider(testLocation).notifier)
+            .recheckAfterResume();
         await settle(tester);
         expect(find.text('Continue to Check-In'), findsOneWidget);
         expect(prompts, 0);

@@ -1212,22 +1212,14 @@ class _LocationPermissionScreenState
     }
 
     if (state is LocationValidationPermissionBlocked) {
-      return Column(
-        children: [
-          AppButton.primary(
-            label: AppStrings.locationRetryShort,
-            icon: Icons.refresh_rounded,
-            onPressed: _startVerification,
-          ),
-          if (!ref.read(permissionServiceProvider).isWeb) ...[
-            const SizedBox(height: 8),
-            AppButton.text(
-              label: AppStrings.locationPermissionOpenSettings,
-              onPressed: _notifier.openSettings,
-            ),
-          ],
-        ],
-      );
+      // No Retry — recovery runs when the user returns after changing settings.
+      if (!ref.read(permissionServiceProvider).isWeb) {
+        return AppButton.text(
+          label: AppStrings.locationPermissionOpenSettings,
+          onPressed: _notifier.openSettings,
+        );
+      }
+      return const SizedBox.shrink();
     }
 
     if (state is LocationValidationOutsideRadius) {

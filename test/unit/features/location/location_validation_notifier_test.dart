@@ -305,19 +305,20 @@ void main() {
       expect(env.requests, 0);
     });
 
-    test('14b. Block → Ask on resume waits for a tap (no auto prompt)', () async {
+    test('14b. Block → Ask on resume auto-starts verification', () async {
       final env = _Env(isWeb: true, permission: LocationPermission.deniedForever);
       final device = _FakeDevice(() async => _fix());
       final c = _container(env, device);
 
       await notifierOf(c).checkAccessOnEntry();
       env.permission = LocationPermission.denied;
+      env.afterRequest = LocationPermission.whileInUse;
       final status = await notifierOf(c).recheckAfterResume();
 
       expect(status, LocationAccessStatus.needsPrompt);
-      expect(stateOf(c), isA<LocationValidationInitial>());
-      expect(env.requests, 0);
-      expect(device.calls, 0);
+      expect(env.requests, 1);
+      expect(device.calls, 1);
+      expect(stateOf(c), isA<LocationValidationSuccess>());
     });
 
     test('14c. resume recovery runs at most once per failure', () async {

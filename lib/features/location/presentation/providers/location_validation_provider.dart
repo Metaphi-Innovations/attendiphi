@@ -196,14 +196,15 @@ class LocationValidationNotifier extends Notifier<LocationValidationState> {
           _applyError(const LocationServiceDisabledException());
         }
       case LocationAccessStatus.needsPrompt:
-        // Site reset from Block to Ask: a prompt is possible again, but it must
-        // come from a user tap.
-        if (current is LocationValidationPermissionBlocked) {
-          state = const LocationValidationInitial();
+        // Site reset from Block to Ask: start verification (system prompt).
+        if (current is LocationValidationPermissionBlocked &&
+            !_resumeRecoveryUsed) {
+          _resumeRecoveryUsed = true;
+          await _verify(forceRefresh: true);
         }
       case LocationAccessStatus.granted:
         // Web cannot read device Location, so "granted" says nothing about a
-        // services-off error there; the user retries with the dialog button.
+        // services-off error there; keep the GPS-off recovery CTA.
         final causeResolved =
             current is! LocationValidationServiceDisabled ||
             ref.read(permissionServiceProvider).canDetectServiceState;
