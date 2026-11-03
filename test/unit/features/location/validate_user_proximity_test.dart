@@ -133,5 +133,99 @@ void main() {
         throwsA(isA<OutsideAllowedRadiusException>()),
       );
     });
+
+    test('custom 700 m radius: inside succeeds, outside throws', () {
+      const venue700 = LocationConfig(
+        id: 'location_x',
+        name: 'Excel Plaza',
+        latitude: 19.0829524,
+        longitude: 72.9129274,
+        radiusMeters: 700,
+      );
+
+      // ~200 m north — inside 700 m.
+      final inside = usecase(
+        userLat: 19.08475,
+        userLon: 72.9129274,
+        accuracy: 10,
+        location: venue700,
+      );
+      expect(inside.isWithinRadius, isTrue);
+      expect(inside.allowedRadiusMeters, 700);
+
+      // ~2.2 km away — outside 700 m.
+      expect(
+        () => usecase(
+          userLat: 19.10295,
+          userLon: 72.9129274,
+          accuracy: 10,
+          location: venue700,
+        ),
+        throwsA(
+          isA<OutsideAllowedRadiusException>().having(
+            (e) => e.allowedRadiusMeters,
+            'allowedRadiusMeters',
+            700,
+          ),
+        ),
+      );
+    });
+
+    test('custom 30 km radius: far point inside, farther point outside', () {
+      const venue30km = LocationConfig(
+        id: 'location_x',
+        name: 'Excel Plaza',
+        latitude: 19.0829524,
+        longitude: 72.9129274,
+        radiusMeters: 30000,
+      );
+
+      // ~2.2 km away — inside 30 km.
+      final inside = usecase(
+        userLat: 19.10295,
+        userLon: 72.9129274,
+        accuracy: 20,
+        location: venue30km,
+      );
+      expect(inside.isWithinRadius, isTrue);
+      expect(inside.allowedRadiusMeters, 30000);
+
+      // ~40 km north — outside 30 km (~0.36 deg lat).
+      expect(
+        () => usecase(
+          userLat: 19.44295,
+          userLon: 72.9129274,
+          accuracy: 50,
+          location: venue30km,
+        ),
+        throwsA(
+          isA<OutsideAllowedRadiusException>().having(
+            (e) => e.allowedRadiusMeters,
+            'allowedRadiusMeters',
+            30000,
+          ),
+        ),
+      );
+    });
+
+    test('enforceProximity false still bypasses custom large radius', () {
+      const venue30km = LocationConfig(
+        id: 'location_x',
+        name: 'Excel Plaza',
+        latitude: 19.0829524,
+        longitude: 72.9129274,
+        radiusMeters: 30000,
+      );
+
+      final result = usecase(
+        userLat: 19.44295,
+        userLon: 72.9129274,
+        accuracy: 50,
+        location: venue30km,
+        enforceProximity: false,
+      );
+      expect(result.isWithinRadius, isFalse);
+      expect(result.isVerified, isFalse);
+    });
   });
 }

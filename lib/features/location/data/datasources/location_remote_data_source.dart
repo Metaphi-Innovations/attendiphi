@@ -5,4 +5,10 @@ import '../models/location_config_model.dart';
 abstract class LocationRemoteDataSource {
   Future<LocationConfigModel?> fetchLocation(String locationId);
   Stream<List<LocationConfigModel>> streamLocations();
+
+  /// Updates [radiusMeters] for [locationId] (Super Admin write).
+  Future<void> updateRadiusMeters({
+    required String locationId,
+    required double radiusMeters,
+  });
 }

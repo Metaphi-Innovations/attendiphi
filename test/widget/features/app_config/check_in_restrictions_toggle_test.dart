@@ -3,14 +3,61 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qr_checkin/core/constants/app_constants.dart';
+import 'package:qr_checkin/core/l10n/app_strings.dart';
 import 'package:qr_checkin/features/admin/domain/entities/admin_user.dart';
+import 'package:qr_checkin/features/admin/domain/substitute_check_in_mapping.dart';
 import 'package:qr_checkin/features/admin/presentation/providers/admin_auth_provider.dart';
 import 'package:qr_checkin/features/app_config/data/repositories/app_config_repository_impl.dart';
 import 'package:qr_checkin/features/app_config/domain/entities/check_in_restrictions_config.dart';
 import 'package:qr_checkin/features/app_config/presentation/providers/check_in_restrictions_provider.dart';
 import 'package:qr_checkin/features/app_config/presentation/widgets/check_in_restrictions_toggle.dart';
+import 'package:qr_checkin/features/location/domain/entities/location_config.dart';
+import 'package:qr_checkin/features/location/domain/repositories/location_repository.dart';
+import 'package:qr_checkin/features/location/presentation/providers/location_providers.dart';
 
 import '../admin/admin_widget_auth_mocks.dart';
+
+class _FakeLocationRepository implements LocationRepository {
+  _FakeLocationRepository({this.radiusMeters = 500});
+
+  double radiusMeters;
+  String? lastUpdatedLocationId;
+  double? lastUpdatedRadiusMeters;
+  int invalidateReads = 0;
+
+  @override
+  Future<LocationConfig> getLocationConfig(String locationId) async {
+    invalidateReads++;
+    return LocationConfig(
+      id: locationId,
+      name: 'Test Venue',
+      latitude: 19.08,
+      longitude: 72.91,
+      radiusMeters: radiusMeters,
+    );
+  }
+
+  @override
+  Stream<List<LocationConfig>> getLocations() => const Stream.empty();
+
+  @override
+  Future<void> updateRadiusMeters({
+    required String locationId,
+    required double radiusMeters,
+  }) async {
+    lastUpdatedLocationId = locationId;
+    lastUpdatedRadiusMeters = radiusMeters;
+    this.radiusMeters = radiusMeters;
+  }
+}
+
+List<dynamic> _locationOverrides(_FakeLocationRepository repo) => [
+  locationRepositoryProvider.overrideWithValue(repo),
+  locationConfigFamilyProvider.overrideWith((ref, locationId) async {
+    return repo.getLocationConfig(locationId);
+  }),
+];
 
 class _FakeAppConfigRepository implements AppConfigRepository {
   _FakeAppConfigRepository(this._config);
@@ -73,11 +120,13 @@ void main() {
   testWidgets('Super Admin sees menu icon only (no master switch)', (
     tester,
   ) async {
+    final locationRepo = _FakeLocationRepository();
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           isSuperAdminProvider.overrideWithValue(true),
           currentAdminUserProvider.overrideWithValue(superAdmin),
+          ..._locationOverrides(locationRepo),
           checkInRestrictionsConfigProvider.overrideWith(
             (ref) => Stream.value(
               const CheckInRestrictionsConfig(
@@ -103,11 +152,13 @@ void main() {
   testWidgets('Super Admin menu opens Location, Date, and Device toggles', (
     tester,
   ) async {
+    final locationRepo = _FakeLocationRepository();
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           isSuperAdminProvider.overrideWithValue(true),
           currentAdminUserProvider.overrideWithValue(superAdmin),
+          ..._locationOverrides(locationRepo),
           checkInRestrictionsConfigProvider.overrideWith(
             (ref) => Stream.value(
               const CheckInRestrictionsConfig(
@@ -131,12 +182,56 @@ void main() {
     expect(find.text('Location restriction'), findsOneWidget);
     expect(find.text('Date restriction'), findsOneWidget);
     expect(find.text('One device = one check-in'), findsOneWidget);
+    expect(find.text(AppStrings.venueCheckInRadiusTitle), findsOneWidget);
+    expect(find.text(AppStrings.venueCheckInRadiusUnitMeters), findsWidgets);
+    expect(
+      find.text(AppStrings.venueCheckInRadiusUnitKilometers),
+      findsWidgets,
+    );
   });
 
   testWidgets(
-    'Location toggle OFF writes immediately without confirmation pop-up',
+    'Location restriction OFF hides venue radius controls',
     (tester) async {
-      final repo = _FakeAppConfigRepository(
+      final locationRepo = _FakeLocationRepository();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            isSuperAdminProvider.overrideWithValue(true),
+            currentAdminUserProvider.overrideWithValue(superAdmin),
+            ..._locationOverrides(locationRepo),
+            checkInRestrictionsConfigProvider.overrideWith(
+              (ref) => Stream.value(
+                const CheckInRestrictionsConfig(
+                  locationRestrictionEnabled: false,
+                  dateRestrictionEnabled: true,
+                  deviceRestrictionEnabled: true,
+                ),
+              ),
+            ),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: CheckInRestrictionsToggle()),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.menu));
+      await tester.pumpAndSettle();
+
+      expect(find.text(AppStrings.venueCheckInRadiusTitle), findsNothing);
+      expect(find.text(AppStrings.venueCheckInRadiusSave), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'saving 30 km persists 30000 meters and refreshes location config',
+    (tester) async {
+      final locationRepo = _FakeLocationRepository(
+        radiusMeters: AppConstants.defaultRadiusMeters,
+      );
+      final appRepo = _FakeAppConfigRepository(
         const CheckInRestrictionsConfig(
           locationRestrictionEnabled: true,
           dateRestrictionEnabled: true,
@@ -152,10 +247,64 @@ void main() {
             adminAuthProvider.overrideWith(
               () => MockAuthenticatedAdminAuthNotifier(superAdmin),
             ),
+            appConfigRepositoryProvider.overrideWithValue(appRepo),
+            checkInRestrictionsConfigProvider.overrideWith(
+              (ref) => appRepo.watchCheckInRestrictions(),
+            ),
+            ..._locationOverrides(locationRepo),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: CheckInRestrictionsToggle()),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.menu));
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.text(AppStrings.venueCheckInRadiusUnitKilometers),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), '30');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text(AppStrings.venueCheckInRadiusSave));
+      await tester.pumpAndSettle();
+
+      expect(locationRepo.lastUpdatedLocationId, kDefaultAdminLocationId);
+      expect(locationRepo.lastUpdatedRadiusMeters, 30000);
+      expect(find.text(AppStrings.venueCheckInRadiusSaved), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Location toggle OFF writes immediately without confirmation pop-up',
+    (tester) async {
+      final repo = _FakeAppConfigRepository(
+        const CheckInRestrictionsConfig(
+          locationRestrictionEnabled: true,
+          dateRestrictionEnabled: true,
+          deviceRestrictionEnabled: true,
+        ),
+      );
+      final locationRepo = _FakeLocationRepository();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            isSuperAdminProvider.overrideWithValue(true),
+            currentAdminUserProvider.overrideWithValue(superAdmin),
+            adminAuthProvider.overrideWith(
+              () => MockAuthenticatedAdminAuthNotifier(superAdmin),
+            ),
             appConfigRepositoryProvider.overrideWithValue(repo),
             checkInRestrictionsConfigProvider.overrideWith(
               (ref) => repo.watchCheckInRestrictions(),
             ),
+            ..._locationOverrides(locationRepo),
           ],
           child: const MaterialApp(
             home: Scaffold(body: CheckInRestrictionsToggle()),
@@ -187,6 +336,7 @@ void main() {
           deviceRestrictionEnabled: true,
         ),
       );
+      final locationRepo = _FakeLocationRepository();
 
       await tester.pumpWidget(
         ProviderScope(
@@ -200,6 +350,7 @@ void main() {
             checkInRestrictionsConfigProvider.overrideWith(
               (ref) => repo.watchCheckInRestrictions(),
             ),
+            ..._locationOverrides(locationRepo),
           ],
           child: const MaterialApp(
             home: Scaffold(body: CheckInRestrictionsToggle()),
@@ -211,7 +362,11 @@ void main() {
       await tester.tap(find.byIcon(Icons.menu));
       await tester.pumpAndSettle();
 
-      // Third switch: Location, Date, Device.
+      // Device switch is below the radius editor — scroll it into view.
+      final deviceTile = find.text('One device = one check-in');
+      await tester.ensureVisible(deviceTile);
+      await tester.pumpAndSettle();
+
       await tester.tap(find.byType(Switch).at(2));
       await tester.pumpAndSettle();
 

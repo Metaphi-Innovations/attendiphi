@@ -120,6 +120,17 @@ class AppStrings {
   static const locationRetry = 'Retry Location';
   static const locationRetryShort = 'Retry';
 
+  // ── Venue check-in radius (admin restrictions) ───────────────────────────
+  static const venueCheckInRadiusTitle = 'Venue check-in radius';
+  static const venueCheckInRadiusHelper =
+      'Members must be within this distance of the venue to check in.';
+  static const venueCheckInRadiusUnitMeters = 'm';
+  static const venueCheckInRadiusUnitKilometers = 'km';
+  static const venueCheckInRadiusInvalid =
+      'Enter a valid radius greater than 0.';
+  static const venueCheckInRadiusSaved = 'Venue check-in radius updated';
+  static const venueCheckInRadiusSave = 'Save radius';
+
   // ── Check-In Form ────────────────────────────────────────────────────────
   static const checkInFormTitle = 'Check In';
   static const checkInFieldName = 'Full Name';

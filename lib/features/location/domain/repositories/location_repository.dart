@@ -12,4 +12,10 @@ abstract class LocationRepository {
 
   /// Streams all active locations for admin management or UI listings.
   Stream<List<LocationConfig>> getLocations();
+
+  /// Updates the venue check-in radius (meters) for [locationId].
+  Future<void> updateRadiusMeters({
+    required String locationId,
+    required double radiusMeters,
+  });
 }

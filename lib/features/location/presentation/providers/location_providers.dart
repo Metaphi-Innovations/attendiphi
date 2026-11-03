@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/config/supabase_bootstrap.dart';
@@ -11,6 +13,7 @@ import '../../domain/entities/location_config.dart';
 import '../../domain/repositories/location_repository.dart';
 import '../../domain/usecases/get_current_position.dart';
 import '../../domain/usecases/get_location_config.dart';
+import '../../domain/usecases/update_location_radius.dart';
 import '../../domain/usecases/validate_user_proximity.dart';
 
 /// Provider for [LocationRemoteDataSource] (Postgres `locations`).
@@ -55,9 +58,37 @@ final validateUserProximityUseCaseProvider = Provider<ValidateUserProximity>((
   return const ValidateUserProximity();
 });
 
+/// Provider for [UpdateLocationRadius] usecase.
+final updateLocationRadiusUseCaseProvider = Provider<UpdateLocationRadius>((
+  ref,
+) {
+  return UpdateLocationRadius(ref.watch(locationRepositoryProvider));
+});
+
 /// Family provider to fetch a single location configuration by ID.
 final locationConfigFamilyProvider =
     FutureProvider.family<LocationConfig, String>((ref, locationId) async {
       final useCase = ref.watch(getLocationConfigUseCaseProvider);
       return useCase(locationId);
     });
+
+/// Saves venue radius (meters) and invalidates cached location config.
+final venueRadiusNotifierProvider =
+    AsyncNotifierProvider<VenueRadiusNotifier, void>(VenueRadiusNotifier.new);
+
+class VenueRadiusNotifier extends AsyncNotifier<void> {
+  @override
+  FutureOr<void> build() {}
+
+  Future<void> save({
+    required String locationId,
+    required double radiusMeters,
+  }) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      final useCase = ref.read(updateLocationRadiusUseCaseProvider);
+      await useCase(locationId: locationId, radiusMeters: radiusMeters);
+      ref.invalidate(locationConfigFamilyProvider(locationId));
+    });
+  }
+}

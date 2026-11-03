@@ -109,4 +109,39 @@ class SupabaseLocationRemoteDataSource implements LocationRemoteDataSource {
     interval: _pollInterval,
     tag: 'SupabaseLocationRemoteDataSource',
   );
+
+  @override
+  Future<void> updateRadiusMeters({
+    required String locationId,
+    required double radiusMeters,
+  }) async {
+    try {
+      await _client
+          .from('locations')
+          .update({
+            'radius_meters': radiusMeters,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', locationId);
+      AppLogger.info(
+        'Updated location $locationId radius_meters=$radiusMeters',
+        tag: 'SupabaseLocationRemoteDataSource',
+      );
+    } on PostgrestException catch (e, st) {
+      throw ServerException(
+        userMessage: 'Could not save venue radius. Please try again.',
+        technicalMessage: 'Supabase update radius: ${e.message}',
+        originalError: e,
+        stackTrace: st,
+      );
+    } catch (e, st) {
+      if (e is AppException) rethrow;
+      throw ServerException(
+        userMessage: 'Could not save venue radius. Please try again.',
+        technicalMessage: 'Unexpected error updating radius: $e',
+        originalError: e,
+        stackTrace: st,
+      );
+    }
+  }
 }

@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/theme/app_colors.dart';
+import '../../../../core/constants/app_constants.dart';
+import '../../../../core/l10n/app_strings.dart';
+import '../../../admin/domain/substitute_check_in_mapping.dart';
 import '../../../admin/presentation/providers/admin_auth_provider.dart';
+import '../../../location/domain/venue_radius.dart';
+import '../../../location/presentation/providers/location_providers.dart';
 import '../providers/check_in_restrictions_provider.dart';
 
 /// Super-Admin check-in restriction control.
@@ -212,6 +218,7 @@ class _GranularRestrictionsDialogState
   bool _savingLocation = false;
   bool _savingDate = false;
   bool _savingDevice = false;
+  bool _savingRadius = false;
 
   /// Optimistic switch values so taps flip immediately (controlled Switch
   /// otherwise stays on the old provider value until the write finishes).
@@ -219,13 +226,99 @@ class _GranularRestrictionsDialogState
   bool? _optimisticDate;
   bool? _optimisticDevice;
 
-  bool get _busy => _savingLocation || _savingDate || _savingDevice;
+  final _radiusController = TextEditingController();
+  VenueRadiusUnit _radiusUnit = VenueRadiusUnit.meters;
+  String? _radiusError;
+  bool _radiusHydrated = false;
+  double? _loadedRadiusMeters;
+
+  bool get _busy =>
+      _savingLocation || _savingDate || _savingDevice || _savingRadius;
+
+  @override
+  void dispose() {
+    _radiusController.dispose();
+    super.dispose();
+  }
+
+  void _hydrateRadiusFromMeters(double meters) {
+    _loadedRadiusMeters = meters;
+    _radiusUnit = VenueRadius.preferredUnit(meters);
+    _radiusController.text = VenueRadius.formatForDisplay(meters, _radiusUnit);
+    _radiusError = null;
+    _radiusHydrated = true;
+  }
+
+  void _onUnitChanged(Set<VenueRadiusUnit> next) {
+    if (next.isEmpty) return;
+    final newUnit = next.first;
+    if (newUnit == _radiusUnit) return;
+
+    // Prefer converting from last known valid meters so invalid draft text
+    // does not produce a silent wrong value on unit switch.
+    final meters =
+        VenueRadius.tryParseToMeters(_radiusController.text, _radiusUnit) ??
+        _loadedRadiusMeters ??
+        AppConstants.defaultRadiusMeters;
+
+    setState(() {
+      _radiusUnit = newUnit;
+      _radiusController.text = VenueRadius.formatForDisplay(meters, newUnit);
+      _radiusError = null;
+    });
+  }
+
+  Future<void> _saveRadius() async {
+    if (_busy) return;
+    final meters = VenueRadius.tryParseToMeters(
+      _radiusController.text,
+      _radiusUnit,
+    );
+    if (meters == null) {
+      setState(() => _radiusError = AppStrings.venueCheckInRadiusInvalid);
+      return;
+    }
+
+    setState(() {
+      _savingRadius = true;
+      _radiusError = null;
+    });
+    try {
+      await ref
+          .read(venueRadiusNotifierProvider.notifier)
+          .save(
+            locationId: kDefaultAdminLocationId,
+            radiusMeters: meters,
+          );
+      if (!mounted) return;
+      final err = ref.read(venueRadiusNotifierProvider).error;
+      if (err != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update radius: $err'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+        return;
+      }
+      _loadedRadiusMeters = meters;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(AppStrings.venueCheckInRadiusSaved)),
+      );
+    } finally {
+      if (mounted) setState(() => _savingRadius = false);
+    }
+  }
 
   Future<void> _onLocationChanged(bool next) async {
     if (_busy) return;
     setState(() {
       _savingLocation = true;
       _optimisticLocation = next;
+      if (!next) {
+        _radiusHydrated = false;
+        _radiusError = null;
+      }
     });
     try {
       await ref
@@ -300,6 +393,21 @@ class _GranularRestrictionsDialogState
         ? _optimisticDevice!
         : ref.watch(deviceRestrictionEnabledProvider);
     final busy = _busy;
+    final theme = Theme.of(context);
+
+    if (locationOn) {
+      final locationAsync = ref.watch(
+        locationConfigFamilyProvider(kDefaultAdminLocationId),
+      );
+      locationAsync.whenData((config) {
+        if (!_radiusHydrated) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted || _radiusHydrated) return;
+            setState(() => _hydrateRadiusFromMeters(config.radiusMeters));
+          });
+        }
+      });
+    }
 
     return AlertDialog(
       title: const Text('Check-in restrictions'),
@@ -312,8 +420,8 @@ class _GranularRestrictionsDialogState
             children: [
               Text(
                 'Toggle Location, Date, and Device independently.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
               const SizedBox(height: 12),
@@ -334,6 +442,85 @@ class _GranularRestrictionsDialogState
                       )
                     : null,
               ),
+              if (locationOn) ...[
+                const SizedBox(height: 4),
+                Text(
+                  AppStrings.venueCheckInRadiusTitle,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  AppStrings.venueCheckInRadiusHelper,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _radiusController,
+                        enabled: !busy,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                            RegExp('[0-9.,]'),
+                          ),
+                        ],
+                        decoration: InputDecoration(
+                          isDense: true,
+                          errorText: _radiusError,
+                          border: const OutlineInputBorder(),
+                        ),
+                        onChanged: (_) {
+                          if (_radiusError != null) {
+                            setState(() => _radiusError = null);
+                          }
+                        },
+                        onSubmitted: (_) => _saveRadius(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SegmentedButton<VenueRadiusUnit>(
+                      segments: const [
+                        ButtonSegment(
+                          value: VenueRadiusUnit.meters,
+                          label: Text(AppStrings.venueCheckInRadiusUnitMeters),
+                        ),
+                        ButtonSegment(
+                          value: VenueRadiusUnit.kilometers,
+                          label: Text(
+                            AppStrings.venueCheckInRadiusUnitKilometers,
+                          ),
+                        ),
+                      ],
+                      selected: {_radiusUnit},
+                      onSelectionChanged: busy ? null : _onUnitChanged,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton.tonal(
+                    onPressed: busy ? null : _saveRadius,
+                    child: _savingRadius
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text(AppStrings.venueCheckInRadiusSave),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Date restriction'),

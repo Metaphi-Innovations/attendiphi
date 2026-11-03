@@ -33,15 +33,36 @@ class LocationConfig {
   /// Optional physical address for display.
   final String? address;
 
+  LocationConfig copyWith({
+    String? id,
+    String? name,
+    double? latitude,
+    double? longitude,
+    double? radiusMeters,
+    bool? isActive,
+    String? address,
+  }) {
+    return LocationConfig(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      radiusMeters: radiusMeters ?? this.radiusMeters,
+      isActive: isActive ?? this.isActive,
+      address: address ?? this.address,
+    );
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is LocationConfig &&
           runtimeType == other.runtimeType &&
-          id == other.id;
+          id == other.id &&
+          radiusMeters == other.radiusMeters;
 
   @override
-  int get hashCode => id.hashCode;
+  int get hashCode => Object.hash(id, radiusMeters);
 
   @override
   String toString() =>
