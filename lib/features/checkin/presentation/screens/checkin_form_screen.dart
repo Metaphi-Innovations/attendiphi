@@ -9,7 +9,6 @@ import '../../../../app/router/route_names.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_radius.dart';
 import '../../../../app/theme/app_spacing.dart';
-import '../../../../core/errors/app_exception.dart';
 import '../../../../core/errors/error_handler.dart';
 import '../../../../core/l10n/app_strings.dart';
 import '../../../../core/responsive/responsive_breakpoints.dart';
@@ -674,61 +673,6 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
     );
   }
 
-  /// Opens the recorded-attendance screen after a duplicate submit.
-  ///
-  /// Server `duplicate_device` often omits the prior row; fall back to this
-  /// phone's saved session / device lock so we still leave the form.
-  Future<void> _openDuplicateAttendanceResult(
-    CheckInSubmission? existing,
-  ) async {
-    var resolved = existing;
-    if (resolved == null) {
-      final attendance = await ref
-          .read(deviceCheckInServiceProvider)
-          .resolveSessionAttendance(
-            sessionDateStr: _effectiveSessionDateStr,
-            locationId: widget.locationId,
-          );
-      resolved = attendance.submission;
-      if (!mounted) return;
-      if (resolved == null && attendance.alreadyCheckedIn) {
-        setState(() {
-          _hasCheckedIn = true;
-          _existingSubmission = null;
-          _lockedCheckInId = attendance.checkInId;
-          _lockedMemberId = attendance.submission?.memberId;
-        });
-        _goToCheckInResult(
-          null,
-          checkInId: attendance.checkInId,
-          memberId: attendance.submission?.memberId,
-        );
-        return;
-      }
-    }
-    if (!mounted) return;
-
-    if (resolved != null) {
-      setState(() {
-        _hasCheckedIn = true;
-        _existingSubmission = resolved;
-      });
-      _goToCheckInResult(resolved);
-      return;
-    }
-
-    // No local payload available — still leave the form for the recorded screen.
-    setState(() {
-      _hasCheckedIn = true;
-      _existingSubmission = null;
-    });
-    _goToCheckInResult(
-      null,
-      checkInId: _lockedCheckInId,
-      memberId: _lockedMemberId,
-    );
-  }
-
   Future<Employee> _authoritativeMember(Employee selected) async {
     final once =
         ref.read(publicMembersOnceProvider).asData?.value ??
@@ -914,35 +858,10 @@ class _CheckInFormScreenState extends ConsumerState<CheckInFormScreen> {
       final formState = ref.read(checkInFormProvider);
       final error = formState.error;
       if (error != null) {
-        if (error is DuplicateCheckInException) {
-          final existing = formState.submissionResult;
-          final attemptedType = formState.type;
-          // Never open a different type's receipt (e.g. Member card after a
-          // Substitute submit that shared a phone before typed phone locks).
-          if (existing != null &&
-              attemptedType != null &&
-              existing.type != attemptedType) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(ErrorHandler.getUserMessage(error)),
-                backgroundColor: AppColors.error,
-              ),
-            );
-            return;
-          }
-          if (existing != null) {
-            ref
-                .read(deviceCheckInServiceProvider)
-                .recordSubmission(
-                  sessionDateStr: _effectiveSessionDateStr,
-                  submission: existing,
-                );
-          }
-          // Same-type duplicate — open that check-in's success screen.
-          await _openDuplicateAttendanceResult(existing);
-          return;
-        }
-
+        // Never open the success screen on a failed submit (including
+        // duplicate_device / duplicate_member). Stay on the form and show
+        // the error. Early device-lock gates still route to the result
+        // screen before the form when appropriate.
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(ErrorHandler.getUserMessage(error)),

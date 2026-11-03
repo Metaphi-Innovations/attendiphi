@@ -389,66 +389,72 @@ void main() {
       },
     );
 
-    test('throws DuplicateCheckInException when phone has already checked in on session date', () async {
-      final existingSubmission = CheckInSubmission(
-        id: 'existing-id',
-        locationId: testLocation.id,
-        locationName: testLocation.name,
-        userName: 'Rahul Sharma',
-        userPhone: '+919876543210',
-        type: CheckInType.member,
-        userLatitude: 19.0829,
-        userLongitude: 72.9129,
-        gpsAccuracy: 10.0,
-        distanceMeters: 45.0,
-        timestamp: DateTime(2026, 9, 8, 10, 0),
-      );
-
+    test('same phone may check in again (no phone uniqueness)', () async {
       when(
         () => mockRepository.getIdentitySubmission(
           any(),
           any(),
           type: any(named: 'type'),
         ),
-      ).thenAnswer((_) async => existingSubmission);
-
-      await expectLater(
-        usecase(
-          name: 'Rahul Sharma',
-          phone: '9876543210',
-          type: CheckInType.member,
-          location: testLocation,
-          proximityResult: testProximity,
+      ).thenAnswer(
+        (_) async => CheckInSubmission(
+          id: 'existing-id',
+          locationId: testLocation.id,
+          locationName: testLocation.name,
+          userName: 'Prior Guest',
+          userPhone: '+919876543210',
+          type: CheckInType.visitor,
+          userLatitude: 19.0829,
+          userLongitude: 72.9129,
+          gpsAccuracy: 10.0,
+          distanceMeters: 45.0,
+          timestamp: DateTime(2026, 9, 8, 9, 0),
         ),
-        throwsA(isA<DuplicateCheckInException>()),
+      );
+      when(
+        () => mockDispatchService.dispatchAdminCheckInNotification(any()),
+      ).thenAnswer((_) async {});
+
+      final result = await usecase(
+        name: 'Visitor Two',
+        phone: '9876543210',
+        email: 'visitor2@example.com',
+        type: CheckInType.visitor,
+        location: testLocation,
+        proximityResult: testProximity,
+        companyName: 'Acme',
+        category: 'Vendor',
+        invitedByMember: 'Host Member',
+        sessionDateStr: '2026-09-03',
+        deviceRestrictionEnabled: false,
+        dateRestrictionEnabled: false,
+        locationRestrictionEnabled: false,
       );
 
+      expect(result.userPhone, '+919876543210');
+      expect(result.type, CheckInType.visitor);
       verifyNever(
+        () => mockRepository.getIdentitySubmission(
+          any(),
+          any(),
+          type: any(named: 'type'),
+        ),
+      );
+      verify(
         () => mockRepository.submitCheckIn(
           any(),
-          enforceThursday: any(named: 'enforceThursday'),
-          sessionDateYmd: any(named: 'sessionDateYmd'),
-          claimDeviceId: any(named: 'claimDeviceId'),
-          claimMemberId: any(named: 'claimMemberId'),
+          enforceThursday: false,
+          sessionDateYmd: '2026-09-03',
+          claimDeviceId: null,
+          claimMemberId: null,
           sessionToken: any(named: 'sessionToken'),
         ),
-      );
-      verifyNever(
-        () => mockDispatchService.dispatchAdminCheckInNotification(any()),
-      );
+      ).called(1);
     });
 
     test(
-      'same phone Member then Substitute is allowed (typed phone uniqueness)',
+      'same phone Member then Substitute is allowed',
       () async {
-        // Probe for substitute type finds nothing even if a member used the phone.
-        when(
-          () => mockRepository.getIdentitySubmission(
-            any(),
-            any(),
-            type: CheckInType.substitute,
-          ),
-        ).thenAnswer((_) async => null);
         when(
           () => mockDispatchService.dispatchAdminCheckInNotification(any()),
         ).thenAnswer((_) async {});
@@ -470,13 +476,6 @@ void main() {
 
         expect(result.type, CheckInType.substitute);
         expect(result.userPhone, '+918356011246');
-        verify(
-          () => mockRepository.getIdentitySubmission(
-            any(),
-            any(),
-            type: CheckInType.substitute,
-          ),
-        ).called(1);
         verify(
           () => mockRepository.submitCheckIn(
             any(),
@@ -545,7 +544,7 @@ void main() {
       ).called(1);
     });
 
-    test('2026-09-24 surfaces phone duplicate from server submit', () async {
+    test('2026-09-24 surfaces device duplicate from server submit', () async {
       final thursday24 = SubmitCheckIn(
         mockRepository,
         notificationDispatchService: mockDispatchService,
@@ -564,8 +563,8 @@ void main() {
       ).thenThrow(
         const DuplicateCheckInException(
           userMessage:
-              'This phone number has already submitted attendance for today.',
-          technicalMessage: 'submit_public_check_in duplicate_phone',
+              'Attendance for this session was already submitted on this phone.',
+          technicalMessage: 'submit_public_check_in duplicate_device',
         ),
       );
 
@@ -578,16 +577,14 @@ void main() {
           proximityResult: testProximity,
           sessionDateStr: '2026-09-24',
           deviceId: 'device-a',
+          recognizedMemberId: 'emp_rahul',
+          dateRestrictionEnabled: true,
+          locationRestrictionEnabled: true,
+          deviceRestrictionEnabled: true,
         ),
         throwsA(isA<DuplicateCheckInException>()),
       );
 
-      verifyNever(
-        () => mockRepository.claimDeviceSessionLock(
-          deviceId: any(named: 'deviceId'),
-          sessionDateYmd: any(named: 'sessionDateYmd'),
-        ),
-      );
       verifyNever(
         () => mockDispatchService.dispatchAdminCheckInNotification(any()),
       );

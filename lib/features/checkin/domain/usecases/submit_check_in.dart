@@ -224,34 +224,10 @@ class SubmitCheckIn {
       faceVerified: false,
     );
 
-    // 5. Optional best-effort duplicate probe when checkIns are readable (admin).
-    // Public QR cannot read checkIns — uniqueness is enforced via session locks
-    // claimed atomically with the check-in write below.
-    final formattedPhone = Validators.formatPhoneWithCountryCode(phone);
-
-    // Phone uniqueness is per check-in type (Member vs Substitute may share a
-    // phone on the same session day). Device uniqueness only when device ON.
-    // Member uniqueness is enforced via member_session_locks on write.
-    try {
-      final existingPhoneSubmission = await _repository.getIdentitySubmission(
-        formattedPhone,
-        submissionTimestamp,
-        type: type,
-      );
-      if (existingPhoneSubmission != null) {
-        throw DuplicateCheckInException(
-          userMessage:
-              'This phone number has already submitted a '
-              '${type.displayName.toLowerCase()} check-in for today.',
-          existingSubmissionData: existingPhoneSubmission.toMap(),
-        );
-      }
-    } on DuplicateCheckInException {
-      rethrow;
-    } catch (_) {
-      // Unauthenticated QR clients cannot read checkIns after rules lock-down.
-    }
-
+    // 5. Optional best-effort probes when checkIns are readable (admin).
+    // Phone numbers are NOT unique per session — the same phone may check in
+    // multiple times (visitor / member / substitute). Device uniqueness only
+    // when device restriction is ON. Member uniqueness via member_session_locks.
     final trimmedDeviceId = deviceId?.trim() ?? '';
     if (deviceOn && trimmedDeviceId.isNotEmpty) {
       try {
