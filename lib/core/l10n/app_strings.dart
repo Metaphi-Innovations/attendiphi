@@ -111,6 +111,16 @@ class AppStrings {
         'Please move closer and try again.';
   }
 
+  /// [allowedLabel] should already be friendly, e.g. `50 km` or `700 m`.
+  static String locationOutsideAllowedRadius({
+    required double distanceMeters,
+    required String allowedLabel,
+  }) {
+    final distance = distanceMeters.round();
+    return 'You are currently ~$distance meters away from this venue. '
+        'Check-in is only permitted within $allowedLabel.';
+  }
+
   static String locationValid(double distanceMeters) {
     final distance = distanceMeters.round();
     return 'Location verified. You are $distance meters from the check-in point.';

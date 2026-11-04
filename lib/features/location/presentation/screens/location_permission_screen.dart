@@ -25,6 +25,7 @@ import '../../../employee/presentation/providers/employee_providers.dart';
 import '../../../qr_checkin/domain/check_in_session_token.dart';
 import '../../domain/entities/location_config.dart';
 import '../../domain/usecases/validate_user_proximity.dart';
+import '../../domain/venue_radius.dart';
 import '../providers/location_providers.dart';
 import '../providers/location_validation_provider.dart';
 import '../providers/location_validation_state.dart';
@@ -982,8 +983,6 @@ class _LocationPermissionScreenState
     }
 
     if (state is LocationValidationOutsideRadius) {
-      final distance = state.distanceMeters.round();
-      final allowed = state.allowedRadiusMeters.round();
       return Container(
         padding: const EdgeInsets.all(AppSpacing.md),
         decoration: BoxDecoration(
@@ -1009,7 +1008,12 @@ class _LocationPermissionScreenState
             ),
             const SizedBox(height: 8),
             Text(
-              'You are currently ~$distance meters away from this venue. Check-in is only permitted within $allowed meters.',
+              AppStrings.locationOutsideAllowedRadius(
+                distanceMeters: state.distanceMeters,
+                allowedLabel: VenueRadius.formatFriendly(
+                  state.allowedRadiusMeters,
+                ),
+              ),
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),

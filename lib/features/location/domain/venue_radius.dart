@@ -53,4 +53,27 @@ class VenueRadius {
     final fixed = value.toStringAsFixed(3);
     return fixed.replaceFirst(RegExp(r'\.?0+$'), '');
   }
+
+  /// Human-readable label: `50 km` when ≥ 1000 m, otherwise `700 m`.
+  static String formatFriendly(double meters) {
+    if (meters >= 1000) {
+      return '${formatForDisplay(meters, VenueRadiusUnit.kilometers)} km';
+    }
+    final rounded = meters == meters.roundToDouble()
+        ? meters.round().toString()
+        : formatForDisplay(meters, VenueRadiusUnit.meters);
+    return '$rounded m';
+  }
+
+  /// True when [raw] in [unit] equals [loadedMeters] (admin field unchanged).
+  static bool matchesLoadedMeters({
+    required String raw,
+    required VenueRadiusUnit unit,
+    required double? loadedMeters,
+  }) {
+    if (loadedMeters == null) return false;
+    final parsed = tryParseToMeters(raw, unit);
+    if (parsed == null) return false;
+    return (parsed - loadedMeters).abs() < 0.01;
+  }
 }

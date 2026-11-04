@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/theme/app_colors.dart';
-import '../../../../core/constants/app_constants.dart';
 import '../../../../core/l10n/app_strings.dart';
 import '../../../admin/domain/substitute_check_in_mapping.dart';
 import '../../../admin/presentation/providers/admin_auth_provider.dart';
@@ -254,16 +253,24 @@ class _GranularRestrictionsDialogState
     final newUnit = next.first;
     if (newUnit == _radiusUnit) return;
 
-    // Prefer converting from last known valid meters so invalid draft text
-    // does not produce a silent wrong value on unit switch.
-    final meters =
-        VenueRadius.tryParseToMeters(_radiusController.text, _radiusUnit) ??
-        _loadedRadiusMeters ??
-        AppConstants.defaultRadiusMeters;
+    // If the field still shows the last saved value, convert units for
+    // display (500 m → 0.5 km). If the admin typed a new number then
+    // flipped the unit (50 + km), keep the digits — that means 50 km,
+    // not "convert 50 meters → 0.05 km".
+    final keepDigits = !VenueRadius.matchesLoadedMeters(
+      raw: _radiusController.text,
+      unit: _radiusUnit,
+      loadedMeters: _loadedRadiusMeters,
+    );
 
     setState(() {
       _radiusUnit = newUnit;
-      _radiusController.text = VenueRadius.formatForDisplay(meters, newUnit);
+      if (!keepDigits && _loadedRadiusMeters != null) {
+        _radiusController.text = VenueRadius.formatForDisplay(
+          _loadedRadiusMeters!,
+          newUnit,
+        );
+      }
       _radiusError = null;
     });
   }
@@ -301,9 +308,21 @@ class _GranularRestrictionsDialogState
         );
         return;
       }
-      _loadedRadiusMeters = meters;
+      setState(() {
+        _loadedRadiusMeters = meters;
+        // Keep the unit the admin saved with so 50 + km stays as 50 km.
+        _radiusController.text = VenueRadius.formatForDisplay(
+          meters,
+          _radiusUnit,
+        );
+      });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text(AppStrings.venueCheckInRadiusSaved)),
+        SnackBar(
+          content: Text(
+            '${AppStrings.venueCheckInRadiusSaved} '
+            '(${VenueRadius.formatFriendly(meters)})',
+          ),
+        ),
       );
     } finally {
       if (mounted) setState(() => _savingRadius = false);

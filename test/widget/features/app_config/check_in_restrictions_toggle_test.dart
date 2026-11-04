@@ -276,7 +276,64 @@ void main() {
 
       expect(locationRepo.lastUpdatedLocationId, kDefaultAdminLocationId);
       expect(locationRepo.lastUpdatedRadiusMeters, 30000);
-      expect(find.text(AppStrings.venueCheckInRadiusSaved), findsOneWidget);
+      expect(find.textContaining(AppStrings.venueCheckInRadiusSaved), findsOneWidget);
+      expect(find.textContaining('30 km'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'typing 50 then selecting km saves 50000 m (not 50 m)',
+    (tester) async {
+      final locationRepo = _FakeLocationRepository(
+        radiusMeters: AppConstants.defaultRadiusMeters,
+      );
+      final appRepo = _FakeAppConfigRepository(
+        const CheckInRestrictionsConfig(
+          locationRestrictionEnabled: true,
+          dateRestrictionEnabled: true,
+          deviceRestrictionEnabled: true,
+        ),
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            isSuperAdminProvider.overrideWithValue(true),
+            currentAdminUserProvider.overrideWithValue(superAdmin),
+            adminAuthProvider.overrideWith(
+              () => MockAuthenticatedAdminAuthNotifier(superAdmin),
+            ),
+            appConfigRepositoryProvider.overrideWithValue(appRepo),
+            checkInRestrictionsConfigProvider.overrideWith(
+              (ref) => appRepo.watchCheckInRestrictions(),
+            ),
+            ..._locationOverrides(locationRepo),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: CheckInRestrictionsToggle()),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.menu));
+      await tester.pumpAndSettle();
+
+      // Type first while still on meters, then flip to km — digits must stay 50.
+      await tester.enterText(find.byType(TextField), '50');
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.text(AppStrings.venueCheckInRadiusUnitKilometers),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<TextField>(find.byType(TextField)).controller?.text, '50');
+
+      await tester.tap(find.text(AppStrings.venueCheckInRadiusSave));
+      await tester.pumpAndSettle();
+
+      expect(locationRepo.lastUpdatedRadiusMeters, 50000);
+      expect(find.textContaining('50 km'), findsOneWidget);
     },
   );
 

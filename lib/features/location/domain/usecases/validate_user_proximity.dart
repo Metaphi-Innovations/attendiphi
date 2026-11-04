@@ -1,6 +1,8 @@
 import '../../../../core/errors/app_exception.dart';
+import '../../../../core/l10n/app_strings.dart';
 import '../../../../core/utils/geo_utils.dart';
 import '../entities/location_config.dart';
+import '../venue_radius.dart';
 
 /// Proximity verification result object.
 class ProximityResult {
@@ -70,6 +72,10 @@ class ValidateUserProximity {
         throw OutsideAllowedRadiusException(
           distanceMeters: rawDistance,
           allowedRadiusMeters: location.radiusMeters,
+          userMessage: AppStrings.locationOutsideAllowedRadius(
+            distanceMeters: rawDistance,
+            allowedLabel: VenueRadius.formatFriendly(location.radiusMeters),
+          ),
         );
       }
     }

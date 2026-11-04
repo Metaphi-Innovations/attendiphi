@@ -162,11 +162,17 @@ void main() {
           location: venue700,
         ),
         throwsA(
-          isA<OutsideAllowedRadiusException>().having(
-            (e) => e.allowedRadiusMeters,
-            'allowedRadiusMeters',
-            700,
-          ),
+          isA<OutsideAllowedRadiusException>()
+              .having(
+                (e) => e.allowedRadiusMeters,
+                'allowedRadiusMeters',
+                700,
+              )
+              .having(
+                (e) => e.userMessage,
+                'userMessage',
+                contains('700 m'),
+              ),
         ),
       );
     });
@@ -199,11 +205,17 @@ void main() {
           location: venue30km,
         ),
         throwsA(
-          isA<OutsideAllowedRadiusException>().having(
-            (e) => e.allowedRadiusMeters,
-            'allowedRadiusMeters',
-            30000,
-          ),
+          isA<OutsideAllowedRadiusException>()
+              .having(
+                (e) => e.allowedRadiusMeters,
+                'allowedRadiusMeters',
+                30000,
+              )
+              .having(
+                (e) => e.userMessage,
+                'userMessage',
+                contains('30 km'),
+              ),
         ),
       );
     });

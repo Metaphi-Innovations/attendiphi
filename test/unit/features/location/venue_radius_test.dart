@@ -85,4 +85,35 @@ void main() {
       );
     });
   });
+
+  group('VenueRadius.formatFriendly', () {
+    test('uses km for radii >= 1000 m', () {
+      expect(VenueRadius.formatFriendly(50000), '50 km');
+      expect(VenueRadius.formatFriendly(30000), '30 km');
+      expect(VenueRadius.formatFriendly(1000), '1 km');
+      expect(VenueRadius.formatFriendly(700), '700 m');
+      expect(VenueRadius.formatFriendly(500), '500 m');
+    });
+  });
+
+  group('VenueRadius.matchesLoadedMeters', () {
+    test('detects unchanged loaded value vs edited draft', () {
+      expect(
+        VenueRadius.matchesLoadedMeters(
+          raw: '500',
+          unit: VenueRadiusUnit.meters,
+          loadedMeters: 500,
+        ),
+        isTrue,
+      );
+      expect(
+        VenueRadius.matchesLoadedMeters(
+          raw: '50',
+          unit: VenueRadiusUnit.meters,
+          loadedMeters: 500,
+        ),
+        isFalse,
+      );
+    });
+  });
 }
