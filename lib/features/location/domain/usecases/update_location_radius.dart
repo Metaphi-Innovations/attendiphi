@@ -1,3 +1,4 @@
+import '../entities/location_config.dart';
 import '../repositories/location_repository.dart';
 
 /// Persists venue check-in radius (meters) for a location.
@@ -6,7 +7,7 @@ class UpdateLocationRadius {
 
   final LocationRepository _repository;
 
-  Future<void> call({
+  Future<LocationConfig> call({
     required String locationId,
     required double radiusMeters,
   }) {

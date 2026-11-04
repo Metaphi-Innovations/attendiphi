@@ -229,10 +229,24 @@ class _GranularRestrictionsDialogState
   VenueRadiusUnit _radiusUnit = VenueRadiusUnit.meters;
   String? _radiusError;
   bool _radiusHydrated = false;
+  bool _radiusDirty = false;
   double? _loadedRadiusMeters;
+  bool _didRequestFreshLocation = false;
 
   bool get _busy =>
       _savingLocation || _savingDate || _savingDevice || _savingRadius;
+
+  @override
+  void initState() {
+    super.initState();
+    // Always refetch venue config when the dialog opens so the field shows
+    // the latest saved radius, not a stale provider cache.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _didRequestFreshLocation) return;
+      _didRequestFreshLocation = true;
+      ref.invalidate(locationConfigFamilyProvider(kDefaultAdminLocationId));
+    });
+  }
 
   @override
   void dispose() {
@@ -240,12 +254,15 @@ class _GranularRestrictionsDialogState
     super.dispose();
   }
 
-  void _hydrateRadiusFromMeters(double meters) {
+  void _hydrateRadiusFromMeters(double meters, {bool preserveUnit = false}) {
     _loadedRadiusMeters = meters;
-    _radiusUnit = VenueRadius.preferredUnit(meters);
+    if (!preserveUnit) {
+      _radiusUnit = VenueRadius.preferredUnit(meters);
+    }
     _radiusController.text = VenueRadius.formatForDisplay(meters, _radiusUnit);
     _radiusError = null;
     _radiusHydrated = true;
+    _radiusDirty = false;
   }
 
   void _onUnitChanged(Set<VenueRadiusUnit> next) {
@@ -270,6 +287,9 @@ class _GranularRestrictionsDialogState
           _loadedRadiusMeters!,
           newUnit,
         );
+        _radiusDirty = false;
+      } else {
+        _radiusDirty = true;
       }
       _radiusError = null;
     });
@@ -291,7 +311,7 @@ class _GranularRestrictionsDialogState
       _radiusError = null;
     });
     try {
-      await ref
+      final saved = await ref
           .read(venueRadiusNotifierProvider.notifier)
           .save(
             locationId: kDefaultAdminLocationId,
@@ -299,28 +319,24 @@ class _GranularRestrictionsDialogState
           );
       if (!mounted) return;
       final err = ref.read(venueRadiusNotifierProvider).error;
-      if (err != null) {
+      if (err != null || saved == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to update radius: $err'),
+            content: Text('Failed to update radius: ${err ?? 'unknown error'}'),
             backgroundColor: AppColors.error,
           ),
         );
         return;
       }
       setState(() {
-        _loadedRadiusMeters = meters;
-        // Keep the unit the admin saved with so 50 + km stays as 50 km.
-        _radiusController.text = VenueRadius.formatForDisplay(
-          meters,
-          _radiusUnit,
-        );
+        // Confirm UI from the value actually persisted + re-fetched.
+        _hydrateRadiusFromMeters(saved.radiusMeters, preserveUnit: true);
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             '${AppStrings.venueCheckInRadiusSaved} '
-            '(${VenueRadius.formatFriendly(meters)})',
+            '(${VenueRadius.formatFriendly(saved.radiusMeters)})',
           ),
         ),
       );
@@ -414,15 +430,21 @@ class _GranularRestrictionsDialogState
     final busy = _busy;
     final theme = Theme.of(context);
 
-    if (locationOn) {
-      final locationAsync = ref.watch(
-        locationConfigFamilyProvider(kDefaultAdminLocationId),
-      );
+    final locationAsync = locationOn
+        ? ref.watch(locationConfigFamilyProvider(kDefaultAdminLocationId))
+        : null;
+    if (locationOn && locationAsync != null) {
       locationAsync.whenData((config) {
-        if (!_radiusHydrated) {
+        final serverMeters = config.radiusMeters;
+        final needsHydrate =
+            !_radiusDirty &&
+            (!_radiusHydrated ||
+                _loadedRadiusMeters == null ||
+                (_loadedRadiusMeters! - serverMeters).abs() > 0.01);
+        if (needsHydrate) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted || _radiusHydrated) return;
-            setState(() => _hydrateRadiusFromMeters(config.radiusMeters));
+            if (!mounted || _radiusDirty) return;
+            setState(() => _hydrateRadiusFromMeters(serverMeters));
           });
         }
       });
@@ -477,6 +499,24 @@ class _GranularRestrictionsDialogState
                   ),
                 ),
                 const SizedBox(height: 8),
+                if (_loadedRadiusMeters != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      AppStrings.venueCheckInRadiusCurrent(
+                        VenueRadius.formatFriendly(_loadedRadiusMeters!),
+                      ),
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                if (locationAsync?.isLoading == true && !_radiusHydrated)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 8),
+                    child: LinearProgressIndicator(minHeight: 2),
+                  ),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -498,9 +538,10 @@ class _GranularRestrictionsDialogState
                           border: const OutlineInputBorder(),
                         ),
                         onChanged: (_) {
-                          if (_radiusError != null) {
-                            setState(() => _radiusError = null);
-                          }
+                          setState(() {
+                            _radiusDirty = true;
+                            _radiusError = null;
+                          });
                         },
                         onSubmitted: (_) => _saveRadius(),
                       ),

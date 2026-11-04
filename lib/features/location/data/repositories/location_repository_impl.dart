@@ -32,7 +32,7 @@ class LocationRepositoryImpl implements LocationRepository {
   }
 
   @override
-  Future<void> updateRadiusMeters({
+  Future<LocationConfig> updateRadiusMeters({
     required String locationId,
     required double radiusMeters,
   }) {

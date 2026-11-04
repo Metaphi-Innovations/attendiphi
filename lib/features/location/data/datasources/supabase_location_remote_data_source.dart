@@ -111,22 +111,35 @@ class SupabaseLocationRemoteDataSource implements LocationRemoteDataSource {
   );
 
   @override
-  Future<void> updateRadiusMeters({
+  Future<LocationConfigModel> updateRadiusMeters({
     required String locationId,
     required double radiusMeters,
   }) async {
     try {
-      await _client
+      final row = await _client
           .from('locations')
           .update({
             'radius_meters': radiusMeters,
             'updated_at': DateTime.now().toUtc().toIso8601String(),
           })
-          .eq('id', locationId);
+          .eq('id', locationId)
+          .select()
+          .maybeSingle();
+      if (row == null) {
+        throw const ServerException(
+          userMessage:
+              'Could not save venue radius. You may not have permission, '
+              'or the venue was not found.',
+          technicalMessage:
+              'Supabase update radius returned no row (RLS or missing id)',
+        );
+      }
+      final saved = _fromRow(Map<String, dynamic>.from(row));
       AppLogger.info(
-        'Updated location $locationId radius_meters=$radiusMeters',
+        'Updated location $locationId radius_meters=${saved.radiusMeters}',
         tag: 'SupabaseLocationRemoteDataSource',
       );
+      return saved;
     } on PostgrestException catch (e, st) {
       throw ServerException(
         userMessage: 'Could not save venue radius. Please try again.',

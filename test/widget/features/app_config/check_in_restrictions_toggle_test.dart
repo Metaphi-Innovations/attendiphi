@@ -42,13 +42,14 @@ class _FakeLocationRepository implements LocationRepository {
   Stream<List<LocationConfig>> getLocations() => const Stream.empty();
 
   @override
-  Future<void> updateRadiusMeters({
+  Future<LocationConfig> updateRadiusMeters({
     required String locationId,
     required double radiusMeters,
   }) async {
     lastUpdatedLocationId = locationId;
     lastUpdatedRadiusMeters = radiusMeters;
     this.radiusMeters = radiusMeters;
+    return getLocationConfig(locationId);
   }
 }
 
@@ -277,7 +278,9 @@ void main() {
       expect(locationRepo.lastUpdatedLocationId, kDefaultAdminLocationId);
       expect(locationRepo.lastUpdatedRadiusMeters, 30000);
       expect(find.textContaining(AppStrings.venueCheckInRadiusSaved), findsOneWidget);
-      expect(find.textContaining('30 km'), findsOneWidget);
+      // Snackbar + "Currently saved: 30 km"
+      expect(find.textContaining('30 km'), findsAtLeastNWidgets(1));
+      expect(find.textContaining('Currently saved:'), findsOneWidget);
     },
   );
 
@@ -333,7 +336,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(locationRepo.lastUpdatedRadiusMeters, 50000);
-      expect(find.textContaining('50 km'), findsOneWidget);
+      expect(find.textContaining('50 km'), findsAtLeastNWidgets(1));
+      expect(find.text('Currently saved: 50 km'), findsOneWidget);
     },
   );
 

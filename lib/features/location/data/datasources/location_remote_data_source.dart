@@ -7,7 +7,9 @@ abstract class LocationRemoteDataSource {
   Stream<List<LocationConfigModel>> streamLocations();
 
   /// Updates [radiusMeters] for [locationId] (Super Admin write).
-  Future<void> updateRadiusMeters({
+  ///
+  /// Returns the persisted row so callers can confirm the write.
+  Future<LocationConfigModel> updateRadiusMeters({
     required String locationId,
     required double radiusMeters,
   });

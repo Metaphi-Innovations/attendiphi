@@ -72,7 +72,7 @@ final locationConfigFamilyProvider =
       return useCase(locationId);
     });
 
-/// Saves venue radius (meters) and invalidates cached location config.
+/// Saves venue radius (meters) and refreshes cached location config.
 final venueRadiusNotifierProvider =
     AsyncNotifierProvider<VenueRadiusNotifier, void>(VenueRadiusNotifier.new);
 
@@ -80,15 +80,21 @@ class VenueRadiusNotifier extends AsyncNotifier<void> {
   @override
   FutureOr<void> build() {}
 
-  Future<void> save({
+  /// Persists [radiusMeters] and returns the confirmed server value.
+  Future<LocationConfig?> save({
     required String locationId,
     required double radiusMeters,
   }) async {
     state = const AsyncLoading();
+    LocationConfig? saved;
     state = await AsyncValue.guard(() async {
       final useCase = ref.read(updateLocationRadiusUseCaseProvider);
       await useCase(locationId: locationId, radiusMeters: radiusMeters);
-      ref.invalidate(locationConfigFamilyProvider(locationId));
+      // Force a fresh fetch so reopen/UI see the persisted value, not cache.
+      saved = await ref.refresh(
+        locationConfigFamilyProvider(locationId).future,
+      );
     });
+    return state.hasError ? null : saved;
   }
 }

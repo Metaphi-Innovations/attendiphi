@@ -140,6 +140,8 @@ class AppStrings {
       'Enter a valid radius greater than 0.';
   static const venueCheckInRadiusSaved = 'Venue check-in radius updated';
   static const venueCheckInRadiusSave = 'Save radius';
+  static String venueCheckInRadiusCurrent(String friendly) =>
+      'Currently saved: $friendly';
 
   // ── Check-In Form ────────────────────────────────────────────────────────
   static const checkInFormTitle = 'Check In';

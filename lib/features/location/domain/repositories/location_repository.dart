@@ -14,7 +14,9 @@ abstract class LocationRepository {
   Stream<List<LocationConfig>> getLocations();
 
   /// Updates the venue check-in radius (meters) for [locationId].
-  Future<void> updateRadiusMeters({
+  ///
+  /// Returns the persisted [LocationConfig] from the server.
+  Future<LocationConfig> updateRadiusMeters({
     required String locationId,
     required double radiusMeters,
   });
